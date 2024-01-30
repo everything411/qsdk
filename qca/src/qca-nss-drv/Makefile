@@ -625,6 +625,8 @@ endif
 
 ccflags-y += $(NSS_CCFLAGS)
 
+ccflags-y += -Wno-unused-function -Wno-unused-variable
+
 export NSS_CCFLAGS
 
 obj ?= .
