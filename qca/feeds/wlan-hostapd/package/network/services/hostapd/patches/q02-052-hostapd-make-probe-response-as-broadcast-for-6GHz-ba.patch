@@ -1,0 +1,74 @@
+From 1a4540fe9b211d7f37573435fe767b007a3477ea Mon Sep 17 00:00:00 2001
+From: Hari Chandrakanthan <quic_haric@quicinc.com>
+Date: Fri, 28 Oct 2022 14:27:29 +0530
+Subject: [PATCH] hostapd : make probe response as broadcast for 6GHz band
+
+Make probe response as broadcast for 6GHz band as mentioned
+in the spec IEEE Std 802.11ax‐2021 section 26.17.2.3.2,
+"If a 6 GHz AP receives a Probe Request frame and responds with a Probe
+Response frame (per 11.1.4.3.4), the Address 1 field of the Probe
+Response frame shall be set to the broadcast address, unless
+the AP is not indicating its actual SSID in the SSID element
+of its Beacon frames."
+
+Fixes: I6af7154bddf ("hostapd: Package Upgrade to b26f5c0fe3")
+
+Signed-off-by: Hari Chandrakanthan <quic_haric@quicinc.com>
+---
+ src/ap/beacon.c | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index cb85dc9..f76a955 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -598,7 +598,6 @@ static u8 * hostapd_ext_capab_mbssid(struct hostapd_data *hapd, u8 *eid,
+ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
+ 				   const struct ieee80211_mgmt *req,
+ 				   int is_p2p, size_t *resp_len,
+-				   bool bcast_probe_resp,
+ 				   const u8 *known_bss, u8 known_bss_len)
+ {
+ 	struct ieee80211_mgmt *resp;
+@@ -672,9 +671,10 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
+ 
+ 	resp->frame_control = IEEE80211_FC(WLAN_FC_TYPE_MGMT,
+ 					   WLAN_FC_STYPE_PROBE_RESP);
+-	if (req)
++	if (req && (!is_6ghz_op_class(hapd->iconf->op_class) ||
++	    hapd->conf->ignore_broadcast_ssid))
+ 		os_memcpy(resp->da, req->sa, ETH_ALEN);
+-	else if (bcast_probe_resp)
++	else
+ 		os_memset(resp->da, 0xff, ETH_ALEN);
+ 
+ 	os_memcpy(resp->sa, hapd->own_addr, ETH_ALEN);
+@@ -1322,7 +1322,7 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 		     " signal=%d", MAC2STR(mgmt->sa), ssi_signal);
+ 
+ 	resp = hostapd_gen_probe_resp(hapd, mgmt, elems.p2p != NULL,
+-				      &resp_len, false,
++				      &resp_len,
+ 				      elems.mbssid_known_bss,
+ 				      elems.mbssid_known_bss_len);
+ 	if (resp == NULL)
+@@ -1394,7 +1394,7 @@ static u8 * hostapd_probe_resp_offloads(struct hostapd_data *hapd,
+ 			   "this");
+ 
+ 	/* Generate a Probe Response template for the non-P2P case */
+-	return hostapd_gen_probe_resp(hapd, NULL, 0, resp_len, false,
++	return hostapd_gen_probe_resp(hapd, NULL, 0, resp_len,
+ 				      NULL, 0);
+ }
+ #endif /* NEED_AP_MLME */
+@@ -1413,7 +1413,6 @@ static u8 * hostapd_unsol_bcast_probe_resp(struct hostapd_data *hapd,
+ 
+ 	return hostapd_gen_probe_resp(hapd, NULL, 0,
+ 				      &params->unsol_bcast_probe_resp_tmpl_len,
+-				      true,
+ 				      NULL, 0);
+ }
+ #endif /* CONFIG_IEEE80211AX */
+-- 
+2.7.4
+

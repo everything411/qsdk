@@ -1,0 +1,83 @@
+From 5e510b24bc498b8714c5e3fe9ea17e01c26124a6 Mon Sep 17 00:00:00 2001
+From: Hari Chandrakanthan <quic_haric@quicinc.com>
+Date: Mon, 10 Oct 2022 22:58:19 +0530
+Subject: [PATCH] sigma_dut : fix oper class in 6GHz band
+
+set proper oper class based on channel and bandwidth.
+
+Fixes: Iec7c485d423 ("sigma-dut: Package Upgrade")
+
+Signed-off-by: Hari Chandrakanthan <quic_haric@quicinc.com>
+---
+ ap.c | 44 +++++++++++++++++++++++++-------------------
+ 1 file changed, 25 insertions(+), 19 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index e6232eb..0e3d3bf 100644
+--- a/ap.c
++++ b/ap.c
+@@ -7809,28 +7809,34 @@ static int get_oper_center_freq_6g(int chwidth, int channel)
+ 	}
+ }
+ 
+-
+-static int get_6g_ch_op_class(int channel)
++static int get_6g_ch_op_class(int channel, int chanwidth)
+ {
+-	if ((channel & 0x3) == 0x1)
+-		return 131;
+-
+-	if ((channel & 0x7) == 0x3)
+-		return 132;
+-
+-	if ((channel & 0xF) == 0x7)
+-		return 133;
+-
+-	if ((channel & 0x1F) == 0xF)
+-		return 134;
++	int op_class = 0;
+ 
+-	if (channel == 2)
+-		return 136;
+-
+-	return 0;
++	switch (chanwidth) {
++	case AP_20:
++		if (channel == 2)
++			op_class = 136;
++		else
++			op_class = 131;
++		break;
++	case AP_40:
++		op_class = 132;
++		break;
++	case AP_80:
++		op_class = 133;
++		break;
++	case AP_160:
++		op_class = 134;
++		break;
++	default:
++		/* default to 80MHz, 80P80 or 160 not required for test currently */
++		op_class = 133;
++		break;
++	}
++	return op_class;
+ }
+ 
+-
+ static int get_oper_centr_freq_seq_idx(struct sigma_dut *dut, int chwidth,
+ 				       int channel, bool second_iface)
+ {
+@@ -9430,7 +9436,7 @@ skip_key_mgmt:
+ 				vht_oper_centr_freq_idx);
+ 			if (check_band(dut, BAND_6G, conf_counter)) {
+ 				fprintf(f, "op_class=%d\n",
+-					get_6g_ch_op_class(chan));
++					get_6g_ch_op_class(chan, chwidth));
+ 
+ 				if (dut->ap_6g_unsol_prb_resp)
+ 					fprintf(f, "unsol_bcast_probe_resp_interval=20\n");
+-- 
+2.7.4
+

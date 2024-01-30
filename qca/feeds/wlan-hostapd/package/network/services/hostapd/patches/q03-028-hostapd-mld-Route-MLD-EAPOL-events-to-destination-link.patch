@@ -1,0 +1,255 @@
+From f817580ce32f934cf44404984a700ed036470610 Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Mon, 21 Nov 2022 23:33:10 +0530
+Subject: [PATCH] hostapd: mld: Route MLD EAPOL events to destination link
+
+Since nl_connect handle is common for all link BSS in an
+MLD, EAPOL_RX/EAPOL TX STATUS NL events are received with hostapd
+bss instance with which the handle was created (i.e the
+first link bss that is created in the MLD).
+For non ML Stations or ML Stations which are not part
+of all links in an MLD, the EAPOL RX/EAPOL TX STATUS events
+are dropped since corresponding STA can't be found on RX'ed
+hostapd bss.
+
+If STA is present in any of the link BSS of the MLD route
+the EAPOL frame the that link BSS.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 10 ++++++++++
+ src/ap/ieee802_11.c    | 13 +++++++------
+ src/ap/ieee802_1x.c    |  4 ----
+ src/ap/sta_info.c      | 31 ++++++++++++++-----------------
+ src/ap/sta_info.h      |  3 ++-
+ 5 files changed, 33 insertions(+), 28 deletions(-)
+
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1590,7 +1590,18 @@ static void hostapd_event_eapol_rx(struc
+ 	struct sta_info *sta;
+ 	size_t j;
+ 
+-	for (j = 0; j < iface->num_bss; j++) {
++	sta = ap_get_sta(hapd, src);
++	if (!sta && hapd->mld) {
++		/* Check in link BSSes for MLD */
++		sta = hapd_get_sta_from_partner_links(hapd, src);
++		if (sta) {
++			wpa_printf(MSG_DEBUG, "Routing MLD EAPOL RX from link bss " MACSTR
++				   " to link bss " MACSTR, MAC2STR(hapd->own_addr),
++				   MAC2STR(sta->hapd->own_addr));
++			hapd = sta->hapd;
++		}
++	}
++	for (j = 0; !sta && j < iface->num_bss; j++) {
+ 		sta = ap_get_sta(iface->bss[j], src);
+ 		if (sta && sta->flags & WLAN_STA_ASSOC) {
+ 			hapd = iface->bss[j];
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7601,8 +7601,14 @@ void hostapd_eapol_tx_status(struct host
+ 
+ 	sta = ap_get_sta(hapd, dst);
+ 	if (!sta && hapd->mld) {
+-		wpa_printf(MSG_DEBUG, "link-STA not found. Check MLO mac address list");
+-		sta = ap_get_mlo_sta(hapd, dst);
++		/* Check in partner links for MLD */
++		if ((sta = hapd_get_sta_from_partner_links(hapd, dst))) {
++			wpa_printf(MSG_DEBUG, "Routing EAPOL Tx Status from link "
++			           "bss " MACSTR " to link bss " MACSTR,
++				   MAC2STR(hapd->own_addr),
++				   MAC2STR(sta->hapd->own_addr));
++			hapd = sta->hapd;
++		}
+ 	}
+ 
+ 	if (sta == NULL && iface->num_bss > 1) {
+@@ -7659,10 +7665,6 @@ void ieee802_11_rx_from_unknown(struct h
+ 	struct sta_info *sta;
+ 
+ 	sta = ap_get_sta(hapd, src);
+-	if (!sta && hapd->mld) {
+-		wpa_printf(MSG_DEBUG, "link-STA not found. Check MLO mac address list\n");
+-		sta = ap_get_mlo_sta(hapd, src);
+-	}
+ 
+ 	if (sta &&
+ 	    ((sta->flags & WLAN_STA_ASSOC) ||
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -1079,10 +1079,6 @@ void ieee802_1x_receive(struct hostapd_d
+ 		   " (encrypted=%d)",
+ 		   (unsigned long) len, MAC2STR(sa), encrypted);
+ 	sta = ap_get_sta(hapd, sa);
+-	if (!sta && hapd->mld) {
+-		wpa_printf(MSG_DEBUG, "link-STA not found. Check MLO mac address list\n");
+-		sta = ap_get_mlo_sta(hapd, sa);
+-	}
+ 
+ 	if (!sta || (!(sta->flags & (WLAN_STA_ASSOC | WLAN_STA_PREAUTH)) &&
+ 		     !(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_WIRED))) {
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -187,30 +187,31 @@ void ap_free_sta_pasn(struct hostapd_dat
+ 
+ #endif /* CONFIG_PASN */
+ 
+-struct sta_info *ap_get_mlo_sta(struct hostapd_data *hapd, const u8 *sta_addr)
++struct sta_info *hapd_get_sta_from_partner_links(struct hostapd_data *pbss,
++						  const u8 *sta_addr)
+ {
+-	struct ml_sta_info *ml_sta = hapd->mld->ml_sta_list;
+ 	struct sta_info *sta = NULL;
++	struct hostapd_data *link_hapd;
+ 
+-	if (!ml_sta) {
+-		wpa_printf(MSG_ERROR, "Multi-link STAs are not available");
+-		return NULL;
+-	}
++	if (!pbss || !sta_addr)
++		return sta;
++
++	if (!pbss->mld)
++		return sta;
++
++	link_hapd = pbss->mld->bss;
+ 
+-	for (sta = ml_sta->linksta; sta != NULL; sta = sta->lnext)
+-		if (os_memcmp(sta->addr, sta_addr, ETH_ALEN) == 0) {
+-			return sta;
+-		}
+-
+-	if (sta == NULL) {
+-		wpa_printf(MSG_ERROR,
+-				"ERROR!! %s: STA with MLD "MACSTR
+-				" not found for AP with MLD MAC "MACSTR"\n",
+-				__func__, MAC2STR(sta_addr),
+-				MAC2STR(hapd->mld->addr));
+-		return NULL;
++	while (link_hapd) {
++		if (link_hapd != pbss && (sta = ap_get_sta(link_hapd, sta_addr)))
++			break;
++
++		link_hapd = link_hapd->nbss;
+ 	}
+ 
++	if (!sta)
++		wpa_printf(MSG_ERROR, "STA ("MACSTR") not found in any link of"
++			   "MLD AP "MACSTR, MAC2STR(sta_addr), MAC2STR(pbss->mld->addr));
++
+ 	return sta;
+ }
+ 
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -477,7 +477,8 @@ int set_for_each_partner_link_sta(struct
+ 				  int (*cb)(struct hostapd_data *hapd,
+ 					    struct sta_info *sta,
+ 					    void *data));
+-struct sta_info *ap_get_mlo_sta(struct hostapd_data *hapd, const u8 *sta_addr);
++struct sta_info *hapd_get_sta_from_partner_links(struct hostapd_data *pbss,
++						 const u8 *sta_addr);
+ void set_partner_sta_flags(struct hostapd_data *hapd,
+ 			   struct sta_info *psta,
+ 			   u32 flags);
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -22,7 +22,7 @@
+ 
+ 
+ static void
+-nl80211_control_port_frame_tx_status(struct wpa_driver_nl80211_data *drv,
++nl80211_control_port_frame_tx_status(struct i802_bss *bss,
+ 				     const u8 *frame, size_t len,
+ 				     struct nlattr *ack, struct nlattr *cookie);
+ 
+@@ -1003,7 +1003,7 @@ static void mlme_event_mgmt(struct i802_
+ }
+ 
+ 
+-static void mlme_event_mgmt_tx_status(struct wpa_driver_nl80211_data *drv,
++static void mlme_event_mgmt_tx_status(struct i802_bss *bss,
+ 				      struct nlattr *cookie, const u8 *frame,
+ 				      size_t len, struct nlattr *ack)
+ {
+@@ -1011,6 +1011,7 @@ static void mlme_event_mgmt_tx_status(st
+ 	const struct ieee80211_hdr *hdr = (const struct ieee80211_hdr *) frame;
+ 	u16 fc = le_to_host16(hdr->frame_control);
+ 	u64 cookie_val = 0;
++	struct wpa_driver_nl80211_data *drv = bss->drv;
+ 
+ 	if (cookie)
+ 		cookie_val = nla_get_u64(cookie);
+@@ -1027,7 +1028,7 @@ static void mlme_event_mgmt_tx_status(st
+ 	    WPA_GET_BE16(frame + 2 * ETH_ALEN) == ETH_P_PAE) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: Work around misdelivered control port TX status for EAPOL");
+-		nl80211_control_port_frame_tx_status(drv, frame, len, ack,
++		nl80211_control_port_frame_tx_status(bss, frame, len, ack,
+ 						     cookie);
+ 		return;
+ 	}
+@@ -1361,7 +1362,7 @@ static void mlme_event(struct i802_bss *
+ 				nla_len(frame));
+ 		break;
+ 	case NL80211_CMD_FRAME_TX_STATUS:
+-		mlme_event_mgmt_tx_status(drv, cookie, nla_data(frame),
++		mlme_event_mgmt_tx_status(bss, cookie, nla_data(frame),
+ 					  nla_len(frame), ack);
+ 		break;
+ 	case NL80211_CMD_UNPROT_DEAUTHENTICATE:
+@@ -3170,7 +3171,7 @@ static void nl80211_update_muedca_params
+ 	wpa_supplicant_event(drv->ctx, EVENT_UPDATE_MUEDCA_PARAMS, &ed);
+ }
+ 
+-static void nl80211_control_port_frame(struct wpa_driver_nl80211_data *drv,
++static void nl80211_control_port_frame(struct i802_bss *bss,
+ 				       struct nlattr **tb)
+ {
+ 	u8 *src_addr;
+@@ -3194,7 +3195,7 @@ static void nl80211_control_port_frame(s
+ 			   MAC2STR(src_addr));
+ 		break;
+ 	case ETH_P_PAE:
+-		drv_event_eapol_rx2(drv->ctx, src_addr,
++		drv_event_eapol_rx2(bss->ctx, src_addr,
+ 				    nla_data(tb[NL80211_ATTR_FRAME]),
+ 				    nla_len(tb[NL80211_ATTR_FRAME]),
+ 				    encrypted);
+@@ -3210,7 +3211,7 @@ static void nl80211_control_port_frame(s
+ 
+ 
+ static void
+-nl80211_control_port_frame_tx_status(struct wpa_driver_nl80211_data *drv,
++nl80211_control_port_frame_tx_status(struct i802_bss *bss,
+ 				     const u8 *frame, size_t len,
+ 				     struct nlattr *ack, struct nlattr *cookie)
+ {
+@@ -3228,7 +3229,7 @@ nl80211_control_port_frame_tx_status(str
+ 	event.eapol_tx_status.data = frame + ETH_HLEN;
+ 	event.eapol_tx_status.data_len = len - ETH_HLEN;
+ 	event.eapol_tx_status.ack = ack != NULL;
+-	wpa_supplicant_event(drv->ctx, EVENT_EAPOL_TX_STATUS, &event);
++	wpa_supplicant_event(bss->ctx, EVENT_EAPOL_TX_STATUS, &event);
+ }
+ 
+ 
+@@ -3631,7 +3632,7 @@ static void do_process_drv_event(struct
+ 	case NL80211_CMD_CONTROL_PORT_FRAME_TX_STATUS:
+ 		if (!frame)
+ 			break;
+-		nl80211_control_port_frame_tx_status(drv,
++		nl80211_control_port_frame_tx_status(bss,
+ 						     nla_data(frame),
+ 						     nla_len(frame),
+ 						     tb[NL80211_ATTR_ACK],
+@@ -3760,7 +3761,7 @@ int process_bss_event(struct nl_msg *msg
+ 		nl80211_external_auth(bss->drv, tb);
+ 		break;
+ 	case NL80211_CMD_CONTROL_PORT_FRAME:
+-		nl80211_control_port_frame(bss->drv, tb);
++		nl80211_control_port_frame(bss, tb);
+ 		break;
+ 	default:
+ 		wpa_printf(MSG_DEBUG, "nl80211: Ignored unknown event "

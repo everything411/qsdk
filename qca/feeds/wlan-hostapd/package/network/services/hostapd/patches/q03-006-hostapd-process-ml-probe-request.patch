@@ -1,0 +1,782 @@
+From e049ce87fcf2e26512e9ab3403c100f84c103fc2 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Thu, 10 Nov 2022 08:34:26 +0530
+Subject: [PATCH] hostapd: process ml probe request
+
+Process ML probe request and send ML probe response including
+all the link info in the ML IE.
+The link info of all partner links are prebuilt during bringup
+and used for ML probe response rather than generating during
+each ML probe request.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/beacon.c                | 261 +++++++++++++++++++++++++++++++--
+ src/ap/hostapd.c               |  26 ++++
+ src/ap/hostapd.h               |   9 ++
+ src/ap/ieee802_11.c            | 187 ++++++++++++++++++++++-
+ src/common/ieee802_11_common.h |  21 +++
+ src/common/ieee802_11_defs.h   |  21 +++
+ 6 files changed, 511 insertions(+), 14 deletions(-)
+
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -34,6 +34,13 @@
+ #include "ieee802_11_auth.h"
+ 
+ 
++static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
++				   const struct ieee80211_mgmt *req,
++				   int is_p2p, size_t *resp_len,
++				   const u8 *known_bss, u8 known_bss_len,
++				   struct multi_link_data *ml_data,
++				   bool include_mle);
++
+ #ifdef NEED_AP_MLME
+ 
+ static u8 * hostapd_eid_bss_load(struct hostapd_data *hapd, u8 *eid, size_t len)
+@@ -595,11 +602,281 @@ static u8 * hostapd_ext_capab_mbssid(str
+ 	return eid;
+ }
+ 
++static bool hostapd_is_restricted_eid_in_sta_profile(u8 eid)
++{
++	switch(eid) {
++	case WLAN_EID_SSID:
++	case WLAN_EID_TIM:
++	case WLAN_EID_BSS_MAX_IDLE_PERIOD:
++	case WLAN_EID_MULTIPLE_BSSID:
++	case WLAN_EID_REDUCED_NEIGHBOR_REPORT:
++	case WLAN_EID_NEIGHBOR_REPORT:
++		return true;
++	}
++
++	return false;
++}
++
++static bool hostapd_is_restricted_ext_eid_in_sta_profile(u8 eid)
++{
++	switch(eid) {
++	case WLAN_EID_EXT_MULTI_LINK:
++		return true;
++	}
++	return false;
++}
++
++/* Create the link sta profile based on inheritance from the reporting
++ * profile. If @sta_profile is NULL, only the length of the sta_profile
++ * is returned
++ */
++static size_t hostapd_add_sta_profile(struct ieee80211_mgmt *own_fdata,
++				    struct ieee80211_mgmt *link_fdata,
++				    size_t own_data_len,
++				    size_t link_data_len,
++				    u8 *sta_profile)
++{
++	/* the bitmap of parsed eids, max eid is 256, hence 32bytes to store the bitmap */
++	u8 parsed_eid_bmap[32] = {0}, parsed_ext_eid_bmap[32] = {0};
++	u8 oeid, leid, oelen, lelen;
++	const u8 *oelem_data, *lelem_data;
++	u8 *own_data, *link_data;
++	const struct element *oelem, *lelem;
++	bool is_ext, ie_found;
++	/* extra len used in the logic incudes the element id and len */
++	u8 extra_len = 2;
++	size_t sta_profile_len = 0;
++	u8 ninherit_elemlist[254] = {0}, ninherit_elemlist_len = 0;
++	u8 ninherit_elemextlist[254] = {0}, ninherit_elemextlist_len = 0;
++
++	if (sta_profile) {
++		memcpy(sta_profile, &own_fdata->u.probe_resp.capab_info, sizeof(le16));
++		sta_profile += sizeof(le16);
++	}
++
++	sta_profile_len += sizeof(le16);
++
++	own_data = own_fdata->u.probe_resp.variable;
++	link_data = link_fdata->u.probe_resp.variable;
++
++
++	/* The below logic takes the reporting bss data and reported bss data and performs
++	 * intersection to build the sta profile of the reported bss. Also certain IEs are
++	 * not added to the sta profile as recommended in spec. Matching IE information
++	 * in the reporting bss profile are ignored in the sta profile. Remaining IEs
++	 * pertaining to the sta profile are appended at the end.
++	 * Same logic is used by hostapd_sta_profile_len() to determine the length of
++	 * the sta profile.
++	 */
++	for_each_element(oelem, own_data, own_data_len) {
++		ie_found = false;
++		is_ext = false;
++		oelem_data = oelem->data;
++		oelen = oelem->datalen;
++		if (oelem->id == WLAN_EID_EXTENSION) {
++			is_ext = true;
++			oeid = *(oelem_data);
++			if (hostapd_is_restricted_ext_eid_in_sta_profile(oeid))
++				continue;
++		} else {
++			oeid = oelem->id;
++			if (hostapd_is_restricted_eid_in_sta_profile(oeid))
++				continue;
++		}
++
++		for_each_element(lelem, link_data, link_data_len) {
++			if ((lelem->id == WLAN_EID_EXTENSION && !is_ext) ||
++			    (is_ext && lelem->id != WLAN_EID_EXTENSION))
++				continue;
++
++			lelem_data = lelem->data;
++			lelen = lelem->datalen;
++			if (lelem->id == WLAN_EID_EXTENSION) {
++				leid = *(lelem_data);
++			} else {
++				leid = lelem->id;
++			}
++
++			if (oeid == leid) {
++				ie_found = true;
++				if (oelen != lelen ||
++				    memcmp(oelem->data, lelem->data, oelen)) {
++					if (sta_profile) {
++						memcpy(sta_profile, lelem->data - extra_len, lelen + extra_len);
++						sta_profile += lelen + extra_len;
++					}
++					sta_profile_len += lelen + extra_len;
++				}
++
++				if (is_ext)
++					parsed_ext_eid_bmap[oeid/8] |= BIT(oeid%8);
++				else
++					parsed_eid_bmap[oeid/8] |= BIT(oeid%8);
++
++				break;
++			}
++		}
++		if (!ie_found) {
++			if (is_ext)
++				ninherit_elemextlist[ninherit_elemextlist_len++] = oeid;
++			else
++				ninherit_elemlist[ninherit_elemlist_len++] = oeid;
++		}
++	}
++
++	/* parse the remaining elements in the link profile */
++	for_each_element(lelem, link_data, link_data_len) {
++		lelem_data = lelem->data;
++		lelen = lelem->datalen;
++		if (lelem->id == WLAN_EID_EXTENSION) {
++			leid = *(lelem_data);
++			if (parsed_ext_eid_bmap[leid/8] & BIT(leid%8))
++				continue;
++			if (hostapd_is_restricted_ext_eid_in_sta_profile(leid))
++				continue;
++		} else {
++			leid = lelem->id;
++			if (parsed_eid_bmap[leid/8] & BIT(leid%8))
++				continue;
++			if (hostapd_is_restricted_eid_in_sta_profile(leid))
++				continue;
++		}
++
++		if (sta_profile) {
++			memcpy(sta_profile, lelem->data - extra_len, lelen + extra_len);
++			sta_profile += lelen + extra_len;
++		}
++		sta_profile_len += lelen + extra_len;
++	}
++
++	if (sta_profile && (ninherit_elemlist_len || ninherit_elemextlist_len)) {
++		*sta_profile = WLAN_EID_EXTENSION;
++		sta_profile++;
++
++		*sta_profile = ninherit_elemlist_len + ninherit_elemextlist_len + 3;
++		sta_profile++;
++
++		*sta_profile = WLAN_EID_EXT_NON_INHERITANCE;
++		sta_profile++;
++
++		*sta_profile = ninherit_elemlist_len;
++		sta_profile++;
++		if (ninherit_elemlist_len)
++			memcpy(sta_profile, ninherit_elemlist, ninherit_elemlist_len);
++		sta_profile += ninherit_elemlist_len;
++
++		*sta_profile = ninherit_elemextlist_len;
++		sta_profile++;
++		if (ninherit_elemextlist_len)
++			memcpy(sta_profile, ninherit_elemextlist, ninherit_elemextlist_len);
++		sta_profile += ninherit_elemextlist_len;
++
++	}
++
++	/* Non-Inheritance IE = EID_EXT(1byte) + Total len field(1byte) +
++	 * Ext tag number (1byte) + ninherit_elemlist_len(1byte) + ninherit_elemextlist_len(1byte) +
++	 * data
++	 */
++	if (ninherit_elemlist_len || ninherit_elemextlist_len)
++		sta_profile_len += 3 + 2 + ninherit_elemlist_len + ninherit_elemextlist_len;
++
++	return sta_profile_len;
++}
++
++static u8 * hostapd_gen_sta_profile(struct ieee80211_mgmt *own_data,
++				    struct ieee80211_mgmt *link_data,
++				    size_t own_data_len,
++				    size_t link_data_len,
++				    size_t *sta_profile_len)
++{
++	u8 *sta_profile;
++
++	*sta_profile_len = hostapd_add_sta_profile(own_data, link_data,
++						   own_data_len,
++						   link_data_len,
++						   NULL);
++
++	if (!(*sta_profile_len))
++		return NULL;
++
++	sta_profile = os_zalloc(*sta_profile_len);
++
++	if (sta_profile == NULL)
++		return NULL;
++
++	hostapd_add_sta_profile(own_data, link_data, own_data_len,
++				link_data_len, sta_profile);
++
++	return sta_profile;
++}
++
++static void hostapd_gen_per_sta_profiles(struct hostapd_data *hapd)
++{
++	struct ieee80211_mgmt *own_data, *link_data;
++	struct hostapd_data *link_bss;
++	size_t own_data_len, link_data_len, sta_profile_len;
++	u8 *sta_profile, link_id;
++
++	if (!hapd->mld)
++		return;
++
++	/* TODO modify this function to use for assoc as well */
++
++	own_data = (struct ieee80211_mgmt *)hostapd_gen_probe_resp(hapd, NULL, false,
++								   &own_data_len,
++								   NULL, 0, NULL, false);
++
++	if (own_data == NULL) {
++		wpa_printf(MSG_ERROR, "Error building per sta profile");
++		return;
++	}
++
++	own_data_len -= offsetof(struct ieee80211_mgmt, u.probe_resp.variable);
++
++	for (link_bss = hapd->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++		if (hapd == link_bss)
++			continue;
++
++		link_id = link_bss->iface->mlo_link_id;
++
++		if (link_id > MAX_SUPPORTED_LINKS)
++			continue;
++
++		sta_profile = NULL;
++		sta_profile_len = 0;
++
++		link_data = (struct ieee80211_mgmt *)hostapd_gen_probe_resp(link_bss, NULL, false,
++									    &link_data_len,
++									    NULL, 0, NULL, false);
++
++		if (link_data == NULL) {
++			wpa_printf(MSG_ERROR, "Couldnt generate Link STA profile");
++			continue;
++		}
++
++		link_data_len -= offsetof(struct ieee80211_mgmt, u.probe_resp.variable);
++
++		sta_profile = hostapd_gen_sta_profile(own_data, link_data,
++						      own_data_len, link_data_len,
++						      &sta_profile_len);
++
++		os_free(hapd->link_profile[link_id].presp_data);
++
++		hapd->link_profile[link_id].presp_data = sta_profile;
++		hapd->link_profile[link_id].presp_len = sta_profile_len;
++
++		os_free(link_data);
++	}
++
++	os_free(own_data);
++}
++
+ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
+ 				   const struct ieee80211_mgmt *req,
+ 				   int is_p2p, size_t *resp_len,
+ 				   const u8 *known_bss, u8 known_bss_len,
+-				   struct multi_link_data *ml_data)
++				   struct multi_link_data *ml_data,
++				   bool include_mle)
+ {
+ 	struct ieee80211_mgmt *resp;
+ 	u8 *pos, *epos, *csa_pos, *ext_cap_pos;
+@@ -654,8 +931,9 @@ static u8 * hostapd_gen_probe_resp(struc
+ 		buflen += 3 + sizeof(struct ieee80211_eht_operation);
+ 		if (hapd->iconf->ru_punct_bitmap)
+ 			buflen +=  DISABLED_SUBCHANNEL_BITMAP_BYTES_SIZE;
+-		buflen += hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_PROBE_RESP,
+-						       ml_data);
++		if (include_mle)
++			buflen += hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_PROBE_RESP,
++							    ml_data);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -815,9 +1093,10 @@ static u8 * hostapd_gen_probe_resp(struc
+ 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+ 		pos = hostapd_eid_eht_capab(hapd, pos, IEEE80211_MODE_AP);
+ 		pos = hostapd_eid_eht_operation(hapd, pos, IEEE80211_MODE_AP);
+-		pos = hostapd_eid_basic_mle(hapd, pos,
+-					    WLAN_FC_STYPE_PROBE_RESP,
+-					    ml_data);
++		if (include_mle)
++			pos = hostapd_eid_basic_mle(hapd, pos,
++						    WLAN_FC_STYPE_PROBE_RESP,
++						    ml_data);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -1328,7 +1607,7 @@ void handle_probe_req(struct hostapd_dat
+ 		return;
+ 
+ 	if (elems.mle)
+-		hostapd_parse_mle(hapd, WLAN_FC_STYPE_PROBE_RESP,
++		hostapd_parse_mle(hapd, WLAN_FC_STYPE_PROBE_REQ,
+ 				  &elems, &ml_data);
+ 
+ 	wpa_msg_ctrl(hapd->msg_ctx, MSG_INFO, RX_PROBE_REQUEST "sa=" MACSTR
+@@ -1338,7 +1617,7 @@ void handle_probe_req(struct hostapd_dat
+ 				      &resp_len,
+ 				      elems.mbssid_known_bss,
+ 				      elems.mbssid_known_bss_len,
+-				      &ml_data);
++				      &ml_data, true);
+ 	if (resp == NULL)
+ 		return;
+ 
+@@ -1409,7 +1688,7 @@ static u8 * hostapd_probe_resp_offloads(
+ 
+ 	/* Generate a Probe Response template for the non-P2P case */
+ 	return hostapd_gen_probe_resp(hapd, NULL, 0, resp_len,
+-				      NULL, 0, NULL);
++				      NULL, 0, NULL, true);
+ }
+ #endif /* NEED_AP_MLME */
+ 
+@@ -1439,7 +1718,7 @@ static u8 * hostapd_unsol_bcast_probe_re
+ 
+ 	return hostapd_gen_probe_resp(hapd, NULL, 0,
+ 				      &params->unsol_bcast_probe_resp_tmpl_len,
+-				      NULL, 0, NULL);
++				      NULL, 0, NULL, true);
+ }
+ #endif /* CONFIG_IEEE80211AX */
+ 
+@@ -2298,6 +2577,9 @@ int ieee802_11_set_beacon(struct hostapd
+ 		}
+ 	}
+ 
++	/* Generate per sta profiles for affiliated APs */
++	hostapd_gen_per_sta_profiles(hapd);
++
+ 	return 0;
+ }
+ 
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -387,6 +387,28 @@ static int hostapd_broadcast_wep_set(str
+ #endif /* CONFIG_WEP */
+ 
+ 
++static void hostapd_free_per_sta_profiles(struct hostapd_data *hapd)
++{
++	struct hostapd_data *link_bss;
++	u8 link_id;
++
++	if (!hapd->mld)
++		return;
++
++	for (link_bss = hapd->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++		if (hapd == link_bss)
++			continue;
++
++		link_id = link_bss->iface->mlo_link_id;
++
++		if (link_id > MAX_SUPPORTED_LINKS)
++			continue;
++
++		os_free(hapd->link_profile[link_id].presp_data);
++		hapd->link_profile[link_id].presp_data = NULL;
++	}
++}
++
+ void hostapd_free_hapd_data(struct hostapd_data *hapd)
+ {
+ 	os_free(hapd->probereq_cb);
+@@ -2825,6 +2847,8 @@ void hostapd_mld_unlink_bss(struct hosta
+ 	if (!tbss || !tbss->mld)
+ 		return;
+ 
++	hostapd_free_per_sta_profiles(tbss);
++
+ 	bss = tbss->mld->bss;
+ 
+ 	if (bss == tbss) {
+@@ -2844,6 +2868,7 @@ void hostapd_mld_unlink_bss(struct hosta
+ 
+ unlink:
+ 	tbss->mld->num_links--;
++
+ 	if (!tbss->mld->num_links) {
+ 		hostapd_remove_mld(tbss);
+ 	}
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -27,6 +27,8 @@
+ 	((hapd->conf->oce & OCE_AP) && \
+ 	 (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_OCE_AP))
+ 
++#define MAX_SUPPORTED_LINKS 15
++
+ struct wpa_ctrl_dst;
+ struct radius_server_data;
+ struct upnp_wps_device_sm;
+@@ -170,6 +172,11 @@ struct hostapd_sae_commit_queue {
+ 	u8 msg[];
+ };
+ 
++struct hostapd_per_sta_profile {
++	u8 *presp_data;
++	size_t presp_len;
++};
++
+ /**
+  * struct hostapd_data - hostapd per-BSS data structure
+  */
+@@ -475,6 +482,8 @@ struct hostapd_data {
+ #ifdef CONFIG_CTRL_IFACE_UDP
+        unsigned char ctrl_iface_cookie[CTRL_IFACE_COOKIE_LEN];
+ #endif /* CONFIG_CTRL_IFACE_UDP */
++
++	struct hostapd_per_sta_profile link_profile[MAX_SUPPORTED_LINKS];
+ };
+ 
+ 
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8025,6 +8025,107 @@ u8 * hostapd_eid_rnr(struct hostapd_data
+ }
+ 
+ 
++static u8 * hostapd_eid_basic_resp_mle(struct hostapd_data *hapd,
++				       struct multi_link_data *ml_data,
++				       u8 *link_info)
++{
++	struct hostapd_data *link_bss;
++	u8 link_id;
++	u8 *link_info_len;
++
++	if (!hapd->mld)
++		return link_info;
++
++	for (link_bss = hapd->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++		if (hapd == link_bss)
++			continue;
++
++		link_id = link_bss->iface->mlo_link_id;
++
++		if (link_id > MAX_SUPPORTED_LINKS)
++			continue;
++
++		if (ml_data->u.preq.link_bmap &&
++		    !(BIT(link_id) & ml_data->u.preq.link_bmap))
++			continue;
++
++		*link_info++ = WLAN_EID_SUBELEMENT_PER_STA_PROFILE;
++
++		link_info_len = link_info++;
++
++		/* TODO supporting only complete profile for now */
++		*link_info++ = (link_id & MLE_STA_CONTROL_LINK_ID_MASK) |
++				(MLE_STA_CONTROL_COMPLETE_PROFILE |
++				 MLE_STA_CONTROL_MAC_ADDR_PRESENT |
++				 MLE_STA_CONTROL_BEACON_INT_PRESENT |
++				 MLE_STA_CONTROL_DTIM_PRESENT) << 4;
++
++		/* TODO NSTR info and bss change cnt to be added */
++		*link_info++ = 0;
++
++		*link_info++ = MLE_STA_INFO_LENGTH;
++
++		memcpy(link_info, link_bss->own_addr, ETH_ALEN);
++
++		link_info += ETH_ALEN;
++
++		WPA_PUT_LE16(link_info, link_bss->iconf->beacon_int);
++		link_info += 2;
++
++		/* TODO confirm dtim count */
++		*link_info++ = 1;
++
++		*link_info++ = link_bss->conf->dtim_period;
++
++		memcpy(link_info, hapd->link_profile[link_id].presp_data,
++		       hapd->link_profile[link_id].presp_len);
++
++		link_info += hapd->link_profile[link_id].presp_len;
++
++		/* update link info len */
++		*link_info_len = link_info - link_info_len - 1;
++
++		/* TODO FIXME  detect and handle fragmentation */
++	}
++	return link_info;
++}
++
++static size_t hostapd_eid_basic_resp_mle_len(struct hostapd_data *hapd,
++					     struct multi_link_data *ml_data)
++{
++	struct hostapd_data *link_bss;
++	size_t total_profile_len = 0;
++	u8 link_id;
++
++	if (!hapd->mld)
++		return 0;
++
++
++	for (link_bss = hapd->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++		if (hapd == link_bss)
++			continue;
++
++		link_id = link_bss->iface->mlo_link_id;
++
++		if (link_id > MAX_SUPPORTED_LINKS)
++			continue;
++
++		if (ml_data->u.preq.link_bmap &&
++		    !(BIT(link_id) & ml_data->u.preq.link_bmap))
++			continue;
++
++		/* Common part and variable STA info field */
++		total_profile_len += MLE_PER_STA_PROFILE_MIN_LENGTH + MLE_STA_INFO_LENGTH;
++
++		/* Link STA profile */
++		total_profile_len += hapd->link_profile[link_id].presp_len;
++	}
++
++	/* TODO detect fragmentation */
++
++	return total_profile_len;
++}
++
+ size_t hostapd_eid_basic_mle_len(struct hostapd_data *hapd, u32 type,
+ 				 struct multi_link_data *ml_data)
+ {
+@@ -8048,7 +8149,10 @@ size_t hostapd_eid_basic_mle_len(struct
+ 		return total_len;
+ 	}
+ 
+-	/* TODO Add Link Info for ML Probe response, Assoc Response */
++	total_len += hostapd_eid_basic_resp_mle_len(hapd, ml_data);
++
++	/* TODO detect fragmentation */
++
+ 	return total_len;
+ }
+ 
+@@ -8106,19 +8210,91 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 		return eid;
+ 	}
+ 
+-	/* TODO Add Link Info for ML Probe response, Assoc Response */
++	eid = hostapd_eid_basic_resp_mle(hapd, ml_data, eid);
+ 
+ 	*eid_len = eid - eid_len - 1;
+ 	return eid;
+ }
+ 
++static void hostapd_parse_probe_req_mle(struct hostapd_data *hapd,
++					const u8 *mle, u8 len,
++					struct multi_link_data *ml_data)
++{
++	bool mld_id_present = ml_data->control.presence & MLE_MLD_ID_PRESENT;
++	u8 mld_id, cmn_info_len;
++	u8 *mle_pos = (u8 *)mle;
++	u8 *sta_profile_start, sta_profile_len, link_id;
++
++	mle_pos += sizeof(struct multi_link_control);
++	len -= sizeof(struct multi_link_control);
++
++	if (!len)
++		return;
++
++	cmn_info_len = *mle_pos;
++
++	/* For non Tx vaps MLD ID will not be present, A1/3 match done at caller */
++	if (mld_id_present) {
++		if (cmn_info_len < 2) {
++			wpa_printf(MSG_ERROR, "Wrongly encoded MLD Id in probe request");
++			ml_data->present = false;
++			return;
++		}
++		mld_id = *(mle_pos + 1);
++
++		/* Handle ml probe requests to self AP MLD
++		 * TODO MBSS case
++		 */
++		if (mld_id != 0) {
++			wpa_printf(MSG_ERROR, "MLD ID mismatch in ML Probe request");
++			ml_data->present = false;
++			return;
++		}
++	}
++
++	mle_pos += cmn_info_len;
++	len -= cmn_info_len;
++
++	/* Link Info not present, send response for all affiliated AP in this MLD */
++	if (!len) {
++		ml_data->u.preq.link_bmap |= 0x7FFF;
++		return;
++	}
++
++	while (len >= MLE_PER_STA_PROFILE_MIN_LENGTH &&
++	       *mle_pos++ == MLE_PER_STA_PROFILE_SUBELEM_ID) {
++		sta_profile_len = *mle_pos++;
++		sta_profile_start = mle_pos;
++		if (len < sta_profile_len + 2)
++			break;
++
++		link_id = *sta_profile_start & MLE_STA_CONTROL_LINK_ID_MASK;
++
++		if (link_id < MAX_SUPPORTED_LINKS) {
++			ml_data->u.preq.link_bmap |= BIT(link_id);
++
++			/* For now setting complete profile by default since
++			 * partial request is not supported and STA profile
++			 * is not parsed below
++			 */
++			ml_data->u.preq.link_info[link_id].complete = true;
++		}
++
++		mle_pos += sta_profile_len;
++		len -= sta_profile_len + 2;
++	}
++}
++
+ void hostapd_parse_mle(struct hostapd_data *hapd, u32 type,
+ 		       struct ieee802_11_elems *elems,
+ 		       struct multi_link_data *ml_data)
+ {
+ 	const u8 *mle;
+ 
+-	if (!elems->mle)
++	if (!elems->mle || !hapd->mld)
++		return;
++
++	if (elems->mle_len < sizeof(struct multi_link_control))
+ 		return;
+ 
+ 	ml_data->present = true;
+@@ -8127,7 +8303,10 @@ void hostapd_parse_mle(struct hostapd_da
+ 
+ 	os_memcpy(&ml_data->control, mle, sizeof(struct multi_link_control));
+ 
+-	/* TODO Parse ML Element based on type and fill ml_data */
++	if (ml_data->control.type == MULTI_LINK_PROBE_REQ)
++		return hostapd_parse_probe_req_mle(hapd, mle, elems->mle_len, ml_data);
++
++	/* TODO Parse MLE in Assoc req */
+ }
+ 
+ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -47,6 +47,8 @@ struct frag_ies_info {
+ 	u8 last_eid_ext;
+ };
+ 
++#define MAX_SUPPORTED_LINKS 15
++
+ enum multi_link_elem_type {
+ 	MULTI_LINK_BASIC,
+ 	MULTI_LINK_PROBE_REQ,
+@@ -61,12 +63,31 @@ struct multi_link_control {
+ 	u16 presence : 12;
+ };
+ 
++struct multi_link_basic_info {
++	/* TODO */
++};
++
++struct multi_link_preq_info {
++	/* 0 indicates all supported link info are requested and
++	 * link_info struct is not valid
++	 */
++	u16 link_bmap;
++	struct {
++		bool complete;
++	} link_info[MAX_SUPPORTED_LINKS];
++};
++
+ struct multi_link_data {
+ 	/* MLE present in the mgmt frame */
+ 	bool present;
+ 
+ 	struct multi_link_control control;
+ 
++	union {
++		struct multi_link_basic_info basic;
++		struct multi_link_preq_info preq;
++	}u;
++
+ 	/* TODO Common and type specific data */
+ };
+ 
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -501,6 +501,7 @@
+ #define WLAN_EID_EXT_AKM_SUITE_SELECTOR 114
+ 
+ #define WLAN_EID_SUBELEMENT_NONTRANSMITTED_BSSID_PROFILE 0
++#define WLAN_EID_SUBELEMENT_PER_STA_PROFILE 		 0
+ 
+ /* Extended Capabilities field */
+ #define WLAN_EXT_CAPAB_20_40_COEX 0
+@@ -2464,8 +2465,28 @@ struct ieee80211_he_mu_edca_parameter_se
+ #define MLE_EML_CAP_PRESENT			BIT(3)
+ #define MLE_MLD_CAP_PRESENT			BIT(4)
+ 
++/* ML Probe Request Precense bitmap */
++#define MLE_MLD_ID_PRESENT			BIT(0)
++
+ #define MLE_PRESENCE_BMAP_SHIFT			4
+ 
++#define MLE_PER_STA_PROFILE_SUBELEM_ID		0
++#define MLE_PER_STA_PROFILE_MIN_LENGTH		4
++
++#define MLE_STA_CONTROL_LINK_ID_MASK		 ((u8) (BIT(0) | BIT(1) | BIT(2) | BIT(3)))
++/* bitmap of presence indicator field B4-B10 */
++#define MLE_STA_CONTROL_COMPLETE_PROFILE		BIT(0)
++#define MLE_STA_CONTROL_MAC_ADDR_PRESENT		BIT(1)
++#define MLE_STA_CONTROL_BEACON_INT_PRESENT		BIT(2)
++#define MLE_STA_CONTROL_TSF_OFFSET_PRESENT              BIT(3)
++#define MLE_STA_CONTROL_DTIM_PRESENT			BIT(4)
++#define MLE_STA_CONTROL_NSTR_PAIR_PRESENT		BIT(5)
++#define MLE_STA_CONTROL_NSTR_BITMAP			BIT(6)
++#define MLE_STA_CONTROL_BSS_PARAM_CHANGE_CNT_PRESENT	BIT(7)
++
++/* STA Info Length, MAC, BI, DTIM included, TODO - NSTR, BSS change cnt*/
++#define MLE_STA_INFO_LENGTH	11
++
+ /* IEEE P802.11be/D2.0, 9.4.2.311 - EHT Operation element */
+ 
+ /* Figure 9-1002b: EHT Operation Parameters field subfields */

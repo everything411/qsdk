@@ -1,0 +1,84 @@
+From 5c6038660bd8a1930436a6de977f616312b041c0 Mon Sep 17 00:00:00 2001
+From: Ramanathan Choodamani <quic_rchoodam@quicinc.com>
+Date: Mon, 27 Feb 2023 02:39:40 -0800
+Subject: [PATCH 2/2] hostapd: Add local variables for RU puncturing in VHT
+
+Problem description: RU puncturing
+for VHT updates the global variables which
+in turn modifies the PHY capabilities repeatedly.
+
+This change ensures puncturing does not adversely affect the
+frame content modification.
+
+Signed-off-by: Ramanathan Choodamani <quic_rchoodam@quicinc.com>
+---
+ src/ap/ieee802_11_vht.c | 24 +++++++++++++++---------
+ 1 file changed, 15 insertions(+), 9 deletions(-)
+
+diff --git a/src/ap/ieee802_11_vht.c b/src/ap/ieee802_11_vht.c
+index 0f313a0..a4a9d94 100644
+--- a/src/ap/ieee802_11_vht.c
++++ b/src/ap/ieee802_11_vht.c
+@@ -93,6 +93,12 @@ u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid)
+ 	struct ieee80211_vht_operation *oper;
+ 	le32 vht_capabilities_info;
+ 	u8 *pos = eid;
++	enum oper_chan_width vht_oper_chwidth =
++		hapd->iconf->vht_oper_chwidth;
++	u8 vht_oper_centr_freq_seg0_idx =
++		hapd->iconf->vht_oper_centr_freq_seg0_idx;
++	u8 vht_oper_centr_freq_seg1_idx =
++		hapd->iconf->vht_oper_centr_freq_seg1_idx;
+ 
+ 	if (is_6ghz_op_class(hapd->iconf->op_class))
+ 		return eid;
+@@ -106,9 +112,9 @@ u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid)
+ 	if (hapd->iconf->ru_punct_bitmap)
+  		ru_punct_update_bw(hapd->iconf->ru_punct_bitmap,
+ 				   hapd->iconf->channel,
+-				   &hapd->iconf->vht_oper_chwidth,
+-				   &hapd->iconf->vht_oper_centr_freq_seg0_idx,
+-				   &hapd->iconf->vht_oper_centr_freq_seg1_idx);
++				   &vht_oper_chwidth,
++				   &vht_oper_centr_freq_seg0_idx,
++				   &vht_oper_centr_freq_seg1_idx);
+ 
+ 	/*
+ 	 * center freq = 5 GHz + (5 * index)
+@@ -116,13 +122,13 @@ u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid)
+ 	 * which is channel 42 in 5G band
+ 	 */
+ 	oper->vht_op_info_chan_center_freq_seg0_idx =
+-		hapd->iconf->vht_oper_centr_freq_seg0_idx;
++		vht_oper_centr_freq_seg0_idx;
+ 	oper->vht_op_info_chan_center_freq_seg1_idx =
+-		hapd->iconf->vht_oper_centr_freq_seg1_idx;
++		vht_oper_centr_freq_seg1_idx;
+ 
+-	oper->vht_op_info_chwidth = hapd->iconf->vht_oper_chwidth;
++	oper->vht_op_info_chwidth = vht_oper_chwidth;
+ 	vht_capabilities_info = host_to_le32(hapd->iface->current_mode->vht_capab);
+-	if (hapd->iconf->vht_oper_chwidth == CONF_OPER_CHWIDTH_160MHZ) {
++	if (vht_oper_chwidth == CONF_OPER_CHWIDTH_160MHZ) {
+ 		/*
+ 		 * Convert 160 MHz channel width to new style as interop
+ 		 * workaround.
+@@ -131,13 +137,13 @@ u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid)
+ 		oper->vht_op_info_chan_center_freq_seg1_idx =
+ 			oper->vht_op_info_chan_center_freq_seg0_idx;
+ 		if (hapd->iconf->channel <
+-		    hapd->iconf->vht_oper_centr_freq_seg0_idx)
++		    vht_oper_centr_freq_seg0_idx)
+ 			oper->vht_op_info_chan_center_freq_seg0_idx -= 8;
+ 		else
+ 			oper->vht_op_info_chan_center_freq_seg0_idx += 8;
+ 		if (vht_capabilities_info & VHT_CAP_EXTENDED_NSS_BW_SUPPORT)
+ 			oper->vht_op_info_chan_center_freq_seg1_idx = 0;
+-	} else if (hapd->iconf->vht_oper_chwidth ==
++	} else if (vht_oper_chwidth ==
+ 		   CONF_OPER_CHWIDTH_80P80MHZ) {
+ 		/*
+ 		 * Convert 80+80 MHz channel width to new style as interop
+-- 
+2.7.4
+

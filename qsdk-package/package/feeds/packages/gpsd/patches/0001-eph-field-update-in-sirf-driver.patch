@@ -1,0 +1,45 @@
+From 194038fc555d3b789ad1817781b4fd0dd0daa94f Mon Sep 17 00:00:00 2001
+From: devi priya <quic_devipriy@quicinc.com>
+Date: Thu, 14 Apr 2022 13:32:00 +0530
+Subject: [PATCH] eph field update in sirf driver
+
+Signed-off-by: devi priya <quic_devipriy@quicinc.com>
+---
+ drivers/driver_sirf.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/driver_sirf.c b/drivers/driver_sirf.c
+index ca26dc9..3950ed5 100644
+--- a/drivers/driver_sirf.c
++++ b/drivers/driver_sirf.c
+@@ -601,7 +601,6 @@ static gps_mask_t sirf_msg_67_1(struct gps_device_t *session,
+     uint32_t distance_travel;         /* distance traveled m * 100 */
+     uint16_t distance_travel_error;   /* distance traveled error in m * 100 */
+
+-    uint32_t ehpe;                    /* Est horizontal position error * 100 */
+     unsigned char num_svs_in_sol;     /* Num of satellites used in solution */
+     uint32_t sv_list_1;
+     uint32_t sv_list_2;
+@@ -726,7 +725,7 @@ static gps_mask_t sirf_msg_67_1(struct gps_device_t *session,
+     /* distance traveled error in m * 100 */
+     distance_travel_error = getbeu16(buf, 84) / 100.0;
+
+-    ehpe = getbeu32(buf, 86);  /* Estimated horizontal position error * 100 */
++    session->newdata.eph = getbeu32(buf, 86) / 100.0;  /* Estimated horizontal position error * 100 */
+     /* Estimated vertical position error * 100 */
+     session->newdata.epv = getbeu32(buf, 90) / 100.0;
+     /* Estimated horizontal velocity error * 100 */
+@@ -794,8 +793,8 @@ static gps_mask_t sirf_msg_67_1(struct gps_device_t *session,
+                  "clk_offset %d clk_offset_error %u\n",
+                  clk_offset, clk_offset_error);
+         GPSD_LOG(debug_base, &session->context->errout,
+-                 "ehpe %d epv %.2f eps %.2f epd %.2f num_svs_in_sol %u\n",
+-                 ehpe, session->newdata.epv, session->newdata.eps,
++                 "ehpe %.2f epv %.2f eps %.2f epd %.2f num_svs_in_sol %u\n",
++                 session->newdata.eph, session->newdata.epv, session->newdata.eps,
+                  session->newdata.epd, num_svs_in_sol);
+         GPSD_LOG(debug_base, &session->context->errout,
+                  "sv_list_1 %08x sv_list_2 %08x sv_list_3 %08x\n",
+--
+2.17.1
+

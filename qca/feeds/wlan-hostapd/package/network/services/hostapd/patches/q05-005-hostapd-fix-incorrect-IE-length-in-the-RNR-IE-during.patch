@@ -1,0 +1,48 @@
+From 3ba0d4aeb6e4ed3301f8af9ec44f16dcad02ecbd Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Thu, 23 Mar 2023 16:38:37 +0530
+Subject: [PATCH] hostapd: fix incorrect IE length in the RNR IE during MLO
+
+Currently, during Multi-Link Operation(MLO), there can be a case where
+the current iterating interface for filling RNR IE did not have any valid
+TBTT info to put but still 4 bytes of data (TBTT Header) is added. Due
+to this, at RNR IE length offset, 4 bytes is added too. However, since
+no TBTT info was added, the starting address of IE is returned back.
+
+If in the next iteration there is any valid TBTT info, then the previous
+extra 4 bytes will be overwritten and accordingly the size, hence no issues
+will be seen. But if there is none, then this extra 4 bytes addition at size
+offset will remain.
+
+When kernel tries to parse this, it will report malformed IE and beacon set
+fails.
+
+Fix this issue by only calculating the size if at least one valid TBTT info
+is found.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ieee802_11.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 915f65920bea..530936f6ab86 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8662,8 +8662,11 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
+ 		}
+ 
+ 		start = i;
+-		*tbtt_count_pos = RNR_TBTT_INFO_COUNT(tbtt_count - 1);
+-		*size_offset = (eid - size_offset) - 1;
++
++		if (tbtt_count) {
++			*tbtt_count_pos = RNR_TBTT_INFO_COUNT(tbtt_count - 1);
++			*size_offset = (eid - size_offset) - 1;
++		}
+ 	}
+ 
+ 	if (tbtt_count == 0)
+-- 
+2.17.1
+

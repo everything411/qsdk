@@ -1,0 +1,178 @@
+From 454b3df433a430153d918cebd3ab83615246d6b8 Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Tue, 10 Jan 2023 13:37:57 -0800
+Subject: [PATCH 5/6] sigma-dut: Inital EHT Program changes for DRIVER_MAC80211
+
+Add changes for EHT program and 11be mode.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c | 55 ++++++++++++++++++++++++++++++++++++++-----------------
+ 1 file changed, 38 insertions(+), 17 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -8807,6 +8807,7 @@ write_conf:
+ 		fprintf(f, "hw_mode=ad\n");
+ 		break;
+ 	case AP_11ax:
++	case AP_11be:
+ 		if (check_band(dut, BAND_2G, conf_counter))
+ 			fprintf(f, "hw_mode=g\n");
+ 		else
+@@ -8832,9 +8833,10 @@ write_conf:
+ 		int len = 0;
+ 
+ 		fprintf(f, "ieee80211n=1\n");
+-		if (mode == AP_11ax)
++		if (mode == AP_11ax || mode == AP_11be)
+ 			fprintf(f, "ieee80211ax=1\n");
+-
++		if (mode == AP_11be)
++			fprintf(f, "ieee80211be=1\n");
+ 		if (mode == AP_11ng &&
+ 		    (chwidth == AP_40 ||
+ 		     (chwidth == AP_AUTO &&
+@@ -8883,7 +8885,8 @@ write_conf:
+ 	if ((drv == DRIVER_MAC80211 || drv == DRIVER_QNXNTO ||
+ 	     drv == DRIVER_LINUX_WCN) &&
+ 	    (mode == AP_11ac ||
+-	    (mode == AP_11ax && !check_band(dut, BAND_2G, conf_counter)))) {
++	    ((mode == AP_11ax || mode == AP_11be) &&
++	     !check_band(dut, BAND_2G, conf_counter)))) {
+ 		bool is_5g = false;
+ 		int ht40plus = 0, ht40minus = 0;
+ 
+@@ -8894,8 +8897,10 @@ write_conf:
+ 			fprintf(f, "ieee80211ac=1\n"
+ 				"ieee80211n=1\n");
+ 
+-		if (mode == AP_11ax)
++		if (mode == AP_11ax || mode == AP_11be)
+ 			fprintf(f, "ieee80211ax=1\n");
++		if (mode == AP_11be)
++			fprintf(f, "ieee80211be=1\n");
+ 
+ 		/* configure ht_capab based on channel width */
+ 		if (chwidth != AP_20 && is_5g) {
+@@ -8913,7 +8918,8 @@ write_conf:
+ 	if ((drv == DRIVER_MAC80211 || drv == DRIVER_QNXNTO ||
+ 	     drv == DRIVER_LINUX_WCN) &&
+ 	    (mode == AP_11ac || mode == AP_11na ||
+-	     (mode == AP_11ax && dut->use_5g))) {
++	     ((mode == AP_11ax || mode == AP_11be) &&
++	      check_band(dut, BAND_5G, conf_counter)))) {
+ 		if (dut->ap_countrycode[0])
+ 			fprintf(f, "country_code=%s\n", dut->ap_countrycode);
+                 else
+@@ -9315,7 +9321,7 @@ skip_key_mgmt:
+ 		break;
+ 	}
+ 
+-	if (dut->ap_pmf != AP_PMF_DISABLED &&
++	if ((dut->ap_pmf != AP_PMF_DISABLED || dut->program == PROGRAM_EHT) &&
+ 	    dut->ap_group_mgmt_cipher != AP_NO_GROUP_MGMT_CIPHER_SET)
+ 		fprintf(f, "group_mgmt_cipher=%s\n",
+ 			hostapd_group_mgmt_cipher_name(
+@@ -9636,7 +9642,7 @@ skip_key_mgmt:
+ 		fprintf(f, "he_rts_threshold=1024\n");
+ 
+ 	if ((dut->program == PROGRAM_VHT) ||
+-	    (dut->program == PROGRAM_HE &&
++	    ((dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) &&
+ 	     !check_band(dut, BAND_2G, conf_counter))) {
+ 		int vht_oper_centr_freq_idx;
+ 
+@@ -9691,7 +9697,7 @@ skip_key_mgmt:
+ 				vht_oper_centr_freq_idx);
+ 			fprintf(f, "vht_oper_chwidth=%d\n", dut->ap_vht_chwidth);
+ 		}
+-		if (mode == AP_11ax) {
++		if (mode == AP_11ax || mode == AP_11be) {
+ 			fprintf(f, "he_oper_chwidth=%d\n", dut->ap_vht_chwidth);
+ 			fprintf(f, "he_oper_centr_freq_seg0_idx=%d\n",
+ 				vht_oper_centr_freq_idx);
+@@ -9706,6 +9712,12 @@ skip_key_mgmt:
+ 			}
+ 		}
+ 
++		if (mode == AP_11be) {
++			fprintf(f, "eht_oper_chwidth=%d\n", dut->ap_vht_chwidth);
++			fprintf(f, "eht_oper_centr_freq_seg0_idx=%d\n",
++				vht_oper_centr_freq_idx);
++		}
++
+ 		if (dut->use_5g) {
+ 			/* Do not try to enable VHT on the 2.4 GHz band when
+ 			 * configuring a dual band AP that does have VHT enabled
+@@ -9760,7 +9772,7 @@ skip_key_mgmt:
+ 		}
+ 	}
+ 
+-	if (dut->program == PROGRAM_HE) {
++	if (dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+ 		fprintf(f, "he_su_beamformer=%d\n", dut->ap_txBF);
+ 		fprintf(f, "he_mu_beamformer=%d\n", dut->ap_mu_txBF);
+ 		/* Disable BSS Color config by default */
+@@ -9774,11 +9786,17 @@ skip_key_mgmt:
+ 		}
+ 
+ 		if (dut->ap_he_rtsthrshld == VALUE_ENABLED)
+-			fprintf(f, "he_rts_threshold=512");
++			fprintf(f, "he_rts_threshold=512\n");
+ 		else if (dut->ap_he_rtsthrshld == VALUE_DISABLED)
+-			fprintf(f, "he_rts_threshold=1023");
++			fprintf(f, "he_rts_threshold=1023\n");
+ 		else
+-			fprintf(f, "he_rts_threshold=0");
++			fprintf(f, "he_rts_threshold=0\n");
++
++		if (dut->program == PROGRAM_EHT) {
++			fprintf(f, "eht_su_beamformer=%d\n", dut->ap_txBF);
++			fprintf(f, "eht_mu_beamformer=%d\n", dut->ap_mu_txBF);
++			fprintf(f, "eht_mu_beamformer=%d\n", dut->ap_su_txBF);
++		}
+ 	}
+ 
+ 	if (dut->ap_key_mgmt == AP_WPA2_OWE && dut->ap_tag_ssid[0][0] &&
+@@ -9884,7 +9902,8 @@ skip_key_mgmt:
+ 			dut->dev_role == DEVROLE_STA_CFON ? 2 : 1);
+ 	}
+ 
+-	if (dut->program == PROGRAM_HE && dut->ap_mbssid == VALUE_ENABLED && !conf_counter) {
++	if ((dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) &&
++	    dut->ap_mbssid == VALUE_ENABLED && !conf_counter) {
+ 		uint8_t num_bss, bssid_mask, max_bss_count;
+ 		uint8_t init_val, base_val;
+ 		uint8_t max_bssid_ind = 0;
+@@ -15486,8 +15505,8 @@ static int mac80211_set_trigger_type(str
+ }
+ 
+ static enum sigma_cmd_result
+-mac80211_he_tx_bandwidth(struct sigma_dut *dut, struct sigma_conn *conn,
+-			 const char *ifname, const char *val, const char *type)
++mac80211_tx_bandwidth(struct sigma_dut *dut, struct sigma_conn *conn,
++		      const char *ifname, const char *val, const char *type)
+ {
+ 	int width, center_freq_idx, center_freq, channel_freq, res;
+ 	char *mode, buf[256];
+@@ -15498,7 +15517,9 @@ mac80211_he_tx_bandwidth(struct sigma_du
+ 		return STATUS_SENT_ERROR;
+ 	}
+ 
+-	if (strcasecmp(type, "HE") == 0) {
++	if (strcasecmp(type, "EHT") == 0) {
++		mode = "eht";
++	} else if (strcasecmp(type, "HE") == 0) {
+ 		mode = "he";
+ 	} else if (strcasecmp(type, "VHT") == 0) {
+ 		mode = "vht";
+@@ -15730,7 +15751,7 @@ static enum sigma_cmd_result mac80211_ap
+ 
+ 	val = get_param(cmd, "txBandwidth");
+ 	if (val) {
+-		res = mac80211_he_tx_bandwidth(dut, conn, ifname, val,
++		res = mac80211_tx_bandwidth(dut, conn, ifname, val,
+ 					       get_param(cmd, "type"));
+ 		if (res != SUCCESS_SEND_STATUS)
+ 			return res;

@@ -1,0 +1,170 @@
+From 387b308a6af81ada3643cc1c1658a7756f359b5a Mon Sep 17 00:00:00 2001
+From: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
+Date: Tue, 21 Sep 2021 17:20:23 +0530
+Subject: [PATCH] hostapd: Add 320 MHz support
+
+Added 320 MHz channel support in 6GHz band (EHT)
+as define by IEEE P802.11be/D1.1, July 2021
+section 36.3.23.2. It covers channel bringup,
+frequency validation, channel switch and also
+across all channel width and frequency manipulation.
+
+Signed-off-by: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
+Signed-off-by: Ramya Gnanasekar <quic_rgnanase@quicinc.com>
+---
+ hostapd/ctrl_iface.c               | 31 +++++++++++++++++++++++++++++++
+ src/ap/drv_callbacks.c             |  6 ++++++
+ src/ap/hostapd.c                   |  9 +++++++++
+ src/ap/ieee802_11.c                |  4 ++++
+ src/ap/ieee802_11_eht.c            |  4 +++-
+ src/ap/neighbor_db.c               |  9 ++++++---
+ src/common/defs.h                  |  1 +
+ src/common/hw_features_common.c    |  3 +++
+ src/common/ieee802_11_common.c     |  6 ++++++
+ src/common/ieee802_11_defs.h       |  6 ++++++
+ src/drivers/driver.h               |  1 +
+ src/drivers/driver_common.c        |  4 ++++
+ src/drivers/driver_nl80211.c       |  5 +++++
+ src/drivers/driver_nl80211_capa.c  |  3 +++
+ src/drivers/driver_nl80211_event.c |  6 ++++++
+ src/drivers/nl80211_copy.h         |  2 ++
+ wpa_supplicant/ctrl_iface.c        |  2 ++
+ 17 files changed, 98 insertions(+), 4 deletions(-)
+
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2421,7 +2421,7 @@ static int hostapd_ctrl_register_frame(s
+ #ifdef NEED_AP_MLME
+ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
+ {
+-	int idx, bw, bw_idx[] = { 20, 40, 80, 160 };
++	int idx, bw, bw_idx[] = { 20, 40, 80, 160, 320 };
+ 	u32 start_freq;
+ 
+ 	if (is_6ghz_freq(params->freq)) {
+@@ -2531,6 +2531,38 @@ static int hostapd_ctrl_check_freq_param
+ 			break;
+ 		default:
+ 			return -1;
++		}
++		break;
++	case 320:
++		if (!params->center_freq1 || params->center_freq2 ||
++		    !params->sec_channel_offset)
++			return -1;
++
++		switch (params->sec_channel_offset) {
++                case 1:
++                        if (params->freq + 150 != params->center_freq1 &&
++                            params->freq + 110 != params->center_freq1 &&
++                            params->freq + 70  != params->center_freq1 &&
++                            params->freq + 30  != params->center_freq1 &&
++                            params->freq - 10  != params->center_freq1 &&
++                            params->freq - 50  != params->center_freq1 &&
++                            params->freq - 90  != params->center_freq1 &&
++                            params->freq - 130 != params->center_freq1)
++                                return -1;
++                        break;
++                case -1:
++                        if (params->freq + 130 != params->center_freq1 &&
++                            params->freq + 90  != params->center_freq1 &&
++                            params->freq + 50  != params->center_freq1 &&
++                            params->freq + 10  != params->center_freq1 &&
++                            params->freq - 30  != params->center_freq1 &&
++                            params->freq - 70  != params->center_freq1 &&
++                            params->freq - 110 != params->center_freq1 &&
++                            params->freq - 150 != params->center_freq1)
++                                return -1;
++			break;
++		default:
++			return -1;
+ 		}
+ 		break;
+ 	default:
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -978,7 +978,8 @@ void hostapd_event_ch_switch(struct host
+ 	hapd->iconf->ch_switch_eht_config = 0;
+ 
+ 	if (width == CHAN_WIDTH_40 || width == CHAN_WIDTH_80 ||
+-	    width == CHAN_WIDTH_80P80 || width == CHAN_WIDTH_160)
++	    width == CHAN_WIDTH_80P80 || width == CHAN_WIDTH_160 ||
++	    width == CHAN_WIDTH_320)
+ 		hapd->iconf->ht_capab |= HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
+ 	else if (width == CHAN_WIDTH_20 || width == CHAN_WIDTH_20_NOHT)
+ 		hapd->iconf->ht_capab &= ~HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3569,6 +3569,7 @@ static int hostapd_change_config_freq(st
+ 	case 40:
+ 	case 80:
+ 	case 160:
++	case 320:
+ 		conf->ht_capab |= HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
+ 		break;
+ 	default:
+@@ -3643,6 +3644,9 @@ static int hostapd_fill_csa_settings(str
+ 	case 160:
+ 		bandwidth = CONF_OPER_CHWIDTH_160MHZ;
+ 		break;
++	case 320:
++		bandwidth = CONF_OPER_CHWIDTH_320MHZ;
++		break;
+ 	default:
+ 		bandwidth = CONF_OPER_CHWIDTH_USE_HT;
+ 		break;
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2219,6 +2219,7 @@ enum phy_type {
+ /*
+  * IEEE P802.11-REVmc/D5.0 Table 9-152 - HT/VHT Operation Information
+  * subfields.
++ * IEEE P802.11be/D1.1 Table 9-322al - EHT Operation Information subfields.
+  * Note: These definitions are not the same as other CHANWIDTH_*.
+  */
+ enum nr_chan_width {
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -1690,6 +1690,9 @@ static void phy_info_freq(struct hostapd
+ 		chan->allowed_bw &= ~HOSTAPD_CHAN_WIDTH_80;
+ 	if (tb_freq[NL80211_FREQUENCY_ATTR_NO_160MHZ])
+ 		chan->allowed_bw &= ~HOSTAPD_CHAN_WIDTH_160;
++	if (tb_freq[NL80211_FREQUENCY_ATTR_NO_320MHZ])
++		chan->allowed_bw &= ~HOSTAPD_CHAN_WIDTH_320;
++
+ 
+ 	if (tb_freq[NL80211_FREQUENCY_ATTR_DFS_STATE]) {
+ 		enum nl80211_dfs_state state =
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -4202,6 +4202,7 @@ enum nl80211_frequency_attr {
+ 	NL80211_FREQUENCY_ATTR_16MHZ,
+ 	NL80211_FREQUENCY_ATTR_NO_320MHZ,
+ 	NL80211_FREQUENCY_ATTR_NO_EHT,
++	NL80211_FREQUENCY_ATTR_PSD,
+ 
+ 	/* keep last */
+ 	__NL80211_FREQUENCY_ATTR_AFTER_LAST,
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1195,7 +1195,8 @@ hostapd_set_oper_chwidth(struct hostapd_
+ 		oper_chwidth = CONF_OPER_CHWIDTH_160MHZ;
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_IEEE80211AX
+-	if (conf->ieee80211ax)
++	if (conf->ieee80211ax &&
++	    oper_chwidth < CONF_OPER_CHWIDTH_320MHZ)
+ 		conf->he_oper_chwidth = oper_chwidth;
+ #endif /* CONFIG_IEEE80211AX */
+ 	conf->vht_oper_chwidth = oper_chwidth;
+--- a/src/ap/ieee802_11_he.c
++++ b/src/ap/ieee802_11_he.c
+@@ -228,7 +228,7 @@ u8 * hostapd_eid_he_operation(struct hos
+ 
+ 	if (is_6ghz_op_class(hapd->iconf->op_class)) {
+ 		u8 seg0 = hapd->iconf->he_oper_centr_freq_seg0_idx;
+-		u8 seg1 = hostapd_get_oper_centr_freq_seg1_idx(hapd->iconf);
++		u8 seg1 = hapd->iconf->he_oper_centr_freq_seg1_idx;
+ 		u8 control;
+ 
+ 		if (hapd->iconf->ru_punct_bitmap) {

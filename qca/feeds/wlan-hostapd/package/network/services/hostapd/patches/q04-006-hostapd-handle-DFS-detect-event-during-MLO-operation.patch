@@ -1,0 +1,107 @@
+From d2651858a8f88c9ccefab708d994117d82e80bf7 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Tue, 17 Jan 2023 16:19:47 +0530
+Subject: [PATCH] hostapd: handle DFS detect event during MLO operation
+
+Currently, when DFS interference event is detected, hostapd first
+tries to find a non-DFS channel with same bandwidth. If it can not
+find one, then it tries to find a DFS channel with same config. If a
+channel is found, it will bring down 5 GHz interface and then do a CAC
+and post CAC bring up the 5 GHz interface again. If no channel is
+available, then it will start reducing the bandwidth and try to see if
+DFS_ANY channel is available or not.
+
+This logic will not work in MLO case since we dont have dynamic link
+handling support yet.  Hence, we can not just tear down 5 GHz link which
+is part of MLO.
+
+To address this -
+ * changes are made to first try to reduce bandwidth and try to find a non-
+   DFS channel uptil 20 MHz.
+ * if no channel is found, then again from the original bandwidth, try to
+   find a DFS channel where CAC needs to be done.
+
+Tearing down the MLD interface logic will be added later.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/dfs.c | 48 ++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 46 insertions(+), 2 deletions(-)
+
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1554,6 +1554,8 @@ static int hostapd_dfs_start_channel_swi
+ 	u8 oper_centr_freq_seg1_idx;
+ 	enum dfs_channel_type channel_type = DFS_AVAILABLE;
+ 	u8 current_vht_oper_chwidth = hostapd_get_oper_chwidth(iface->conf);
++	u8 oper_chwidth = current_vht_oper_chwidth;
++	int curr_secondary_channel = iface->conf->secondary_channel;
+ 
+ 	wpa_printf(MSG_DEBUG, "%s called (CAC active: %s, CSA active: %s)",
+ 		   __func__, iface->cac_started ? "yes" : "no",
+@@ -1586,6 +1588,48 @@ static int hostapd_dfs_start_channel_swi
+ 	if (!channel) {
+ 		/*
+ 		 * If there is no channel to switch immediately to, check if
++		 * there is a possibility to operate in reduced BW.
++		 */
++		 for (;;) {
++			channel = dfs_get_valid_channel(iface,
++							&secondary_channel,
++							&oper_centr_freq_seg0_idx,
++							&oper_centr_freq_seg1_idx,
++							channel_type);
++			if (channel) {
++				wpa_printf(MSG_DEBUG, "DFS: Selected channel: %d, width: %d",
++					   channel->chan,
++					   hostapd_get_oper_chwidth(iface->conf));
++				break;
++			}
++
++			oper_chwidth = hostapd_get_oper_chwidth(iface->conf);
++
++			if (oper_chwidth == CONF_OPER_CHWIDTH_USE_HT) {
++				if (!iface->conf->secondary_channel)
++					break;
++				iface->conf->secondary_channel = 0;
++				continue;
++			}
++
++			hostapd_set_oper_chwidth(iface->conf,
++						 oper_chwidth == CONF_OPER_CHWIDTH_320MHZ ?
++						 CONF_OPER_CHWIDTH_160MHZ : oper_chwidth - 1);
++		}
++	}
++
++	if (!channel) {
++		/* We have checked channels for reduced BW above and still did
++		 * not find any channel. Put back the original config first */
++		if (oper_chwidth != current_vht_oper_chwidth) {
++			iface->conf->secondary_channel = curr_secondary_channel;
++			hostapd_set_oper_chwidth(iface->conf,
++						 current_vht_oper_chwidth);
++			oper_chwidth = current_vht_oper_chwidth;
++		}
++
++		/*
++		 * If there is no channel to switch immediately to, check if
+ 		 * there is another channel where we can switch even if it
+ 		 * requires to perform a CAC first.
+ 		 */
+@@ -1599,6 +1643,7 @@ static int hostapd_dfs_start_channel_swi
+ 			 * Toggle interface state to enter DFS state
+ 			 * until NOP is finished.
+ 			 */
++			/* TODO: handle MLO case */
+ 			hostapd_disable_iface(iface);
+ 			hostapd_enable_iface(iface);
+ 			return 0;
+@@ -1612,7 +1657,7 @@ static int hostapd_dfs_start_channel_swi
+ 				iface->conf, oper_centr_freq_seg0_idx);
+ 			hostapd_set_oper_centr_freq_seg1_idx(
+ 				iface->conf, oper_centr_freq_seg1_idx);
+-
++			/* TODO: handle MLO case */
+ 			hostapd_disable_iface(iface);
+ 			hostapd_enable_iface(iface);
+ 			return 0;

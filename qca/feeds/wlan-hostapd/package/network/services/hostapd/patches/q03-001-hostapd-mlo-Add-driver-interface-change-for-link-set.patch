@@ -1,0 +1,603 @@
+From 1970538d529fee9d1fa2c9ac2ceae543c1f4f711 Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Mon, 26 Sep 2022 17:58:15 +0530
+Subject: [PATCH] hostapd : mlo : Add driver interface change for link setup
+
+Add new mlo_link_id to wpa_driver_nl80211_data to carry
+link id of the driver interface and BSS (will be setup
+during dirver init of first bss and will be same for all bss
+in give interface)
+
+Valid link_id to be passed in driver params for BSS related
+NL messages, add LINK_ID attribute if recived link id is
+valid (>=0).
+
+Add wpa_driver_nl80211_add_link() to add a given link BSS
+with Link address and link id, with its MLD address as ifindex.
+
+Chain link bss of the same MLD. This will be used for routing
+mlme mgmt events and wherever needed to route the events
+to appropriate link bss, since only the first bss will be
+used for nl handle creation and setup.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Co-Developed-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/drivers/driver.h               |  37 ++++++-
+ src/drivers/driver_nl80211.c       | 171 +++++++++++++++++++++++++++--
+ src/drivers/driver_nl80211.h       |   8 +-
+ src/drivers/driver_nl80211_event.c |  75 ++++++++++++-
+ 4 files changed, 277 insertions(+), 14 deletions(-)
+
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -1782,6 +1782,15 @@ struct wpa_driver_ap_params {
+ 	 */
+ 	u8 **rnr_elem_offset;
+ };
++struct wpa_driver_link_params {
++	/** Link id of a given link in an MLD AP
++	 */
++	int link_id;
++
++	/** Link MAC address
++	 */
++	const u8* link_addr;
++};
+ 
+ struct wpa_driver_mesh_bss_params {
+ #define WPA_DRIVER_MESH_CONF_FLAG_AUTO_PLINKS		0x00000001
+@@ -2456,9 +2465,11 @@ struct wpa_init_params {
+ 	void *global_priv;
+ 	const u8 *bssid;
+ 	const char *ifname;
+-#ifdef CONFIG_IEEE80211BE
+-	unsigned int mlo_link_id;
+-#endif
++
++	int mlo_link_id;
++	u8 *mld_addr;
++	bool first_link_bss;
++
+ 	const char *driver_params;
+ 	int use_pae_group_addr;
+ 	char **bridge;
+@@ -3384,6 +3395,16 @@ struct wpa_driver_ops {
+ 	int (*set_ap)(void *priv, struct wpa_driver_ap_params *params);
+ 
+ 	/**
++	 * add_link - Add link in AP mode
++	 * @priv: Private driver interface data
++	 * @params: Parameters to define link
++	 * This function is used to add a given link of an mld inerface to driver
++	 *
++	 * Returns: 0 on success, -1 on failure
++	 */
++	int (*add_link)(void *priv, struct wpa_driver_link_params *params);
++
++	/**
+ 	 * set_acl - Set ACL in AP mode
+ 	 * @priv: Private driver interface data
+ 	 * @params: Parameters to configure ACL
+@@ -3728,6 +3749,7 @@ struct wpa_driver_ops {
+ 		      void **drv_priv, char *force_ifname, u8 *if_addr,
+ 		      const char *bridge, int use_existing, int setup_ap);
+ 
++
+ 	/**
+ 	 * if_remove - Remove a virtual interface
+ 	 * @priv: Private driver interface data
+@@ -5011,6 +5033,15 @@ struct wpa_driver_ops {
+ 			      const u8 *match, size_t match_len,
+ 			      bool multicast);
+ #endif /* CONFIG_TESTING_OPTIONS */
++
++	/**
++	 * chain_link_bss - Chain adjacent link bss to be used for
++	 * routing events to appropriate link bss of the MLD since
++	 * events are sent based on ifidx which is common for all
++	 * link bss of the MLD netdev
++	 * @priv_bss1, @priv_bss2 - Bss1 and bss2 to be chained
++	 */
++	void (*chain_link_bss)(void *priv_bss1, void *priv_bss2);
+ };
+ 
+ /**
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -559,6 +559,10 @@ send_and_recv_msgs_connect_handle(struct
+ 
+ struct nl_sock * get_connect_handle(struct i802_bss *bss)
+ {
++	if ((bss->drv->capa.flags2 & WPA_DRIVER_FLAGS2_CONTROL_PORT_RX) &&
++	     bss->nl_connect_link)
++		return bss->nl_connect_link;
++
+ 	if ((bss->drv->capa.flags2 & WPA_DRIVER_FLAGS2_CONTROL_PORT_RX) ||
+ 	    bss->use_nl_connect)
+ 		return bss->nl_connect;
+@@ -1177,6 +1181,11 @@ static void nl80211_refresh_mac(struct w
+ 	u8 addr[ETH_ALEN];
+ 
+ 	bss = get_bss_ifindex(drv, ifindex);
++
++	/* ML bsses addr need not change for iface change */
++	if (bss && bss->drv->mlo_link_id >= 0)
++		return;
++
+ 	if (bss &&
+ 	    linux_get_ifhwaddr(drv->global->ioctl_sock,
+ 			       bss->ifname, addr) < 0) {
+@@ -2157,6 +2166,9 @@ static int nl80211_init_connect_handle(s
+ 	bss->nl_connect = nl_create_handle(bss->nl_cb, "connect");
+ 	if (!bss->nl_connect)
+ 		return -1;
++
++	bss->nl_connect_link = bss->nl_connect;
++
+ 	nl80211_register_eloop_read(&bss->nl_connect,
+ 				    wpa_driver_nl80211_event_receive,
+ 				    bss->nl_cb, 1);
+@@ -2166,6 +2178,13 @@ static int nl80211_init_connect_handle(s
+ 
+ static int nl80211_init_bss(struct i802_bss *bss)
+ {
++	/* For non first link bss of MLD the nl
++	 * handles will be common and used from
++	 * first bss
++	 */
++	if (!bss->first_link_bss)
++		return 0;
++
+ 	bss->nl_cb = nl_cb_alloc(NL_CB_DEFAULT);
+ 	if (!bss->nl_cb)
+ 		return -1;
+@@ -2183,6 +2202,9 @@ static int nl80211_init_bss(struct i802_
+ 
+ static void nl80211_destroy_bss(struct i802_bss *bss)
+ {
++	if (!bss->first_link_bss)
++		return;
++
+ 	nl_cb_put(bss->nl_cb);
+ 	bss->nl_cb = NULL;
+ 
+@@ -2247,7 +2269,8 @@ wpa_driver_nl80211_drv_init_rfkill(struc
+ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
+ 					  void *global_priv, int hostapd,
+ 					  const u8 *set_addr,
+-					  const char *driver_params)
++					  const char *driver_params,
++					  bool first_link_bss)
+ {
+ 	struct wpa_driver_nl80211_data *drv;
+ 	struct i802_bss *bss;
+@@ -2261,6 +2284,7 @@ static void * wpa_driver_nl80211_drv_ini
+ 	drv->ctx = ctx;
+ 	drv->hostapd = !!hostapd;
+ 	drv->eapol_sock = -1;
++	drv->mlo_link_id = -1;
+ 
+ 	/*
+ 	 * There is no driver capability flag for this, so assume it is
+@@ -2287,6 +2311,9 @@ static void * wpa_driver_nl80211_drv_ini
+ 	drv->eapol_tx_sock = -1;
+ 	drv->ap_scan_as_station = NL80211_IFTYPE_UNSPECIFIED;
+ 
++	bss->first_link_bss = first_link_bss;
++	bss->next_link_bss = bss;
++
+ 	if (nl80211_init_bss(bss))
+ 		goto failed;
+ 
+@@ -2349,7 +2376,7 @@ static void * wpa_driver_nl80211_init(vo
+ 				      void *global_priv)
+ {
+ 	return wpa_driver_nl80211_drv_init(ctx, ifname, global_priv, 0, NULL,
+-					   NULL);
++					   NULL, true);
+ }
+ 
+ 
+@@ -2940,14 +2967,18 @@ wpa_driver_nl80211_finish_drv_init(struc
+ 	else
+ 		nlmode = NL80211_IFTYPE_STATION;
+ 
+-	if (wpa_driver_nl80211_set_mode(bss, nlmode) < 0) {
++	if (bss->first_link_bss && wpa_driver_nl80211_set_mode(bss, nlmode) < 0) {
+ 		wpa_printf(MSG_ERROR, "nl80211: Could not configure driver mode");
+ 		return -1;
+ 	}
+ 
++	if (!bss->first_link_bss)
++		bss->drv->nlmode = nlmode;
++
+ 	if (nlmode == NL80211_IFTYPE_P2P_DEVICE)
+ 		nl80211_get_macaddr(bss);
+ 
++	/* TODO check if this requires change for non first link bss */
+ 	wpa_driver_nl80211_drv_init_rfkill(drv);
+ 
+ 	if (!rfkill_is_blocked(drv->rfkill)) {
+@@ -3010,6 +3041,11 @@ static int wpa_driver_nl80211_del_beacon
+ 	bss->freq = 0;
+ 	nl80211_put_wiphy_data_ap(bss);
+ 	msg = nl80211_drv_msg(drv, 0, NL80211_CMD_DEL_BEACON);
++
++	if (drv->mlo_link_id >= 0 &&
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
++		return -1;
++
+ 	return send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ }
+ 
+@@ -4694,7 +4730,40 @@ fail:
+ 	return -1;
+ }
+ 
++static int wpa_driver_nl80211_add_link(void *priv,
++				       struct wpa_driver_link_params *params)
++{
++	struct i802_bss *bss = priv;
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct nl_msg *msg;
++	u8 cmd = NL80211_CMD_ADD_LINK;
++	int ret = -ENOBUFS;
+ 
++	wpa_printf(MSG_DEBUG, "nl80211: Add link");
++	wpa_printf(MSG_DEBUG, "nl80211: ifindex=%d", bss->ifindex);
++	wpa_printf(MSG_DEBUG, "nl80211: link_id=%u", params->link_id);
++	wpa_printf(MSG_DEBUG, "nl80211: link_addr=" MACSTR, MAC2STR(params->link_addr));
++
++	if (params->link_id < 0)
++		return -1;
++
++	if (!(msg = nl80211_bss_msg(bss, 0, cmd)) ||
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, params->link_id) ||
++	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, params->link_addr))
++		goto fail;
++
++	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
++        if (ret) {
++                wpa_printf(MSG_DEBUG, "nl80211: Link add failed: %d (%s)",
++                           ret, strerror(-ret));
++	}
++	
++	return ret;
++
++fail:
++	nlmsg_free(msg);
++	return ret;
++}
+ static int wpa_driver_nl80211_set_ap(void *priv,
+ 				     struct wpa_driver_ap_params *params)
+ {
+@@ -4733,6 +4802,7 @@ static int wpa_driver_nl80211_set_ap(voi
+ 	wpa_printf(MSG_DEBUG, "nl80211: beacon_tx_mode=%d", params->beacon_tx_mode);
+ 	wpa_printf(MSG_DEBUG, "nl80211: ssid=%s",
+ 		   wpa_ssid_txt(params->ssid, params->ssid_len));
++	wpa_printf(MSG_DEBUG, "nl80211: Link ID=%d", drv->mlo_link_id);
+ 	if (!(msg = nl80211_bss_msg(bss, 0, cmd)) ||
+ 	    nla_put(msg, NL80211_ATTR_BEACON_HEAD, params->head_len,
+ 		    params->head) ||
+@@ -4746,6 +4816,10 @@ static int wpa_driver_nl80211_set_ap(voi
+ 	    (params->beacon_tx_mode &&
+ 	     nla_put_u32(msg, NL80211_ATTR_BEACON_TX_MODE, params->beacon_tx_mode)))
+ 		goto fail;
++
++	if (drv->mlo_link_id >= 0 && nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
++		goto fail;
++
+ 	if (params->proberesp && params->proberesp_len) {
+ 		wpa_hexdump(MSG_DEBUG, "nl80211: proberesp (offload)",
+ 			    params->proberesp, params->proberesp_len);
+@@ -5218,6 +5292,11 @@ static int nl80211_set_channel(struct i8
+ 		}
+ 	}
+ #endif /* CONFIG_IEEE80211AX */
++
++	if (drv->mlo_link_id >= 0 &&
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
++		return -1;
++
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	if (ret == 0) {
+ 		bss->freq = freq->freq;
+@@ -7561,6 +7640,10 @@ static int i802_set_tx_queue_params(void
+ 	if (!msg)
+ 		return -1;
+ 
++	if (drv->mlo_link_id >= 0 &&
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
++		goto fail;
++
+ 	txq = nla_nest_start(msg, NL80211_ATTR_WIPHY_TXQ_PARAMS);
+ 	if (!txq)
+ 		goto fail;
+@@ -7990,6 +8073,44 @@ static int i802_check_bridge(struct wpa_
+ 	return 0;
+ }
+ 
++static void i802_chain_link_bss(void *priv_bss1, void *priv_bss2)
++{
++	struct i802_bss *bss1 = priv_bss1;
++	struct i802_bss *bss2 = priv_bss2;
++	struct i802_bss *tmp_bss;
++
++	if (!bss1 || !bss2) {
++		wpa_printf(MSG_WARNING, "wrong param passed to link bsses for MLD");
++		return;
++	}
++
++	if (bss1->freq == bss2->freq) {
++		wpa_printf(MSG_WARNING,
++			   "nl80211: Failed to chain bss(link=%d and link=%d) due to matching freq",
++			   bss1->drv->mlo_link_id, bss2->drv->mlo_link_id);
++		return;
++	}
++
++	if (os_memcmp(bss1->ifname, bss2->ifname, IFNAMSIZ + 1)) {
++		wpa_printf(MSG_WARNING,
++			   "nl80211: Failed to chain bss(%s and %s) due to mismatch in ifname",
++			   bss1->ifname, bss2->ifname);
++		return;
++	}
++
++	tmp_bss = bss1->next_link_bss;
++	bss1->next_link_bss = bss2;
++	bss2->next_link_bss = tmp_bss;
++
++	bss2->nl_connect_link = bss1->nl_connect;
++
++	wpa_printf(MSG_DEBUG,
++		   "nl80211: Chain bss(link=%d and link=%d) in mld %s",
++		   bss1->drv->mlo_link_id,
++		   bss2->drv->mlo_link_id,
++	   bss1->ifname);
++}
++
+ 
+ static void *i802_init(struct hostapd_data *hapd,
+ 		       struct wpa_init_params *params)
+@@ -8000,15 +8121,36 @@ static void *i802_init(struct hostapd_da
+ 	char master_ifname[IFNAMSIZ];
+ 	int ifindex, br_ifindex = 0;
+ 	int br_added = 0;
++	const u8 *set_addr;
++
++	if (params->mld_addr)
++		set_addr = params->mld_addr;
++	else
++		set_addr = params->bssid;
++
++	/* Avoid iface changes if this is not the first time
++	 * the iface is setup, since its same for all link bss
++	 */
++	if (!params->first_link_bss)
++		set_addr = NULL;
+ 
+ 	bss = wpa_driver_nl80211_drv_init(hapd, params->ifname,
+ 					  params->global_priv, 1,
+-					  params->bssid, params->driver_params);
++					  set_addr, params->driver_params,
++					  params->first_link_bss);
+ 	if (bss == NULL)
+ 		return NULL;
+ 
+ 	drv = bss->drv;
+ 
++	if (params->mld_addr)
++		drv->mlo_link_id = params->mlo_link_id;
++
++	if (params->mld_addr)
++		os_memcpy(bss->mld_addr, params->mld_addr, ETH_ALEN);
++	else
++		os_memcpy(bss->mld_addr, params->bssid, ETH_ALEN);
++
+ 	if (linux_br_get(master_ifname, params->ifname) == 0) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Interface %s is in bridge %s",
+ 			   params->ifname, master_ifname);
+@@ -8098,9 +8240,14 @@ static void *i802_init(struct hostapd_da
+ 	}
+ skip_eapol_sock:
+ 
+-	if (linux_get_ifhwaddr(drv->global->ioctl_sock, bss->ifname,
+-			       params->own_addr))
+-		goto failed;
++	if (params->mld_addr && params->bssid) {
++		os_memcpy(params->own_addr, params->bssid, ETH_ALEN);
++	} else {
++		if (linux_get_ifhwaddr(drv->global->ioctl_sock, bss->ifname,
++				       params->own_addr))
++			goto failed;
++	}
++
+ 	os_memcpy(drv->perm_addr, params->own_addr, ETH_ALEN);
+ 
+ 	memcpy(bss->addr, params->own_addr, ETH_ALEN);
+@@ -8331,6 +8478,9 @@ static int wpa_driver_nl80211_if_add(voi
+ 		new_bss->freq = drv->first_bss->freq;
+ 		new_bss->ctx = bss_ctx;
+ 		new_bss->added_if = added;
++		new_bss->next_link_bss = new_bss;
++		/* TODO MLO MBSSID case */
++		new_bss->first_link_bss = true;
+ 		drv->first_bss->next = new_bss;
+ 		if (drv_priv)
+ 			*drv_priv = new_bss;
+@@ -8358,7 +8508,6 @@ static int wpa_driver_nl80211_if_add(voi
+ 	return 0;
+ }
+ 
+-
+ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
+ 					enum wpa_driver_if_type type,
+ 					const char *ifname)
+@@ -8478,6 +8627,14 @@ static int nl80211_send_frame_cmd(struct
+ 	    nla_put(msg, NL80211_ATTR_FRAME, buf_len, buf))
+ 		goto fail;
+ 
++	if (drv->mlo_link_id >= 0) {
++		 if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
++			goto fail;
++
++		wpa_printf(MSG_MSGDUMP, "nl80211: CMD_FRAME in link %d "MACSTR,
++			   drv->mlo_link_id,MAC2STR( bss->addr));
++	}
++
+ 	cookie = 0;
+ 	ret = send_and_recv_msgs(drv, msg, cookie_handler, &cookie, NULL, NULL);
+ 	msg = NULL;
+@@ -13063,6 +13220,7 @@ const struct wpa_driver_ops wpa_driver_n
+ 	.set_country = wpa_driver_nl80211_set_country,
+ 	.get_country = wpa_driver_nl80211_get_country,
+ 	.set_ap = wpa_driver_nl80211_set_ap,
++	.add_link = wpa_driver_nl80211_add_link,
+ 	.set_acl = wpa_driver_nl80211_set_acl,
+ 	.if_add = wpa_driver_nl80211_if_add,
+ 	.if_remove = driver_nl80211_if_remove,
+@@ -13191,4 +13349,5 @@ const struct wpa_driver_ops wpa_driver_n
+ 	.radio_disable = testing_nl80211_radio_disable,
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	.set_6gclient_type = nl80211_set_6gclient_type,
++	.chain_link_bss = i802_chain_link_bss,
+ };
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -52,6 +52,7 @@ struct nl80211_wiphy_data {
+ struct i802_bss {
+ 	struct wpa_driver_nl80211_data *drv;
+ 	struct i802_bss *next;
++	struct i802_bss *next_link_bss;
+ 	int ifindex;
+ 	int br_ifindex;
+ 	u64 wdev_id;
+@@ -68,18 +69,21 @@ struct i802_bss {
+ 	unsigned int use_nl_connect:1;
+ 
+ 	u8 addr[ETH_ALEN];
++	u8 mld_addr[ETH_ALEN];
+ 
+ 	int freq;
+ 	int bandwidth;
+ 	int if_dynamic;
+ 
+ 	void *ctx;
+-	struct nl_sock *nl_preq, *nl_mgmt, *nl_connect;
++	struct nl_sock *nl_preq, *nl_mgmt, *nl_connect, *nl_connect_link;
+ 	struct nl_cb *nl_cb;
+ 
+ 	struct nl80211_wiphy_data *wiphy_data;
+ 	struct dl_list wiphy_list;
+ 	u8 rand_addr[ETH_ALEN];
++
++	bool first_link_bss;
+ };
+ 
+ struct drv_nl80211_if_info {
+@@ -237,6 +241,8 @@ struct wpa_driver_nl80211_data {
+ 	u8 *pending_roam_data;
+ 	size_t pending_roam_data_len;
+ #endif /* CONFIG_DRIVER_NL80211_QCA */
++
++	int mlo_link_id;
+ };
+ 
+ struct nl_msg;
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -910,6 +910,52 @@ static void mlme_timeout_event(struct wp
+ }
+ 
+ 
++static struct i802_bss *mlme_route_mgmt_by_addr(struct i802_bss *bss, u8 *addr) {
++
++	struct i802_bss *new_bss;
++
++	new_bss = bss->next_link_bss;
++
++	while (new_bss != bss) {
++		if (!os_memcmp(new_bss->addr, addr, ETH_ALEN) == 0) {
++			new_bss = bss->next_link_bss;
++			continue;
++		}
++
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: addr based routing mgmt to new bss (%d->%d) based on bssid" MACSTR " new BSS "MACSTR " old BSS " MACSTR,
++			   bss->drv->mlo_link_id, new_bss->drv->mlo_link_id,
++			   MAC2STR(addr),
++			   MAC2STR(new_bss->addr), MAC2STR(bss->addr));
++		return new_bss;
++	}
++
++	return bss;
++}
++
++
++static struct i802_bss *mlme_route_mgmt_by_freq(struct i802_bss *bss, int freq) {
++
++	struct i802_bss *new_bss;
++
++	new_bss = bss->next_link_bss;
++
++	while (new_bss != bss) {
++		if (new_bss->freq != freq) {
++			new_bss = bss->next_link_bss;
++			continue;
++		}
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: routing mgmt to new bss (%d->%d) based on freq %d new BSS "MACSTR " old BSS " MACSTR "old freq %d new freq %d",
++			   bss->drv->mlo_link_id, new_bss->drv->mlo_link_id, freq,
++			   MAC2STR(new_bss->addr), MAC2STR(bss->addr), bss->freq, new_bss->freq);
++		return new_bss;
++	}
++
++	return bss;
++}
++
++
+ static void mlme_event_mgmt(struct i802_bss *bss,
+ 			    struct nlattr *freq, struct nlattr *sig,
+ 			    const u8 *frame, size_t len)
+@@ -1239,13 +1285,38 @@ static void mlme_event(struct i802_bss *
+ 	 * address. Allow NL80211_CMD_FRAME event with foreign addresses also.
+ 	 */
+ 	if (cmd == NL80211_CMD_FRAME && len >= 24) {
+-		const struct ieee80211_mgmt *mgmt;
++		struct ieee80211_mgmt *mgmt;
+ 		u16 fc;
++		int rx_freq;
++
++		/* route to correct bss */
++		if (freq) {
++			rx_freq = nla_get_u32(freq);
++			if (rx_freq != bss->freq) {
++				bss = mlme_route_mgmt_by_freq(bss, rx_freq);
++				drv = bss->drv;
++			}
++		}
+ 
+-		mgmt = (const struct ieee80211_mgmt *) data;
++		mgmt = (struct ieee80211_mgmt *) data;
+ 		fc = le_to_host16(mgmt->frame_control);
+ 		stype = WLAN_FC_GET_STYPE(fc);
+ 		auth_type = le_to_host16(mgmt->u.auth.auth_alg);
++
++		if (drv->nlmode == NL80211_IFTYPE_AP && drv->mlo_link_id >= 0 &&
++		    os_memcmp(bss->mld_addr, mgmt->da, ETH_ALEN) == 0) {
++			os_memcpy(mgmt->da, bss->addr, ETH_ALEN);
++			os_memcpy(mgmt->bssid, bss->addr, ETH_ALEN);
++		}
++	}
++
++	if (cmd == NL80211_CMD_FRAME_TX_STATUS  && bss !=  bss->next_link_bss) {
++		struct ieee80211_mgmt *mgmt;
++		mgmt = (struct ieee80211_mgmt *) data;
++		if (os_memcmp(bss->addr, mgmt->bssid, ETH_ALEN) != 0) {
++			bss = mlme_route_mgmt_by_addr(bss, mgmt->bssid);
++			drv = bss->drv;
++		}
+ 	}
+ 
+ 	if (cmd == NL80211_CMD_FRAME && stype == WLAN_FC_STYPE_AUTH &&

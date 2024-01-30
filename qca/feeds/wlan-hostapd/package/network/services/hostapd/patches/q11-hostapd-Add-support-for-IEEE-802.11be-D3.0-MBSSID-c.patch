@@ -1,0 +1,142 @@
+From e9e47521a578d177275568cf3c9138ecbaa79081 Mon Sep 17 00:00:00 2001
+From: Yuvarani V <quic_yuvarani@quicinc.com>
+Date: Wed, 12 Jul 2023 11:12:13 +0530
+Subject: [PATCH] hostapd: Add support for IEEE 802.11be D3.0 MBSSID case
+
+Add SSID element in per-STA profile of basic multi-link element where
+it contains complete profile and multi-link probe response is
+transmitted by transmitted BSSID in response to multi-link probe
+request directed to non-transmitted BSSID in the same MBSSID group.
+Transmitted and non-transmitted BSSIDs are part of distinct AP MLDs.
+
+Signed-off-by: Yuvarani V <quic_yuvarani@quicinc.com>
+---
+ src/ap/beacon.c     | 21 ++++++++++++---------
+ src/ap/beacon.h     |  2 +-
+ src/ap/ieee802_11.c |  2 +-
+ 3 files changed, 14 insertions(+), 11 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index c991a7b..776427d 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -642,10 +642,9 @@ static u8 * hostapd_ext_capab_mbssid(struct hostapd_data *hapd, u8 *eid,
+ 	return eid;
+ }
+ 
+-static bool hostapd_is_restricted_eid_in_sta_profile(u8 eid)
++static bool hostapd_is_restricted_eid_in_sta_profile(u8 eid, bool tx_vap)
+ {
+ 	switch(eid) {
+-	case WLAN_EID_SSID:
+ 	case WLAN_EID_TIM:
+ 	case WLAN_EID_BSS_MAX_IDLE_PERIOD:
+ 	case WLAN_EID_MULTIPLE_BSSID:
+@@ -653,6 +652,9 @@ static bool hostapd_is_restricted_eid_in_sta_profile(u8 eid)
+ 	case WLAN_EID_NEIGHBOR_REPORT:
+ 		return true;
+ 	}
++	/* SSID is not restricted for non-transmitted BSSID */
++	if (tx_vap && (eid == WLAN_EID_SSID))
++		return true;
+ 
+ 	return false;
+ }
+@@ -674,7 +676,7 @@ static size_t hostapd_add_sta_profile(struct ieee80211_mgmt *own_fdata,
+ 				    struct ieee80211_mgmt *link_fdata,
+ 				    size_t own_data_len,
+ 				    size_t link_data_len,
+-				    u8 *sta_profile, u32 type)
++				    u8 *sta_profile, u32 type, bool tx_vap)
+ {
+ 	/* the bitmap of parsed eids, max eid is 256, hence 32bytes to store the bitmap */
+ 	u8 parsed_eid_bmap[32] = {0}, parsed_ext_eid_bmap[32] = {0};
+@@ -736,7 +738,7 @@ static size_t hostapd_add_sta_profile(struct ieee80211_mgmt *own_fdata,
+ 				continue;
+ 		} else {
+ 			oeid = oelem->id;
+-			if (hostapd_is_restricted_eid_in_sta_profile(oeid))
++			if (hostapd_is_restricted_eid_in_sta_profile(oeid, tx_vap))
+ 				continue;
+ 		}
+ 
+@@ -794,7 +796,7 @@ static size_t hostapd_add_sta_profile(struct ieee80211_mgmt *own_fdata,
+ 			leid = lelem->id;
+ 			if (parsed_eid_bmap[leid/8] & BIT(leid%8))
+ 				continue;
+-			if (hostapd_is_restricted_eid_in_sta_profile(leid))
++			if (hostapd_is_restricted_eid_in_sta_profile(leid, tx_vap))
+ 				continue;
+ 		}
+ 
+@@ -843,7 +845,7 @@ u8 * hostapd_gen_sta_profile(struct ieee80211_mgmt *own_data,
+ 			     struct ieee80211_mgmt *link_data,
+ 			     size_t own_data_len,
+ 			     size_t link_data_len,
+-			     size_t *sta_profile_len, u32 type)
++			     size_t *sta_profile_len, u32 type, bool tx_vap)
+ {
+ 	u8 *sta_profile;
+ 
+@@ -854,7 +856,7 @@ u8 * hostapd_gen_sta_profile(struct ieee80211_mgmt *own_data,
+ 	*sta_profile_len = hostapd_add_sta_profile(own_data, link_data,
+ 						   own_data_len,
+ 						   link_data_len,
+-						   NULL, type);
++						   NULL, type, tx_vap);
+ 
+ 	if (!(*sta_profile_len))
+ 		return NULL;
+@@ -865,7 +867,7 @@ u8 * hostapd_gen_sta_profile(struct ieee80211_mgmt *own_data,
+ 		return NULL;
+ 
+ 	hostapd_add_sta_profile(own_data, link_data, own_data_len,
+-				link_data_len, sta_profile, type);
++				link_data_len, sta_profile, type, tx_vap);
+ 
+ 	return sta_profile;
+ }
+@@ -876,6 +878,7 @@ static void hostapd_gen_per_sta_profiles(struct hostapd_data *hapd)
+ 	struct hostapd_data *link_bss;
+ 	size_t own_data_len, link_data_len, sta_profile_len;
+ 	u8 *sta_profile, link_id;
++	bool tx_vap = (hapd == hostapd_mbssid_get_tx_bss(hapd));
+ 
+ 	if (!hapd->mld)
+ 		return;
+@@ -922,7 +925,7 @@ static void hostapd_gen_per_sta_profiles(struct hostapd_data *hapd)
+ 		sta_profile = hostapd_gen_sta_profile(own_data, link_data,
+ 						      own_data_len, link_data_len,
+ 						      &sta_profile_len,
+-						      WLAN_FC_STYPE_PROBE_RESP);
++						      WLAN_FC_STYPE_PROBE_RESP, tx_vap);
+ 
+ 		os_free(hapd->link_profile[link_id].presp_data);
+ 
+diff --git a/src/ap/beacon.h b/src/ap/beacon.h
+index c018c7a..7b259ba 100644
+--- a/src/ap/beacon.h
++++ b/src/ap/beacon.h
+@@ -36,5 +36,5 @@ u8 * hostapd_gen_sta_profile(struct ieee80211_mgmt *own_data,
+ 			     struct ieee80211_mgmt *link_data,
+ 			     size_t own_data_len,
+ 			     size_t link_data_len,
+-			     size_t *sta_profile_len, u32 type);
++			     size_t *sta_profile_len, u32 type, bool tx_vap);
+ #endif /* BEACON_H */
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 59ee549..97be6e8 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6056,7 +6056,7 @@ static void ap_link_sta_add(struct hostapd_data *hapd, struct sta_info *psta,
+ 		sta_profile = hostapd_gen_sta_profile(passoc, lassoc,
+ 						      passoc_len, lassoc_len,
+ 						      &sta_profile_len,
+-						      WLAN_FC_STYPE_ASSOC_RESP);
++						      WLAN_FC_STYPE_ASSOC_RESP, true);
+ 
+ 		if (sta_profile == NULL) {
+ 			sta->ml_sta = NULL;
+-- 
+2.17.1
+

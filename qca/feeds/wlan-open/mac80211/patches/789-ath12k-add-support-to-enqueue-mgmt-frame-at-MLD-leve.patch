@@ -1,0 +1,285 @@
+From 20ecb9661fda87e137f3f746f06566d3b97d3d5a Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Tue, 1 Aug 2023 16:33:01 +0530
+Subject: [PATCH] ath12k: add support to enqueue mgmt frame at MLD level
+
+Currently, unicast management frames to a certain link station
+gets transmitted by FW or dropped due to retransmissions if that
+link station is inactive or in power save state. A ML client can
+decide to use only one of its links or can decide to put it in
+power save for longer periods while listening on the other link
+as per MLD listen interval. In such cases allow FW to decide on
+which link a certain management frame needs to be transmitted on.
+
+Initially we add support for only Radio measurement(beacon & neigh
+req/rep) action frames.
+But, this can be extended to all action frames except the ones
+which are not bufferable.
+
+Co-devloped-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/core.h |  1 +
+ drivers/net/wireless/ath/ath12k/mac.c  | 48 ++++++++++++++++++++++----
+ drivers/net/wireless/ath/ath12k/wmi.c  | 36 +++++++++++++++++--
+ drivers/net/wireless/ath/ath12k/wmi.h  | 13 +++++++
+ include/linux/ieee80211.h              |  1 +
+ 5 files changed, 90 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/core.h b/drivers/net/wireless/ath/ath12k/core.h
+index 57f43a5..289a602 100644
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -107,6 +107,7 @@ enum ath12k_skb_flags {
+ 	ATH12K_SKB_HW_80211_ENCAP = BIT(0),
+ 	ATH12K_SKB_CIPHER_SET = BIT(1),
+ 	ATH12K_SKB_TX_STATUS = BIT(2),
++	ATH12K_SKB_MGMT_LINK_AGNOSTIC = BIT(3),
+ };
+ 
+ struct ath12k_skb_cb {
+diff --git a/drivers/net/wireless/ath/ath12k/mac.c b/drivers/net/wireless/ath/ath12k/mac.c
+index 79cbcc8..3ac0998 100644
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -8549,7 +8549,7 @@ static int ath12k_mac_mgmt_action_frame_fill_elem(struct ath12k_link_vif *arvif,
+ 						  struct sk_buff *skb)
+ {
+ 	struct ath12k *ar = arvif->ar;
+-	struct ath12k_skb_cb *skb_cb;
++	struct ath12k_skb_cb *skb_cb = ATH12K_SKB_CB(skb);
+ 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
+ 	struct ieee80211_mgmt *mgmt;
+ 	struct ieee80211_bss_conf *link_conf;
+@@ -8563,8 +8563,10 @@ static int ath12k_mac_mgmt_action_frame_fill_elem(struct ath12k_link_vif *arvif,
+ 	lockdep_assert_held(&ar->conf_mutex);
+ 
+ 	/* make sure category field is present */
+-	if (skb->len < IEEE80211_MIN_ACTION_SIZE)
++	if (skb->len < IEEE80211_MIN_ACTION_SIZE) {
++		skb_cb->flags &= ~ATH12K_SKB_MGMT_LINK_AGNOSTIC;
+ 		return -EINVAL;
++	}
+ 
+ 	has_protected = ieee80211_has_protected(hdr->frame_control);
+ 
+@@ -8572,8 +8574,10 @@ static int ath12k_mac_mgmt_action_frame_fill_elem(struct ath12k_link_vif *arvif,
+ 	 * we can't put in data in this case
+ 	 */
+ 	if (test_bit(ATH12K_FLAG_HW_CRYPTO_DISABLED, &ar->ab->ag->dev_flags) &&
+-	    has_protected)
++	    has_protected) {
++		skb_cb->flags &= ~ATH12K_SKB_MGMT_LINK_AGNOSTIC;
+ 		return -EOPNOTSUPP;
++	}
+ 
+ 	mgmt = (struct ieee80211_mgmt *)hdr;
+ 	buf = &mgmt->u.action;
+@@ -8582,8 +8586,6 @@ static int ath12k_mac_mgmt_action_frame_fill_elem(struct ath12k_link_vif *arvif,
+ 	 * many bytes if it is there
+ 	 */
+ 	if (has_protected) {
+-		skb_cb = ATH12K_SKB_CB(skb);
+-
+ 		switch (skb_cb->cipher) {
+ 		/* Currently only for CCMP cipher suite, we asked for it via
+ 		 * setting %IEEE80211_KEY_FLAG_GENERATE_IV_MGMT in key. Check
+@@ -8603,6 +8605,7 @@ static int ath12k_mac_mgmt_action_frame_fill_elem(struct ath12k_link_vif *arvif,
+ 			iv_len = 0;
+ 			break;
+ 		default:
++			skb_cb->flags &= ~ATH12K_SKB_MGMT_LINK_AGNOSTIC;
+ 			return -EINVAL;
+ 		}
+ 
+@@ -8672,6 +8675,7 @@ check_rm_action_frame:
+ 			ath12k_dbg(ar->ab, ATH12K_DBG_MAC,
+ 				   "RRM: Link Measurement Req dialog_token=%u, cur_tx_power=%d, max_tx_power=%d\n",
+ 				   dialog_token, cur_tx_power, max_tx_power);
++			skb_cb->flags &= ~ATH12K_SKB_MGMT_LINK_AGNOSTIC;
+ 			break;
+ 		case WLAN_ACTION_RADIO_MSR_LINK_MSR_REP:
+ 			/* Variable Len Format:
+@@ -8687,6 +8691,7 @@ check_rm_action_frame:
+ 			ath12k_dbg(ar->ab, ATH12K_DBG_MAC,
+ 				   "RRM: Link Measurement Resp dialog_token=%u, cur_tx_power=%d\n",
+ 				   dialog_token, cur_tx_power);
++			skb_cb->flags &= ~ATH12K_SKB_MGMT_LINK_AGNOSTIC;
+ 			break;
+ 		default:
+ 			return -EINVAL;
+@@ -8694,6 +8699,7 @@ check_rm_action_frame:
+ 		break;
+ 	default:
+ 		/* nothing to fill */
++		skb_cb->flags &= ~ATH12K_SKB_MGMT_LINK_AGNOSTIC;
+ 		return 0;
+ 	}
+ 
+@@ -8775,8 +8781,8 @@ static void ath12k_mgmt_over_wmi_tx_work(struct work_struct *work)
+ 				ath12k_mgmt_over_wmi_tx_drop(ar, skb);
+ 			} else {
+ 				ath12k_dbg(ar->ab, ATH12K_DBG_MGMT,
+-					   "mac tx mgmt frame, vdev_id %d\n",
+-					   arvif->vdev_id);
++					   "mac tx mgmt frame, vdev_id %d link agnostic %d\n",
++					   arvif->vdev_id, !!(skb_cb->flags & ATH12K_SKB_MGMT_LINK_AGNOSTIC));
+ 			}
+ 		} else {
+ 			ath12k_warn(ar->ab,
+@@ -8838,6 +8844,21 @@ static void ath12k_mlo_mcast_update_tx_link_address(struct ieee80211_vif *vif,
+ 		ether_addr_copy(hdr->addr2, bss_conf->addr);
+ }
+ 
++/* This function should be called only for a mgmt frame to a ML STA,
++ * hence, such sanity checks are skipped
++ */
++static bool ath12k_mac_is_mgmt_link_agnostic(struct sk_buff *skb)
++{
++	struct ieee80211_mgmt *mgmt;
++	mgmt = (struct ieee80211_mgmt *)skb->data;
++
++	if (ieee80211_is_action(mgmt->frame_control))
++		return true;
++
++	/* TODO Extend as per requirement */
++	return false;
++}
++
+ static u8 ath12k_mac_get_tx_link(struct ieee80211_sta *sta, struct ieee80211_vif *vif,
+ 				 u8 link, struct sk_buff *skb, u32 info_flags)
+ {
+@@ -8920,6 +8941,19 @@ static u8 ath12k_mac_get_tx_link(struct ieee80211_sta *sta, struct ieee80211_vif
+ 				   sta->valid_links, ahvif->links_map, ahsta->links_map);
+ 			link = IEEE80211_MLD_MAX_NUM_LINKS;
+ 		}
++
++		/* Check if this mgmt frame can be queued at MLD level, in that
++		 * case the FW can decide on which link it needs to be finally
++		 * transmitted based on the power state of that link.
++		 * The link param returned by this function still needs
++		 * to be valid to get queued to one of the valid link FW
++		 */
++		if (ath12k_mac_is_mgmt_link_agnostic(skb)) {
++			/* For action frames this will be reset if not needed
++			 * later based on action category.
++			 */
++			ATH12K_SKB_CB(skb)->flags |= ATH12K_SKB_MGMT_LINK_AGNOSTIC;
++		}
+ 	}
+ 
+ 	return link;
+diff --git a/drivers/net/wireless/ath/ath12k/wmi.c b/drivers/net/wireless/ath/ath12k/wmi.c
+index e294f5f..32ea840 100644
+--- a/drivers/net/wireless/ath/ath12k/wmi.c
++++ b/drivers/net/wireless/ath/ath12k/wmi.c
+@@ -876,15 +876,23 @@ int ath12k_wmi_mgmt_send(struct ath12k *ar, u32 vdev_id, u32 buf_id,
+ {
+ 	struct ath12k_pdev_wmi *wmi = ar->wmi;
+ 	struct wmi_mgmt_send_cmd *cmd;
++	struct wmi_mlo_mgmt_send_params *ml_params;
+ 	struct wmi_tlv *frame_tlv;
+ 	struct sk_buff *skb;
+ 	u32 buf_len;
+ 	int ret, len;
++	void *ptr;
++	struct wmi_tlv *tlv;
++	bool link_agnostic = (ATH12K_SKB_CB(frame)->flags & ATH12K_SKB_MGMT_LINK_AGNOSTIC);
+ 
+ 	buf_len = frame->len < WMI_MGMT_SEND_DOWNLD_LEN ?
+ 		  frame->len : WMI_MGMT_SEND_DOWNLD_LEN;
+ 
+-	len = sizeof(*cmd) + sizeof(*frame_tlv) + roundup(buf_len, 4);
++	len = sizeof(*cmd) + sizeof(*frame_tlv) + roundup(buf_len, sizeof(u32));
++
++	if (link_agnostic)
++		len += sizeof(struct wmi_mgmt_send_params) +
++				TLV_HDR_SIZE + sizeof(*ml_params);
+ 
+ 	skb = ath12k_wmi_alloc_skb(wmi->wmi_ab, len);
+ 	if (!skb)
+@@ -903,12 +911,36 @@ int ath12k_wmi_mgmt_send(struct ath12k *ar, u32 vdev_id, u32 buf_id,
+ 	cmd->tx_params_valid = 0;
+ 
+ 	frame_tlv = (struct wmi_tlv *)(skb->data + sizeof(*cmd));
+-	frame_tlv->header = ath12k_wmi_tlv_hdr(WMI_TAG_ARRAY_BYTE, buf_len);
++	frame_tlv->header = ath12k_wmi_tlv_hdr(WMI_TAG_ARRAY_BYTE, roundup(buf_len, sizeof(u32)));
+ 
+ 	memcpy(frame_tlv->value, frame->data, buf_len);
+ 
+ 	ath12k_ce_byte_swap(frame_tlv->value, buf_len);
+ 
++	if (!link_agnostic)
++		goto send;
++
++	ptr = skb->data + sizeof(*cmd) + sizeof(*frame_tlv) + roundup(buf_len, sizeof(u32));
++
++	tlv = ptr;
++
++	/* Tx params not used currently */
++	tlv->header = FIELD_PREP(WMI_TLV_TAG, WMI_TAG_TX_SEND_PARAMS) |
++		      FIELD_PREP(WMI_TLV_LEN, sizeof(struct wmi_mgmt_send_params) - TLV_HDR_SIZE);
++	ptr += sizeof(struct wmi_mgmt_send_params);
++
++	tlv = ptr;
++	tlv->header = FIELD_PREP(WMI_TLV_TAG, WMI_TAG_ARRAY_STRUCT) |
++		      FIELD_PREP(WMI_TLV_LEN, sizeof(*ml_params));
++	ptr += TLV_HDR_SIZE;
++
++	ml_params = ptr;
++	ml_params->tlv_header = FIELD_PREP(WMI_TLV_TAG, WMI_TAG_MLO_TX_SEND_PARAMS) |
++				FIELD_PREP(WMI_TLV_LEN, sizeof(*ml_params) - TLV_HDR_SIZE);
++
++	ml_params->hw_link_id = WMI_MLO_MGMT_TID;
++
++send:
+ 	ret = ath12k_wmi_cmd_send(wmi, skb, WMI_MGMT_TX_SEND_CMDID);
+ 	if (ret) {
+ 		ath12k_warn(ar->ab,
+diff --git a/drivers/net/wireless/ath/ath12k/wmi.h b/drivers/net/wireless/ath/ath12k/wmi.h
+index 717bd19..026a34e 100644
+--- a/drivers/net/wireless/ath/ath12k/wmi.h
++++ b/drivers/net/wireless/ath/ath12k/wmi.h
+@@ -4430,6 +4430,7 @@ struct wmi_scan_chan_list_cmd {
+ 	__le32 pdev_id;
+ } __packed;
+ 
++#define WMI_MLO_MGMT_TID		0xFFFFFFFF
+ #define WMI_MGMT_SEND_DOWNLD_LEN	64
+ 
+ #define WMI_TX_PARAMS_DWORD0_POWER		GENMASK(7, 0)
+@@ -4457,6 +4458,18 @@ struct wmi_mgmt_send_cmd {
+ 	/* This TLV is followed by struct wmi_mgmt_frame */
+ 
+ 	/* Followed by struct wmi_mgmt_send_params */
++	/* Followed by struct wmi_mlo_mgmt_send_params */
++} __packed;
++
++struct wmi_mlo_mgmt_send_params {
++	u32 tlv_header;
++	u32 hw_link_id;
++} __packed;
++
++struct wmi_mgmt_send_params {
++	u32 tlv_header;
++	u32 tx_param_dword0;
++	u32 tx_param_dword1;
+ } __packed;
+ 
+ struct wmi_sta_powersave_mode_cmd {
+diff --git a/include/linux/ieee80211.h b/include/linux/ieee80211.h
+index e6e0547..0d9df8d 100644
+--- a/include/linux/ieee80211.h
++++ b/include/linux/ieee80211.h
+@@ -3103,6 +3103,7 @@ ieee80211_eht_oper_size_ok(const u8 *data, u8 len)
+ #define IEEE80211_SPCT_MSR_RPRT_TYPE_BASIC	0
+ #define IEEE80211_SPCT_MSR_RPRT_TYPE_CCA	1
+ #define IEEE80211_SPCT_MSR_RPRT_TYPE_RPI	2
++#define IEEE80211_SPCT_MSR_RPRT_TYPE_BCN	5
+ #define IEEE80211_SPCT_MSR_RPRT_TYPE_LCI	8
+ #define IEEE80211_SPCT_MSR_RPRT_TYPE_CIVIC	11
+ 
+-- 
+2.17.1
+

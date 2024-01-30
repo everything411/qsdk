@@ -1,0 +1,190 @@
+From 39f2a647e550b5ec944b5f1132e922d64e2f1321 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Thu, 6 Oct 2022 10:57:46 +0530
+Subject: [PATCH] hostapd: handle mle defrag
+
+Handle MLE defragmentation for processing
+ML elements exceeding size of 255.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/beacon.c                |  4 ++++
+ src/ap/ieee802_11.c            | 36 +++++++++++++++++++++++++++++-----
+ src/common/ieee802_11_common.c |  4 ++++
+ src/common/ieee802_11_common.h |  2 +-
+ 4 files changed, 40 insertions(+), 6 deletions(-)
+
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1598,6 +1598,10 @@ void handle_probe_req(struct hostapd_dat
+ 				      elems.mbssid_known_bss,
+ 				      elems.mbssid_known_bss_len,
+ 				      &ml_data, true);
++
++	if (ml_data.present)
++		wpabuf_free(ml_data.buf);
++
+ 	if (resp == NULL)
+ 		return;
+ 
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -3684,6 +3684,7 @@ static void handle_auth(struct hostapd_d
+ 		if (ml_data.present) {
+ 			os_memcpy(link_addr, mgmt->sa, ETH_ALEN);
+ 			os_memcpy(mgmt->sa, ml_data.u.basic.mld_addr, ETH_ALEN);
++			wpabuf_free(ml_data.buf);
+ 		}
+ 	}
+ 
+@@ -6317,6 +6318,8 @@ static void handle_assoc(struct hostapd_
+ 			   "FILS: Continue waiting for HLP processing before sending (Re)Association Response frame to "
+ 			   MACSTR, MAC2STR(sta->addr));
+ 		os_free(tmp);
++		if (ml_data.present)
++			wpabuf_free(ml_data.buf);
+ 		return;
+ 	}
+ 	if (sta) {
+@@ -6338,6 +6341,8 @@ static void handle_assoc(struct hostapd_
+ 		eloop_cancel_timeout(fils_hlp_timeout, hapd, sta);
+ 		eloop_register_timeout(0, hapd->conf->fils_hlp_wait_time * 1024,
+ 				       fils_hlp_timeout, hapd, sta);
++		if (ml_data.present)
++			wpabuf_free(ml_data.buf);
+ 		return;
+ 	}
+ #endif /* CONFIG_FILS */
+@@ -6346,6 +6351,9 @@ static void handle_assoc(struct hostapd_
+ 		reply_res = send_assoc_resp(hapd, sta, mgmt->sa, resp, reassoc,
+ 					    pos, left, rssi, omit_rsnxe, &ml_data);
+ 
++	if (ml_data.present)
++		wpabuf_free(ml_data.buf);
++
+ 	os_free(tmp);
+ 
+ 	if (hostapd_ubus_handle_event(hapd, &req)) {
+@@ -8624,8 +8632,10 @@ static void hostapd_parse_probe_req_mle(
+ 	u8 *mle_pos = (u8 *)mle;
+ 	u8 *sta_profile_start, sta_profile_len, link_id;
+ 
+-	if (!len)
++	if (!len) {
++		ml_data->present = false;
+ 		return;
++	}
+ 
+ 	cmn_info_len = *mle_pos;
+ 
+@@ -8683,7 +8693,7 @@ static void hostapd_parse_probe_req_mle(
+ }
+ 
+ static void hostapd_parse_basic_mle(struct hostapd_data *hapd,
+-				    const u8 *mle, u8 len,
++				    const u8 *mle, u16 len,
+ 				    struct multi_link_data *ml_data)
+ {
+ 	u8 *mle_pos = (u8 *)mle;
+@@ -8786,19 +8796,33 @@ void hostapd_parse_mle(struct hostapd_da
+ 		       struct multi_link_data *ml_data)
+ {
+ 	const u8 *mle;
+-	u8 len;
++	struct wpabuf *mle_buf = NULL;
++
++	u16 len;
+ 
+ 	if (!elems->mle || !hapd->mld)
+ 		return;
+ 
+-	len = elems->mle_len;
+-
+ 	if (elems->mle_len < sizeof(struct multi_link_control))
+ 		return;
+ 
+ 	ml_data->present = true;
+ 
+-	mle = elems->mle;
++	/* Note: The buf cannot be dealloc in this func, since the caller
++	 * uses some part of it for per sta profile info.
++	 */
++	mle_buf = ieee802_11_defrag(elems, WLAN_EID_EXTENSION,
++				    WLAN_EID_EXT_MULTI_LINK);
++
++	if (!mle_buf) {
++		wpa_printf(MSG_ERROR, "MLE buf allocation failed on defragmentation");
++		ml_data->present = false;
++		return;
++	}
++ 
++	mle = wpabuf_head(mle_buf);
++	len = wpabuf_len(mle_buf);
++ 
+ 
+ 	os_memcpy(&ml_data->control, mle, sizeof(struct multi_link_control));
+ 
+@@ -8808,6 +8832,10 @@ void hostapd_parse_mle(struct hostapd_da
+ 	if (ml_data->control.type == MULTI_LINK_PROBE_REQ &&
+ 	    type == WLAN_FC_STYPE_PROBE_REQ) {
+ 		hostapd_parse_probe_req_mle(hapd, mle, len, ml_data);
++
++		/* If the ML probe req was invalid, free the buf*/
++		if (ml_data->present == false)
++			wpabuf_free(mle_buf);
+ 		return;
+ 	}
+ 
+@@ -8816,6 +8844,7 @@ void hostapd_parse_mle(struct hostapd_da
+ 		if (*mle++ != ETH_ALEN + 1 || ml_data->control.presence) {
+ 			wpa_printf(MSG_ERROR, "Unexpected info present in AUTH basic MLE");
+ 			ml_data->present = false;
++			wpabuf_free(mle_buf);
+ 			return;
+ 		}
+ 		memcpy(ml_data->u.basic.mld_addr, mle, ETH_ALEN);
+@@ -8825,6 +8854,7 @@ void hostapd_parse_mle(struct hostapd_da
+ 	if (type != WLAN_FC_STYPE_ASSOC_REQ &&
+ 	    type != WLAN_FC_STYPE_REASSOC_REQ) {
+ 		ml_data->present = false;
++		wpabuf_free(mle_buf);
+ 		return;
+ 	}
+ 
+@@ -8832,10 +8862,12 @@ void hostapd_parse_mle(struct hostapd_da
+ 	    MLE_MEDIUM_SYNC_DELAY_PRESENT)) {
+ 		wpa_printf(MSG_ERROR, "Unexpected info present in (Re)Assoc Req MLE");
+ 		ml_data->present = false;
++		wpabuf_free(mle_buf);
+ 		return;
+ 	}
+ 
+ 	hostapd_parse_basic_mle(hapd, mle, len, ml_data);
++	ml_data->buf = mle_buf;
+ }
+ 
+ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -2854,6 +2854,10 @@ struct wpabuf * ieee802_11_defrag(struct
+ 			data = elems->wrapped_data;
+ 			len = elems->wrapped_data_len;
+ 			break;
++		case WLAN_EID_EXT_MULTI_LINK:
++			data = elems->mle;
++			len = elems->mle_len;
++			break;
+ 		default:
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Defragmentation not supported. eid_ext=%u",
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -107,7 +107,7 @@ struct multi_link_data {
+ 	u8 mgmt_type;
+ 	/* MLE present in the mgmt frame */
+ 	bool present;
+-
++	struct wpabuf *buf;
+ 	struct multi_link_control control;
+ 
+ 	union {

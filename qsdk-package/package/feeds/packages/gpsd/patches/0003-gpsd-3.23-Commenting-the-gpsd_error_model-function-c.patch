@@ -1,0 +1,29 @@
+From 54f928d68518e6b969be9e2194ffbce079f52342 Mon Sep 17 00:00:00 2001
+From: devi priya <quic_devipriy@quicinc.com>
+Date: Thu, 11 Aug 2022 14:52:10 +0530
+Subject: [PATCH] gpsd-3.23: Commenting the gpsd_error_model function call
+
+Signed-off-by: devi priya <quic_devipriy@quicinc.com>
+---
+ gpsd/libgpsd_core.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/gpsd/libgpsd_core.c b/gpsd/libgpsd_core.c
+index ea72993..d897f52 100644
+--- a/gpsd/libgpsd_core.c
++++ b/gpsd/libgpsd_core.c
+@@ -1742,7 +1742,10 @@ gps_mask_t gpsd_poll(struct gps_device_t *session)
+     gps_merge_fix(&session->gpsdata.fix,
+                   session->gpsdata.set, &session->newdata);
+
+-    gpsd_error_model(session);
++    /* Commenting gpsd_error_model function call as we do not require the daemon to compute the
++     * position fields when the OSP message MID 67,1 received from the hardware does not have
++     * optimal solution validity */
++    /* gpsd_error_model(session); */
+
+     /*
+      * Count good fixes. We used to check
+--
+2.17.1
+

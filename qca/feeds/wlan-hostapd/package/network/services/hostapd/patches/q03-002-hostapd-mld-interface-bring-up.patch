@@ -1,0 +1,312 @@
+From 4d5c7c247d18b5b79818905fab51092f1535999a Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Thu, 10 Nov 2022 07:18:25 +0530
+Subject: [PATCH] hostapd: mld interface bring up
+
+Assign link id to interfaces based on init sequence
+and save the same to dirver context since link id
+attribute hass to be included in all BSS relates
+NL commands hereafter.
+
+Chain all the link bss so that driver handler is aware of
+all the link bss corresponding to a ifidx for processing
+or routing events to corresponding bss.
+
+Also, add link for each link bss and mark them to start
+synchronously once the resources are setup.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Co-Developed-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ hostapd/main.c      | 24 ++++++++++++++--
+ src/ap/ap_drv_ops.h | 11 ++++++++
+ src/ap/hostapd.c    | 68 +++++++++++++++++++++++++++++++++++++++++++--
+ 3 files changed, 99 insertions(+), 4 deletions(-)
+
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -170,7 +170,8 @@ static int hostapd_driver_init(struct ho
+ 	u8 *b = conf->bssid;
+ 	struct wpa_driver_capa capa;
+ 
+-	if (hapd->driver == NULL || hapd->driver->hapd_init == NULL) {
++	if (hapd->driver == NULL || hapd->driver->hapd_init == NULL ||
++	    (hapd->mld && hapd->driver->chain_link_bss == NULL)) {
+ 		wpa_printf(MSG_ERROR, "No hostapd driver wrapper available");
+ 		return -1;
+ 	}
+@@ -203,8 +204,24 @@ static int hostapd_driver_init(struct ho
+ 	}
+ 	params.bssid = b;
+ 	params.ifname = hapd->conf->iface;
++
++	/* set this to true by default and change if this is not
++	 * the first link bss of MLD
++	 */
++	params.first_link_bss = true;
+ #ifdef CONFIG_IEEE80211BE
+-	params.mlo_link_id = 0; // FIXME: add link id generation
++	/* All 11BE AP is considered to be a MLD irrespective of num links
++	 * so this applies to all bss in the iface
++	 */
++	if (hapd->mld) {
++		params.mlo_link_id = iface->mlo_link_id;
++		params.mld_addr = hapd->mld->addr;
++		if (hapd->mld->bss != hapd)
++			params.first_link_bss = false;
++	} else {
++		params.mlo_link_id = -1;
++		params.mld_addr = NULL;
++	}
+ #endif
+ 	params.driver_params = hapd->iconf->driver_params;
+ 	params.use_pae_group_addr = hapd->conf->use_pae_group_addr;
+@@ -876,6 +893,9 @@ int main(int argc, char *argv[])
+ 		}
+ 		if (start_ifaces_in_sync)
+ 			interfaces.iface[i]->need_to_start_in_sync = 1;
++		/* Using index as link id.
++		 */
++		interfaces.iface[i]->mlo_link_id = i;
+ 	}
+ 
+ 	/* Allocate and parse configuration for per-BSS files */
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -57,6 +57,7 @@ int hostapd_if_add(struct hostapd_data *
+ 		   const char *ifname, const u8 *addr, void *bss_ctx,
+ 		   void **drv_priv, char *force_ifname, u8 *if_addr,
+ 		   const char *bridge, int use_existing);
++
+ int hostapd_if_remove(struct hostapd_data *hapd, enum wpa_driver_if_type type,
+ 		      const char *ifname);
+ int hostapd_set_ieee8021x(struct hostapd_data *hapd,
+@@ -235,9 +236,19 @@ static inline int hostapd_drv_set_ap(str
+ {
+ 	if (hapd->driver == NULL || hapd->driver->set_ap == NULL)
+ 		return 0;
++
+ 	return hapd->driver->set_ap(hapd->drv_priv, params);
+ }
+ 
++static inline int hostapd_drv_add_link(struct hostapd_data *hapd,
++                                     struct wpa_driver_link_params *params)
++{
++
++        if (hapd->driver == NULL || hapd->driver->add_link == NULL)
++                return 0;
++        return hapd->driver->add_link(hapd->drv_priv, params);
++}
++
+ static inline int hostapd_drv_set_radius_acl_auth(struct hostapd_data *hapd,
+ 						  const u8 *mac, int accepted,
+ 						  u32 session_timeout)
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1193,6 +1193,7 @@ static int hostapd_setup_bss(struct host
+ 	char force_ifname[IFNAMSIZ];
+ 	u8 if_addr[ETH_ALEN];
+ 	int flush_old_stations = 1;
++	bool use_existing;
+ 
+ 	wpa_printf(MSG_DEBUG, "%s(hapd=%p (%s), first=%d)",
+ 		   __func__, hapd, conf->iface, first);
+@@ -1236,11 +1237,16 @@ static int hostapd_setup_bss(struct host
+ 		}
+ 
+ 		hapd->interface_added = 1;
++
++		use_existing = ((first == -1) || hapd->mld);
++		/* TODO handle skipping of iface setup for non-first link bss
++		 * for MBSS cases
++ 		 */
+ 		if (hostapd_if_add(hapd->iface->bss[0], WPA_IF_AP_BSS,
+ 				   conf->iface, addr, hapd,
+ 				   &hapd->drv_priv, force_ifname, if_addr,
+ 				   conf->bridge[0] ? conf->bridge : NULL,
+-				   first == -1)) {
++				   use_existing)) {
+ 			wpa_printf(MSG_ERROR, "Failed to add BSS (BSSID="
+ 				   MACSTR ")", MAC2STR(hapd->own_addr));
+ 			hapd->interface_added = 0;
+@@ -1249,6 +1255,19 @@ static int hostapd_setup_bss(struct host
+ 
+ 		if (!addr)
+ 			os_memcpy(hapd->own_addr, if_addr, ETH_ALEN);
++
++		if (hapd->mld) {
++			struct wpa_driver_link_params params;
++
++			params.link_id = hapd->iface->mlo_link_id;
++			params.link_addr = conf->bssid;
++			if (hostapd_drv_add_link(hapd, &params))
++				wpa_printf(MSG_DEBUG, "Failed Adding Link to kernel for %d addr "MACSTR,
++					   params.link_id, MAC2STR(params.link_addr));
++			else
++				wpa_printf(MSG_DEBUG, "Added Link to kernel for %d addr "MACSTR,
++					   params.link_id, MAC2STR(params.link_addr));
++		}
+ 	}
+ 
+ 	if (is_zero_ether_addr(conf->bssid))
+@@ -1577,6 +1596,11 @@ static int start_ctrl_iface(struct hosta
+ 
+ 	for (i = 0; i < iface->num_bss; i++) {
+ 		struct hostapd_data *hapd = iface->bss[i];
++
++		/* just create for the first link of MLD alone */
++		if (hapd->mld && hapd->mld->bss != hapd)
++			continue;
++
+ 		if (iface->interfaces->ctrl_iface_init(hapd)) {
+ 			wpa_printf(MSG_ERROR,
+ 				   "Failed to setup control interface for %s",
+@@ -2209,6 +2233,20 @@ static int hostapd_setup_interface_compl
+ 
+ 	hostapd_ubus_add_iface(iface);
+ 	wpa_printf(MSG_DEBUG, "Completing interface initialization");
++
++	/* Add the default link of vif in case of ml bss */
++	if (hapd->mld) {
++		struct wpa_driver_link_params params;
++		params.link_id = hapd->iface->mlo_link_id;
++		params.link_addr = hapd->conf->bssid;
++		if (hostapd_drv_add_link(hapd, &params))
++			wpa_printf(MSG_DEBUG, "Failed Adding Link to kernel for %d addr "MACSTR,
++				   params.link_id, MAC2STR(params.link_addr));
++		else
++			wpa_printf(MSG_DEBUG, "Added Link to kernel for %d addr "MACSTR,
++				   params.link_id, MAC2STR(params.link_addr));
++	}
++
+ 	if (iface->freq) {
+ #ifdef NEED_AP_MLME
+ 		int res;
+@@ -2315,7 +2353,7 @@ static int hostapd_setup_interface_compl
+ 		if (j)
+ 			os_memcpy(hapd->own_addr, prev_addr, ETH_ALEN);
+ 		if (hostapd_setup_bss(hapd, j == 0,
+-				      (hapd->iconf->mbssid? 0 : 1))) {
++				      ((hapd->iconf->mbssid || hapd->mld)? 0 : 1))) {
+ 			for (;;) {
+ 				hapd = iface->bss[j];
+ 				hostapd_bss_deinit_no_free(hapd);
+@@ -2330,6 +2368,7 @@ static int hostapd_setup_interface_compl
+ 			prev_addr = hapd->own_addr;
+ 	}
+ 
++	/* TODO handle MBSS MLO cases */
+ 	if (hapd->iconf->mbssid) {
+ 		for (j = 0; j < iface->num_bss; j++) {
+ 			hapd = iface->bss[j];
+@@ -2534,6 +2573,29 @@ int hostapd_setup_interface_complete(str
+ 		}
+ 	}
+ 
++	/* Once all link bss of the ifaces are setup, now start each beacon and chain these bsses*/
++#ifdef CONFIG_IEEE80211BE
++	for (i = 0; i < interfaces->mld_count; i++) {
++		struct hostapd_data *link_bss1, *link_bss2;
++		struct hostapd_mld *mld;
++
++		mld = interfaces->mld[i];
++		if (mld && mld->bss) {
++			link_bss1 = mld->bss;
++			while (link_bss1) {
++				hostapd_set_beacon(link_bss1);
++
++				link_bss2 = link_bss1;
++				link_bss1 = link_bss2->nbss;
++
++				if (link_bss1)
++					link_bss1->driver->chain_link_bss(link_bss2->drv_priv,
++									 link_bss1->drv_priv);
++			}
++		}
++	}
++#endif
++
+ 	return 0;
+ }
+ 
+@@ -2886,6 +2948,7 @@ struct hostapd_iface * hostapd_init(stru
+ 				}
+ 				mld->num_links++;
+ 				hapd->nbss = NULL;
++				hapd->iface->need_to_start_in_sync = 1;
+ 			}
+ 
+ 			if (!hapd->mld) {
+@@ -2904,6 +2967,7 @@ struct hostapd_iface * hostapd_init(stru
+ 				//TODO: Need to know if this has to be parsed from config.
+ 				hapd->mld->mld_id = interfaces->mld_count + 1;
+ 				hapd->nbss = NULL;
++				hapd->iface->need_to_start_in_sync = 1;
+ 				all_mld = os_realloc_array(interfaces->mld,
+ 							   interfaces->mld_count + 1,
+ 							   sizeof(struct hostapd_mld *));
+--- a/src/ap/hw_features.c
++++ b/src/ap/hw_features.c
+@@ -488,7 +488,7 @@ static void ap_ht40_scan_retry(void *elo
+ 		wpa_printf(MSG_ERROR,
+ 			   "Failed to request a scan of neighboring BSSes ret=%d (%s) - try to scan again (attempt %d)",
+ 			   ret, strerror(-ret), iface->num_ht40_scan_tries);
+-		eloop_register_timeout(1, 0, ap_ht40_scan_retry, iface, NULL);
++		eloop_register_timeout(5, 0, ap_ht40_scan_retry, iface, NULL);
+ 		return;
+ 	}
+ 
+@@ -538,7 +538,7 @@ static int ieee80211n_check_40mhz(struct
+ 			   ret, strerror(-ret));
+ 		iface->num_ht40_scan_tries = 1;
+ 		eloop_cancel_timeout(ap_ht40_scan_retry, iface, NULL);
+-		eloop_register_timeout(1, 0, ap_ht40_scan_retry, iface, NULL);
++		eloop_register_timeout(2, 0, ap_ht40_scan_retry, iface, NULL);
+ 		return 1;
+ 	}
+ 
+--- a/src/drivers/driver_nl80211_scan.c
++++ b/src/drivers/driver_nl80211_scan.c
+@@ -384,6 +384,13 @@ int wpa_driver_nl80211_scan(struct i802_
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	msg = NULL;
+ 	if (ret) {
++		/* For Multi Link BSS, retry scan if any other links are busy scanning */
++		if (ret == -EBUSY && drv->mlo_link_id >= 0) {
++			wpa_printf(MSG_DEBUG, "nl80211: Scan trigger on Multi Link BSS failed"
++				       " due to ongoing scan possibly on other link, retrying..");
++			goto fail;
++		}
++
+ 		wpa_printf(MSG_DEBUG, "nl80211: Scan trigger failed: ret=%d "
+ 			   "(%s)", ret, strerror(-ret));
+ 		if (drv->hostapd && is_ap_interface(drv->nlmode)) {
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2248,6 +2248,7 @@ fail:
+ int ieee802_11_set_beacon(struct hostapd_data *hapd)
+ {
+ 	struct hostapd_iface *iface = hapd->iface;
++	struct hostapd_data *colocated_hapd;
+ 	int ret;
+ 	size_t i, j;
+ 	bool is_6g;
+@@ -2272,8 +2273,15 @@ int ieee802_11_set_beacon(struct hostapd
+ 			continue;
+ 
+ 		for (i = 0; i < colocated->num_bss; i++) {
+-			if (colocated->bss[i] && colocated->bss[i]->started)
+-				__ieee802_11_set_beacon(colocated->bss[i]);
++			colocated_hapd = colocated->bss[i];
++
++			if (!colocated_hapd || !colocated_hapd->started)
++				continue;
++
++			if (colocated_hapd->mld && !colocated_hapd->beacon_set_done)
++				continue;
++			
++			__ieee802_11_set_beacon(colocated_hapd);
+ 		}
+ 	}
+ 

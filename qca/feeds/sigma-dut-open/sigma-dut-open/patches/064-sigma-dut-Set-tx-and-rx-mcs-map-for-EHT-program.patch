@@ -1,0 +1,194 @@
+From 325433640a5cd8bf80a14074534ef9c3dc36cfa8 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <quic_pgowtham@quicinc.com>
+Date: Tue, 10 Jan 2023 10:37:09 -0800
+Subject: [PATCH 3/6] sigma-dut: Set tx and rx mcs map for EHT program
+
+Set tx/rxmcs map for EHT program.
+
+Signed-off-by: Priyadharshini Gowthaman <quic_pgowtham@quicinc.com>
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c        | 109 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ sigma_dut.h |   4 +++
+ 2 files changed, 108 insertions(+), 5 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 55affabe7bfb..e5a84c21b503 100644
+--- a/ap.c
++++ b/ap.c
+@@ -622,6 +622,90 @@ static void set_vht_mcsmap_nss(struct sigma_dut *dut, int nss, int mcs)
+ 	}
+ }
+ 
++static void set_eht_mcsmap_nss(struct sigma_dut *dut, int nss, int mcs)
++{
++	switch (mcs) {
++	case 7:
++		switch (nss) {
++			case 1:
++				dut->ap_ehtmcs_map = 0x1;
++				break;
++			case 2:
++				dut->ap_ehtmcs_map = 0x2;
++				break;
++			case 3:
++				dut->ap_ehtmcs_map = 0x3;
++				break;
++			case 4:
++				dut->ap_ehtmcs_map = 0x4;
++				break;
++			default:
++				dut->ap_ehtmcs_map = 0x4;
++				break;
++		}
++		break;
++	case 9:
++		switch (nss) {
++			case 1:
++				dut->ap_ehtmcs_map = 0x11;
++				break;
++			case 2:
++				dut->ap_ehtmcs_map = 0x22;
++				break;
++			case 3:
++				dut->ap_ehtmcs_map = 0x33;
++				break;
++			case 4:
++				dut->ap_ehtmcs_map = 0x44;
++				break;
++			default:
++				dut->ap_ehtmcs_map = 0x44;
++				break;
++		}
++		break;
++	case 11:
++		switch (nss) {
++			case 1:
++				dut->ap_ehtmcs_map = 0x111;
++				break;
++			case 2:
++				dut->ap_ehtmcs_map = 0x222;
++				break;
++			case 3:
++				dut->ap_ehtmcs_map = 0x333;
++				break;
++			case 4:
++				dut->ap_ehtmcs_map = 0x444;
++				break;
++			default:
++				dut->ap_ehtmcs_map = 0x444;
++				break;
++		}
++		break;
++	case 13:
++		switch (nss) {
++			case 1:
++				dut->ap_ehtmcs_map = 0x1111;
++				break;
++			case 2:
++				dut->ap_ehtmcs_map = 0x2222;
++				break;
++			case 3:
++				dut->ap_ehtmcs_map = 0x3333;
++				break;
++			case 4:
++				dut->ap_ehtmcs_map = 0x4444;
++				break;
++			default:
++				dut->ap_ehtmcs_map = 0x4444;
++				break;
++		}
++		break;
++	default:
++		dut->ap_ehtmcs_map = 0x4444;
++		break;
++	}
++}
+ 
+ /* Get 2*nss bitmask */
+ /* We are trying to pack 2-bit MCS values per NSS in a 16-bit wide field.
+@@ -1248,9 +1332,10 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 	val = get_param(cmd, "nss_mcs_cap");
+ 	if (val) {
+ 		int nss, mcs;
+-		char token[20];
++		char token[60];
+ 		char *result = NULL;
+ 		char *saveptr;
++		char *saveptr1;
+ 
+ 		if (strlen(val) >= sizeof(token))
+ 			return INVALID_SEND_STATUS;
+@@ -1268,20 +1353,25 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 				  "errorCode,VHTMCS not specified");
+ 			return STATUS_SENT;
+ 		}
+-		result = strtok_r(result, "-", &saveptr);
+-		result = strtok_r(NULL, "-", &saveptr);
++		result = strtok_r(result, "-", &saveptr1);
++		result = strtok_r(NULL, "-", &saveptr1);
+ 		if (!result) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+ 				  "errorCode,VHT MCS not specified");
+ 			return STATUS_SENT;
+ 		}
+ 		mcs = atoi(result);
+-		if (dut->program == PROGRAM_HE) {
++		if (dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+ 			uint16_t mcsnssmap = 0;
+ 
++			dut->he_ul_mcs = mcs;
++			dut->nss_mcs_set = 1;
++			/* To set mcsnssmap for HE program */
+ 			get_he_mcs_nssmap((uint8_t *) &mcsnssmap, nss, mcs);
+ 			dut->he_mcsnssmap = (mcsnssmap << 16) | mcsnssmap;
+-			dut->he_ul_mcs = mcs;
++			/* To set mcsnssmap for EHT program */
++			if (dut->ap_mode == AP_11be)
++				set_eht_mcsmap_nss(dut, nss, mcs, width);
+ 		} else {
+ 			set_vht_mcsmap_nss(dut, nss, mcs);
+ 		}
+@@ -2168,6 +2258,10 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "ForceEHTTXMCS");
++	if (val)
++		dut->eht_txmcs = atoi(val);
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -10980,8 +11074,13 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 	dut->ap_fixed_rate = 0;
+ 	dut->he_mmss = 0;
+ 	dut->he_set_sta_1x1 = VALUE_DISABLED;
++	dut->nss_mcs_set = 0;
+ 	dut->he_srctrl_allow = -1;
+ 	dut->ap_mbssid_mu = VALUE_NOT_SET;
++
++	dut->eht_txmcs = 0;
++	dut->ap_ehtmcs_map = 0;
++
+ 	if (dut->device_type == AP_testbed) {
+ 		dut->ap_he_dlofdma = VALUE_DISABLED;
+ 		dut->ap_he_frag = VALUE_DISABLED;
+diff --git a/sigma_dut.h b/sigma_dut.h
+index e2f9fca6a000..31c585d1ce43 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -808,6 +808,10 @@ struct sigma_dut {
+ 	int he_ul_mcs;
+ 	int he_mmss;
+ 	int he_srctrl_allow;
++	int nss_mcs_set;
++
++	int eht_txmcs;
++	unsigned int ap_ehtmcs_map;
+ 
+ 	int ap_ocvc;
+ 
+-- 
+2.7.4
+

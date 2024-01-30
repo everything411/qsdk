@@ -1,0 +1,53 @@
+From 3e867746a252f77a977f1e73b9ab6bbf18fee56d Mon Sep 17 00:00:00 2001
+From: Karthik M <quic_karm@quicinc.com>
+Date: Wed, 5 Jul 2023 18:06:20 +0530
+Subject: [PATCH] wifi: ath12k: Remove Transition Timeout value 11 map per D3.0
+
+For compliance with IEEE802.11be D3.0, remove the mapping for EML
+Capability Transition Timeout subfield value of 11 (indicating 128
+TUs).
+
+Signed-off-by: Karthik M <quic_karm@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/wmi.c | 3 +--
+ drivers/net/wireless/ath/ath12k/wmi.h | 3 +--
+ 2 files changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/wmi.c b/drivers/net/wireless/ath/ath12k/wmi.c
+index 908c1ee..60359ce 100644
+--- a/drivers/net/wireless/ath/ath12k/wmi.c
++++ b/drivers/net/wireless/ath/ath12k/wmi.c
+@@ -174,8 +174,7 @@ static const u32 eml_trans_timeout[EMLCAP_TIMEOUT_MAX] = {
+ 					EMLCAP_TRANSTIMEOUT_7,
+ 					EMLCAP_TRANSTIMEOUT_8,
+ 					EMLCAP_TRANSTIMEOUT_9,
+-					EMLCAP_TRANSTIMEOUT_10,
+-					EMLCAP_TRANSTIMEOUT_11};
++					EMLCAP_TRANSTIMEOUT_10};
+ 
+ static __le32 ath12k_wmi_tlv_hdr(u32 cmd, u32 len)
+ {
+diff --git a/drivers/net/wireless/ath/ath12k/wmi.h b/drivers/net/wireless/ath/ath12k/wmi.h
+index 588ad82..4f5f45e 100644
+--- a/drivers/net/wireless/ath/ath12k/wmi.h
++++ b/drivers/net/wireless/ath/ath12k/wmi.h
+@@ -4223,7 +4223,7 @@ struct wmi_rate_set_arg {
+ 
+ #define EMLSR_DELAY_MAX 5
+ #define EMLSR_TRANS_DELAY_MAX 6
+-#define EMLCAP_TIMEOUT_MAX 12
++#define EMLCAP_TIMEOUT_MAX 11
+ #define IEEE80211_TU_TO_USEC(x)        ((x) << 10)  /* (x)X1024 */
+ #define EMLCAP_TRANSTIMEOUT_0  0
+ #define EMLCAP_TRANSTIMEOUT_1  (1U << 7)
+@@ -4236,7 +4236,6 @@ struct wmi_rate_set_arg {
+ #define EMLCAP_TRANSTIMEOUT_8  IEEE80211_TU_TO_USEC((1U << 4))
+ #define EMLCAP_TRANSTIMEOUT_9  IEEE80211_TU_TO_USEC((1U << 5))
+ #define EMLCAP_TRANSTIMEOUT_10 IEEE80211_TU_TO_USEC((1U << 6))
+-#define EMLCAP_TRANSTIMEOUT_11 IEEE80211_TU_TO_USEC((1U << 7))
+ 
+ struct peer_assoc_mlo_params {
+ 	bool enabled;
+-- 
+2.17.1
+

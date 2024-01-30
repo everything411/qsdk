@@ -1,0 +1,167 @@
+From 96b57fdd283c3856f390e971d3acbe3f88107c0d Mon Sep 17 00:00:00 2001
+From: Sowmiya Sree Elavalagan <quic_ssreeela@quicinc.com>
+Date: Tue, 15 Mar 2022 13:49:02 -0700
+Subject: [PATCH] mbssid: support extended rates in non-tx profiles
+
+Add extended supported rates for non-transmitting interface if
+applicable. If the transmitting interface supports it and
+the non-transmitting interface does not then add it in the
+non-inheritance element.
+
+Signed-off-by: Sowmiya Sree Elavalagan <quic_ssreeela@quicinc.com>
+---
+ src/ap/ap_config.h  |  1 +
+ src/ap/ieee802_11.c | 11 +++++++++++
+ 2 files changed, 12 insertions(+)
+
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -160,12 +160,14 @@ u8 * hostapd_eid_supp_rates(struct hosta
+ }
+ 
+ 
+-u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid)
++u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid, size_t *len)
+ {
+ 	u8 *pos = eid;
+ 	int i, num, count;
+ 	int h2e_required;
+ 
++	if (len)
++		*len = 0;
+ 	if (hapd->iface->current_rates == NULL)
+ 		return eid;
+ 
+@@ -183,6 +185,10 @@ u8 * hostapd_eid_ext_supp_rates(struct h
+ 	if (num <= 8)
+ 		return eid;
+ 	num -= 8;
++	if (len)
++		*len = num + 2; /* Add 2 for EID and length fields as below */
++	if (!eid)
++		return eid;
+ 
+ 	*pos++ = WLAN_EID_EXT_SUPP_RATES;
+ 	*pos++ = num;
+@@ -5199,7 +5205,7 @@ static u16 send_assoc_resp(struct hostap
+ 	/* Supported rates */
+ 	p = hostapd_eid_supp_rates(hapd, reply->u.assoc_resp.variable);
+ 	/* Extended supported rates */
+-	p = hostapd_eid_ext_supp_rates(hapd, p);
++	p = hostapd_eid_ext_supp_rates(hapd, p, NULL);
+ 
+ 	/* Radio measurement capabilities */
+ 	p = hostapd_eid_rm_enabled_capab(hapd, p, buf + buflen - p);
+@@ -7838,12 +7844,13 @@ static size_t hostapd_eid_mbssid_elem_le
+ 					  size_t known_bss_len)
+ {
+ 	struct hostapd_data *tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+-	size_t len = 3, i;
++	size_t len = 3, i, tx_xrate_len;
+ 
++	hostapd_eid_ext_supp_rates(tx_bss, NULL, &tx_xrate_len);
+ 	for (i = *bss_index; i < hapd->iface->num_bss; i++) {
+ 		struct hostapd_data *bss = hapd->iface->bss[i];
+ 		const u8 *auth, *rsn = NULL, *rsnx = NULL;
+-		size_t nontx_profile_len, auth_len;
++		size_t nontx_profile_len, auth_len, xrate_len;
+ 		u8 ie_count = 0;
+ 
+ 		if (known_bss && (known_bss_len > (i / 8))) {
+@@ -7887,6 +7894,11 @@ static size_t hostapd_eid_mbssid_elem_le
+ 			ie_count++;
+ 		if (!rsnx && hostapd_wpa_ie(tx_bss, WLAN_EID_RSNX))
+ 			ie_count++;
++		hostapd_eid_ext_supp_rates(bss, NULL, &xrate_len);
++		if (xrate_len)
++			nontx_profile_len += xrate_len;
++		else if (tx_xrate_len)
++			ie_count++;
+ 		if (ie_count)
+ 			nontx_profile_len += (4 + ie_count);
+ 
+@@ -7953,9 +7965,10 @@ static u8 * hostapd_eid_mbssid_elem(stru
+ 				    const u8 *known_bss, size_t known_bss_len)
+ {
+ 	struct hostapd_data *tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+-	size_t i;
++	size_t i, tx_xrate_len;
+ 	u8 *eid_len_offset, *max_bssid_indicator_offset;
+ 
++	hostapd_eid_ext_supp_rates(tx_bss, NULL, &tx_xrate_len);
+ 	*eid++ = WLAN_EID_MULTIPLE_BSSID;
+ 	eid_len_offset = eid++;
+ 	max_bssid_indicator_offset = eid++;
+@@ -7965,8 +7978,8 @@ static u8 * hostapd_eid_mbssid_elem(stru
+ 		struct hostapd_bss_config *conf;
+ 		u8 *eid_len_pos, *nontx_bss_start = eid;
+ 		const u8 *auth, *rsn = NULL, *rsnx = NULL;
+-		u8 ie_count = 0, non_inherit_ie[2];
+-		size_t auth_len = 0;
++		u8 ie_count = 0, non_inherit_ie[3];
++		size_t auth_len = 0, xrate_len = 0;
+ 		u16 capab_info;
+ 
+ 		if (known_bss && (known_bss_len > (i / 8))) {
+@@ -8030,6 +8043,7 @@ static u8 * hostapd_eid_mbssid_elem(stru
+ 				eid += (2 + rsnx[1]);
+ 			}
+ 		}
++		eid = hostapd_eid_ext_supp_rates(bss, eid, &xrate_len);
+ 		if (!rsn && hostapd_wpa_ie(tx_bss, WLAN_EID_RSN)) {
+ 			non_inherit_ie[ie_count] = WLAN_EID_RSN;
+ 			ie_count++;
+@@ -8038,6 +8052,11 @@ static u8 * hostapd_eid_mbssid_elem(stru
+ 			non_inherit_ie[ie_count] = WLAN_EID_RSNX;
+ 			ie_count++;
+ 		}
++		if (tx_xrate_len &&
++		    !xrate_len) {
++			non_inherit_ie[ie_count] = WLAN_EID_EXT_SUPP_RATES;
++			ie_count++;
++		}
+ 		if (ie_count) {
+ 			*eid++ = WLAN_EID_EXTENSION;
+ 			*eid++ = 2 + ie_count;
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -717,7 +717,7 @@ static u8 * hostapd_gen_probe_resp(struc
+ 	pos = hostapd_eid_erp_info(hapd, pos);
+ 
+ 	/* Extended supported rates */
+-	pos = hostapd_eid_ext_supp_rates(hapd, pos);
++	pos = hostapd_eid_ext_supp_rates(hapd, pos, NULL);
+ 
+ 	pos = hostapd_get_rsne(hapd, pos, epos - pos);
+ 	pos = hostapd_eid_bss_load(hapd, pos, epos - pos);
+@@ -1810,7 +1810,7 @@ int ieee802_11_build_ap_params(struct ho
+ 	tailpos = hostapd_eid_erp_info(hapd, tailpos);
+ 
+ 	/* Extended supported rates */
+-	tailpos = hostapd_eid_ext_supp_rates(hapd, tailpos);
++	tailpos = hostapd_eid_ext_supp_rates(hapd, tailpos, NULL);
+ 
+ 	tailpos = hostapd_get_rsne(hapd, tailpos, tailend - tailpos);
+ 	tailpos = hostapd_eid_bss_load(hapd, tailpos, tailend - tailpos);
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -52,7 +52,7 @@ void ap_ht2040_timeout(void *eloop_data,
+ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid);
+ u8 * hostapd_eid_qos_map_set(struct hostapd_data *hapd, u8 *eid);
+ u8 * hostapd_eid_supp_rates(struct hostapd_data *hapd, u8 *eid);
+-u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid);
++u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid, size_t *len);
+ u8 * hostapd_eid_rm_enabled_capab(struct hostapd_data *hapd, u8 *eid,
+ 				  size_t len);
+ u8 * hostapd_eid_ht_capabilities(struct hostapd_data *hapd, u8 *eid);
+--- a/wpa_supplicant/mesh_mpm.c
++++ b/wpa_supplicant/mesh_mpm.c
+@@ -285,7 +285,7 @@ static void mesh_mpm_send_plink_action(s
+ 
+ 		/* IE: supp + ext. supp rates */
+ 		pos = hostapd_eid_supp_rates(bss, supp_rates);
+-		pos = hostapd_eid_ext_supp_rates(bss, pos);
++		pos = hostapd_eid_ext_supp_rates(bss, pos, NULL);
+ 		wpabuf_put_data(buf, supp_rates, pos - supp_rates);
+ 
+ 		/* IE: RSN IE */

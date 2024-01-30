@@ -1,0 +1,215 @@
+From be2bf46b588c700a6038f1c4f8f9e9d40b40b0f1 Mon Sep 17 00:00:00 2001
+From: Yuvarani V <quic_yuvarani@quicinc.com>
+Date: Sat, 12 Aug 2023 00:11:04 +0530
+Subject: [PATCH] hostapd: Add support for Per-STA Profile Subelement
+ Defragmentation
+
+Add support for Per-STA Profile Subelement Defragmentation
+if the Per-STA Profile Subelement length exceeds 255.
+
+Signed-off-by: Yuvarani V <quic_yuvarani@quicinc.com>
+---
+ src/ap/beacon.c                |  2 +-
+ src/ap/ieee802_11.c            | 37 +++++++++++++++++++++++++----
+ src/ap/ieee802_11.h            |  1 +
+ src/common/ieee802_11_common.c | 43 ++++++++++++++++++++++++++++++++++
+ src/common/ieee802_11_common.h |  2 ++
+ 5 files changed, 79 insertions(+), 6 deletions(-)
+
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1717,7 +1717,7 @@ void handle_probe_req(struct hostapd_dat
+ 				      &ml_data, true);
+ 
+ 	if (ml_data.present)
+-		wpabuf_free(ml_data.buf);
++		ml_data_link_info_buf_free(&ml_data);
+ 
+ 	if (resp == NULL)
+ 		return;
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6743,7 +6743,7 @@ static void handle_assoc(struct hostapd_
+ 			   MACSTR, MAC2STR(sta->addr));
+ 		os_free(tmp);
+ 		if (ml_data.present)
+-			wpabuf_free(ml_data.buf);
++			ml_data_link_info_buf_free(&ml_data);
+ 		return;
+ 	}
+ 	if (sta) {
+@@ -6766,7 +6766,7 @@ static void handle_assoc(struct hostapd_
+ 		eloop_register_timeout(0, hapd->conf->fils_hlp_wait_time * 1024,
+ 				       fils_hlp_timeout, hapd, sta);
+ 		if (ml_data.present)
+-			wpabuf_free(ml_data.buf);
++			ml_data_link_info_buf_free(&ml_data);
+ 		return;
+ 	}
+ #endif /* CONFIG_FILS */
+@@ -6776,8 +6776,7 @@ static void handle_assoc(struct hostapd_
+ 					    pos, left, rssi, omit_rsnxe, &ml_data);
+ 
+ 	if (ml_data.present)
+-		wpabuf_free(ml_data.buf);
+-
++		ml_data_link_info_buf_free(&ml_data);
+ 	os_free(tmp);
+ 
+ 	if (hostapd_ubus_handle_event(hapd, &req)) {
+@@ -9593,8 +9592,10 @@ static void hostapd_parse_basic_mle(stru
+ {
+ 	u8 *mle_pos = (u8 *)mle;
+ 	u8 link_id;
+-	u8 *sub_elem, sub_elem_len;
++	u8 *sub_elem;
++	size_t sub_elem_len;
+ 	struct ml_sta_control sta_control;
++	struct wpabuf *link_info_buf = NULL;
+ 
+ 	if (!len)
+ 		return;
+@@ -9635,10 +9636,20 @@ static void hostapd_parse_basic_mle(stru
+ 		sub_elem_len = *mle_pos++;
+ 		sub_elem = mle_pos;
+ 
++		link_info_buf = ieee802_11_defrag_subele_data(sub_elem, sub_elem_len);
++		if (!link_info_buf) {
++			wpa_printf(MSG_ERROR, "Link Info buf allocation failed on defragmentation");
++			return;
++		}
++
++		sub_elem = link_info_buf->buf;
++		sub_elem_len = link_info_buf->used;
++
+ 		len -= 2;
+ 
+ 		if (len < sub_elem_len) {
+ 			wpa_printf(MSG_ERROR, "Not enough buf to parse sta profile");
++			wpabuf_free(link_info_buf);
+ 			break;
+ 		}
+ 
+@@ -9650,6 +9661,7 @@ static void hostapd_parse_basic_mle(stru
+ 			wpa_printf(MSG_ERROR, "Unexpected info present in (Re)Assoc Req MLE Control");
+ 			mle_pos += sub_elem_len;
+ 			len -= sub_elem_len;
++			wpabuf_free(link_info_buf);
+ 			continue;
+ 		}
+ 
+@@ -9657,6 +9669,7 @@ static void hostapd_parse_basic_mle(stru
+ 			wpa_printf(MSG_ERROR, "Need STA complete profile in Re/assoc req");
+ 			mle_pos += sub_elem_len;
+ 			len -= sub_elem_len;
++			wpabuf_free(link_info_buf);
+ 			continue;
+ 		}
+ 
+@@ -9682,7 +9695,8 @@ static void hostapd_parse_basic_mle(stru
+ 					sub_elem += 1;
+ 			}
+ 			ml_data->u.basic.link_info[link_id].sta_profile = sub_elem;
+-			ml_data->u.basic.link_info[link_id].sta_profile_len = sub_elem_len - (sub_elem - mle_pos);
++			ml_data->u.basic.link_info[link_id].buf = link_info_buf;
++			ml_data->u.basic.link_info[link_id].sta_profile_len = sub_elem_len - (sub_elem - link_info_buf->buf);
+ 			ml_data->num_links++;
+ 		}
+ 
+@@ -10225,3 +10239,16 @@ void ru_punct_update_bw(u16 bitmap, u8 p
+ }
+ 
+ #endif /* CONFIG_NATIVE_WINDOWS */
++
++void ml_data_link_info_buf_free(struct multi_link_data *ml_data) {
++	int link_id;
++
++	if (ml_data == NULL)
++		return;
++
++	wpabuf_free(ml_data->buf);
++	for (link_id = 0; link_id < MAX_SUPPORTED_LINKS; link_id++) {
++		if (ml_data->u.basic.link_bmap & BIT(link_id))
++			wpabuf_free(ml_data->u.basic.link_info[link_id].buf);
++	}
++}
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -38,6 +38,7 @@ void hostapd_2040_coex_action(struct hos
+ 
+ int hostapd_config_read_maclist(const char *fname,
+ 			       struct mac_acl_entry **acl, int *num);
++void ml_data_link_info_buf_free(struct multi_link_data *ml_data);
+ #ifdef NEED_AP_MLME
+ int ieee802_11_get_mib(struct hostapd_data *hapd, char *buf, size_t buflen);
+ int ieee802_11_get_mib_sta(struct hostapd_data *hapd, struct sta_info *sta,
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -2915,6 +2915,49 @@ enum oper_chan_width op_class_to_ch_widt
+ }
+ 
+ 
++struct wpabuf * ieee802_11_defrag_subele_data(u8 *data, size_t len)
++{
++	struct wpabuf *buf;
++	int tmp_len = 0;
++	u8 *frag_data = data;
++	int frag_len =0;
++
++	if (!data || !len)
++		return NULL;
++
++	buf = wpabuf_alloc_copy(data, len);
++	if (!buf)
++		return NULL;
++
++	while (tmp_len < len) {
++		int ret;
++		if (data[tmp_len] == WLAN_SUBEID_FRAGMENT) {
++			ret = wpabuf_resize(&buf, (*(data + tmp_len + 1) + tmp_len));
++
++			if (ret < 0) {
++				wpabuf_free(buf);
++				return NULL;
++			}
++
++			frag_data = data + (tmp_len + 2);
++			frag_len = *(data + tmp_len + 1);
++			tmp_len += *(data + tmp_len + 1);
++			wpabuf_put_data(buf, frag_data, frag_len);
++
++		} else {
++			frag_len = len;
++			tmp_len = len;
++		}
++
++		if (data[frag_len] == WLAN_SUBEID_FRAGMENT)
++			len += *(data + frag_len + 1);
++
++	}
++
++	return buf;
++}
++
++
+ struct wpabuf * ieee802_11_defrag_data(struct ieee802_11_elems *elems,
+ 				       u8 eid, u8 eid_ext,
+ 				       const u8 *data, u8 len)
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -90,6 +90,7 @@ struct multi_link_basic_info {
+ 		u8 sta_profile_len;
+ 		u8 *resp_sta_profile;
+ 		u8 resp_sta_profile_len;
++		struct wpabuf *buf;
+ 	} link_info[MAX_SUPPORTED_LINKS];
+ };
+ 
+@@ -442,6 +443,7 @@ struct wpabuf * ieee802_11_defrag_data(s
+ 				       const u8 *data, u8 len);
+ struct wpabuf * ieee802_11_defrag(struct ieee802_11_elems *elems,
+ 				  u8 eid, u8 eid_ext);
++struct wpabuf * ieee802_11_defrag_subele_data(u8 *data, size_t len);
+ const u8 * get_ml_ie(const u8 *ies, size_t len, u8 type);
+ const u8 * get_basic_mle_mld_addr(const u8 *buf, size_t len);
+ 

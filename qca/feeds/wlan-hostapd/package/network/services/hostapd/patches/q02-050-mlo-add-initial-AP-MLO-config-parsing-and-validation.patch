@@ -1,0 +1,623 @@
+From b98c294b63dd99491cb9925b77825e64208e66c8 Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <quic_hprem@quicinc.com>
+Date: Wed, 24 Aug 2022 21:50:18 +0530
+Subject: [PATCH] mlo: add initial AP MLO config parsing and validation support
+
+ mlo: add initial AP MLO config parsing and validation support
+
+ When hostapd interface is configured with ieee80211_be and the bss is
+ configured with 11be mode, then it is considered as a MLO enabled
+ interface and advertise AP interface as MLD.
+
+ hostapd_data extended to be used as per MLO link BSS and
+ each link BSS under one MLD to share the same SSID
+ and bridge config.
+
+ Each config file to hold link specific configs which
+ can map to single or multiple MLDs.
+
+ "interface" and "bss" parameters in the config file to point
+ the MLD interface name of the corresponding link BSS.
+
+ Change-Id: I315652f6b58a20d7ead6d58d8fdb1677898f82d5
+ Signed-off-by: Sathishkumar Muruganandam <quic_murugana@quicinc.com>
+ Signed-off-by: Harshitha Prem <quic_hprem@quicinc.com>
+---
+ hostapd/Makefile      |  4 ++
+ hostapd/config_file.c |  4 ++
+ hostapd/hostapd.conf  | 10 +++++
+ hostapd/main.c        | 20 ++++++++++
+ src/ap/ap_config.c    | 15 ++++++++
+ src/ap/ap_config.h    |  4 ++
+ src/ap/hostapd.c      | 87 ++++++++++++++++++++++++++++++++++++++++++-
+ src/ap/hostapd.h      | 32 ++++++++++++++++
+ src/drivers/driver.h  |  3 ++
+ 9 files changed, 178 insertions(+), 1 deletion(-)
+
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -3155,6 +3155,9 @@ own_ip_addr=127.0.0.1
+ # as the defaults for the following BSSes. However, it is recommended that all
+ # BSSes include explicit configuration of all relevant configuration items.
+ #
++# When 802.11be is enabled, 'bss' must point to AP interface name of MLD and 'bssid'
++# points to corresponding link MAC address
++#
+ #bss=wlan0_0
+ #ssid=test2
+ # most of the above items can be used here (apart from radio interface specific
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -203,6 +203,9 @@ static int hostapd_driver_init(struct ho
+ 	}
+ 	params.bssid = b;
+ 	params.ifname = hapd->conf->iface;
++#ifdef CONFIG_IEEE80211BE
++	params.mlo_link_id = 0; // FIXME: add link id generation
++#endif
+ 	params.driver_params = hapd->iconf->driver_params;
+ 	params.use_pae_group_addr = hapd->conf->use_pae_group_addr;
+ 
+@@ -625,6 +628,27 @@ static int gen_uuid(const char *txt_addr
+ #define HOSTAPD_CLEANUP_INTERVAL 10
+ #endif /* HOSTAPD_CLEANUP_INTERVAL */
+ 
++#ifdef CONFIG_IEEE80211BE
++static void hostapd_global_cleanup_mld(struct hapd_interfaces *interfaces)
++{
++	int i;
++
++	if (!interfaces || !interfaces->mld)
++		return;
++
++	for (i = 0; i <  interfaces->mld_count; i++) {
++		if (!interfaces->mld[i])
++                       continue;
++
++		os_free(interfaces->mld[i]);
++		interfaces->mld[i] = NULL;
++	}
++
++	os_free(interfaces->mld);
++	interfaces->mld_count = 0;
++}
++#endif
++
+ static int hostapd_periodic_call(struct hostapd_iface *iface, void *ctx)
+ {
+ 	hostapd_periodic_iface(iface);
+@@ -662,6 +686,9 @@ int main(int argc, char *argv[])
+ #ifdef CONFIG_DPP
+ 	struct dpp_global_config dpp_conf;
+ #endif /* CONFIG_DPP */
++#ifdef CONFIG_IEEE80211BE
++	struct hostapd_mld *mld;
++#endif /* CONFIG_IEEE80211BE */
+ 
+ 	if (os_program_init())
+ 		return -1;
+@@ -886,6 +913,23 @@ int main(int argc, char *argv[])
+ 		}
+ 	}
+ 
++#ifdef CONFIG_IEEE80211BE
++	for (i = 0; i < interfaces.mld_count; i++) {
++		struct hostapd_data *link_bss;
++
++		mld = interfaces.mld[i];
++
++		if (!mld || !mld->bss)
++			continue;
++
++		link_bss = mld->bss;
++		if (link_bss && link_bss->nbss != NULL) {
++			if (hostapd_mld_validate_link_conf(mld))
++				goto out;
++		}
++	}
++#endif
++
+ 	/*
+ 	 * Enable configured interfaces. Depending on channel configuration,
+ 	 * this may complete full initialization before returning or use a
+@@ -926,6 +970,10 @@ int main(int argc, char *argv[])
+ 	interfaces.iface = NULL;
+ 	interfaces.count = 0;
+ 
++#ifdef CONFIG_IEEE80211BE
++	hostapd_global_cleanup_mld(&interfaces);
++#endif
++
+ #ifdef CONFIG_DPP
+ 	dpp_global_deinit(interfaces.dpp);
+ #endif /* CONFIG_DPP */
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -1287,6 +1287,17 @@ static int hostapd_config_check_bss(stru
+ 					   conf->bss[i]->iface, bss->iface);
+ 				return -1;
+ 			}
++#ifdef CONFIG_IEEE80211BE
++			if (conf->bss[i] != bss && (conf->ieee80211be && !bss->disable_11be)) {
++				if (os_strncmp(conf->bss[i]->iface, bss->iface,
++				       IFNAMSIZ) == 0) {
++					wpa_printf(MSG_ERROR, "Duplicate MLD %s on link"
++					   	" BSSID " MACSTR,
++						   bss->iface, MAC2STR(bss->bssid));
++					return -1;
++				}
++			}
++#endif
+ 		}
+ 	}
+ 
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -285,6 +285,9 @@ struct hostapd_bss_config {
+ 	char vlan_bridge[IFNAMSIZ + 1];
+ 	char wds_bridge[IFNAMSIZ + 1];
+ 
++#ifdef CONFIG_IEEE80211BE
++	unsigned int mlo_link_id;
++#endif
+ 	enum hostapd_logger_level logger_syslog_level, logger_stdout_level;
+ 
+ 	unsigned int logger_syslog; /* module bitfield */
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -71,6 +71,9 @@ static void hostapd_switch_color_timeout
+ 						 void *user_ctx);
+ #endif /* CONFIG_IEEE80211AX */
+ 
++#ifdef CONFIG_IEEE80211BE
++void hostapd_mld_unlink_bss(struct hostapd_data *tbss);
++#endif
+ 
+ int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
+ 			       int (*cb)(struct hostapd_iface *iface,
+@@ -2048,6 +2051,133 @@ static void hostapd_owe_update_trans(str
+ #endif /* CONFIG_OWE */
+ }
+ 
++#ifdef CONFIG_IEEE80211BE
++bool hostapd_mld_is_same_ssid(struct hostapd_ssid *ssid1,
++			      struct hostapd_ssid *ssid2)
++{
++	if (!ssid1 || !ssid2)
++		return false;
++
++	if (ssid1->ssid_len != ssid2->ssid_len ||
++	    (os_memcmp(ssid1->ssid, ssid2->ssid, ssid1->ssid_len) != 0))
++		 return false;
++	return true;
++}
++
++bool hostapd_mld_is_same_rsne(struct hostapd_bss_config *conf1,
++			      struct hostapd_bss_config *conf2)
++{
++	if ((conf1->wpa != conf2->wpa) ||
++	    (conf1->wmm_enabled != conf2->wmm_enabled) ||
++	    (conf1->ieee80211w != conf2->ieee80211w) ||
++#ifdef CONFIG_OCV
++	    (conf1->ocv != conf2->ocv) ||
++#endif
++	    (conf1->wpa_group != conf2->wpa_group) ||
++	    (conf1->wpa_pairwise != conf2->wpa_pairwise) ||
++	    (conf1->group_cipher != conf2->group_cipher) ||
++	    (conf1->rsn_pairwise != conf2->rsn_pairwise) ||
++	    (conf1->wpa_key_mgmt != conf2->wpa_key_mgmt) ||
++	    (conf1->group_mgmt_cipher != conf2->group_mgmt_cipher) ||
++	    (conf1->rsn_preauth != conf2->rsn_preauth) ||
++	    (conf1->extended_key_id != conf2->extended_key_id))
++		return false;
++	return true;
++}
++
++bool hostapd_mld_is_same_rsnxe(struct hostapd_bss_config *conf1,
++			       struct hostapd_bss_config *conf2)
++{
++	if (wpa_key_mgmt_sae(conf1->wpa_key_mgmt)) {
++		if ((conf1->sae_pwe != conf2->sae_pwe)
++#ifdef CONFIG_SAE_PK
++		     || (conf1->sae_pk != conf2->sae_pk)
++#endif
++		)
++			return false;
++	}
++	return true;
++}
++#ifdef CONFIG_IEEE80211R_AP
++bool hostapd_mld_is_same_mde(struct hostapd_bss_config *conf1,
++			     struct hostapd_bss_config *conf2)
++{
++	if (wpa_key_mgmt_ft(conf1->wpa_key_mgmt)) {
++		if ((conf1->ft_over_ds != conf2->ft_over_ds) ||
++		    (os_memcmp(conf1->mobility_domain, conf2->mobility_domain,
++		     MOBILITY_DOMAIN_ID_LEN) != 0 ))
++			return false;
++	}
++	return true;
++}
++#endif
++int hostapd_mld_validate_link_conf(struct hostapd_mld *mld)
++{
++	struct hostapd_data *link_bss = mld->bss;
++	struct hostapd_data *nbss = NULL;
++	struct hostapd_bss_config *conf = NULL;
++
++	while (link_bss != NULL) {
++		nbss = link_bss->nbss;
++		conf = link_bss->conf;
++
++		/* TODO: to extend the link config for remaining parameters */
++		while (nbss != NULL) {
++
++			if (!hostapd_mld_is_same_ssid(&conf->ssid, &nbss->conf->ssid)) {
++				wpa_printf(MSG_ERROR, "%s: ssid mismatch",
++					   mld->name);
++				return -1;
++			}
++
++			if (!hostapd_mld_is_same_rsne(conf, nbss->conf)) {
++				wpa_printf(MSG_ERROR, "%s: rsne mismatch",
++					   mld->name);
++				return -1;
++			}
++
++			if (!hostapd_mld_is_same_rsnxe(conf, nbss->conf)) {
++				wpa_printf(MSG_ERROR, "%s: rsnxe mismatch",
++					   mld->name);
++				return -1;
++			}
++
++#ifdef CONFIG_IEEE80211R_AP
++			if (!hostapd_mld_is_same_mde(conf, nbss->conf)) {
++				wpa_printf(MSG_ERROR, "%s: MDE mismatch",
++					   mld->name);
++				return -1;
++			}
++#endif
++			if (conf->wnm_sleep_mode != nbss->conf->wnm_sleep_mode) {
++				wpa_printf(MSG_ERROR, "%s: mismatch in WNM sleep mode",
++					   mld->name);
++				return -1;
++			}
++
++			if (conf->ap_max_inactivity != nbss->conf->ap_max_inactivity) {
++				wpa_printf(MSG_ERROR, "%s: mismatch in max inactivity timeout",
++					   mld->name);
++				return -1;
++			}
++
++			if (os_strncmp(conf->bridge, nbss->conf->bridge, IFNAMSIZ) != 0) {
++				wpa_printf(MSG_ERROR, "%s: mismatch in bridge config", mld->name);
++				return -1;
++			}
++
++			nbss = nbss->nbss;
++		}
++		link_bss = link_bss->nbss;
++	}
++
++	wpa_printf(MSG_DEBUG,
++			"%s: configurations for all bss in mld [%s] is valid\n",
++			 __func__, mld->name);
++
++	return 0;
++}
++#endif
+ 
+ static void hostapd_interface_setup_failure_handler(void *eloop_ctx,
+ 						    void *timeout_ctx)
+@@ -2487,6 +2617,10 @@ static void hostapd_bss_deinit(struct ho
+ 		return;
+ 	wpa_printf(MSG_DEBUG, "%s: deinit bss %s", __func__,
+ 		   hapd->conf ? hapd->conf->iface : "N/A");
++#ifdef CONFIG_IEEE80211BE
++	if (hapd->mld)
++		hostapd_mld_unlink_bss(hapd);
++#endif
+ 	hostapd_bss_deinit_no_free(hapd);
+ 	wpa_msg(hapd->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
+ #ifdef CONFIG_SQLITE
+@@ -2531,7 +2665,126 @@ void hostapd_interface_deinit(struct hos
+ #endif /* NEED_AP_MLME */
+ }
+ 
++#ifdef CONFIG_IEEE80211BE
++
++int hostapd_find_mld_idx(struct hapd_interfaces *interfaces,
++			 struct hostapd_mld *tmld)
++{
++        int i = 0;
++
++        if (!(interfaces && interfaces->mld) || !tmld)
++		return -1;
++
++        for ( i = 0; i < interfaces->mld_count; i++) {
++		if (interfaces->mld[i] == tmld)
++			break;
++        }
++
++	if ( i == interfaces->mld_count )
++		return -1;
++
++        return i;
++}
++
++void hostapd_free_mld(struct hostapd_mld **mld, int index, int count)
++{
++	int i;
++	struct hostapd_mld *del_mld;
+ 
++	if (!mld || !mld[index])
++		return;
++
++	del_mld = mld[index];
++
++	for(i = index; i < count - 1; i++)
++		mld[i] = mld[i + 1];
++
++	if (del_mld) {
++		os_free(del_mld);
++		del_mld = NULL;
++	}
++}
++
++void hostapd_remove_mld(struct hostapd_data *bss)
++{
++	struct hapd_interfaces *interfaces;
++	struct hostapd_mld **all_mld;
++	int idx = 0;
++
++        if (!bss || !bss->iface)
++                return;
++
++	interfaces = bss->iface->interfaces;
++	if (!interfaces)
++		return;
++
++	idx = hostapd_find_mld_idx(interfaces, bss->mld);
++	if (idx < 0)
++		return;
++
++	hostapd_free_mld(interfaces->mld, idx, interfaces->mld_count);
++
++	if (interfaces->mld_count <= 0) {
++		/* Note: number of mld in interfaces cannot be 0
++			or less at this point, because this function
++			handles the clean up or realloc of mld*/
++		wpa_printf(MSG_ERROR, "%s: number of mld is incorrect %zu",
++					__func__, interfaces->mld_count);
++		return;
++	}
++
++	if (interfaces->mld_count == 1) {
++		os_free(interfaces->mld);
++		interfaces->mld = NULL;
++		goto exit;
++	}
++
++	all_mld = os_realloc_array(interfaces->mld, interfaces->mld_count - 1,
++                                	sizeof(struct hostapd_mld *));
++        if (!all_mld) {
++		wpa_printf(MSG_ERROR, "%s: unable to realloc ", __func__);
++		return;
++	}
++	interfaces->mld = all_mld;
++
++exit:
++	interfaces->mld_count = interfaces->mld_count - 1;
++	return;
++}
++
++void hostapd_mld_unlink_bss(struct hostapd_data *tbss)
++{
++	struct hostapd_data *bss = NULL, *prev = NULL;
++
++	if (!tbss || !tbss->mld)
++		return;
++
++	bss = tbss->mld->bss;
++
++	if (bss == tbss) {
++		tbss->mld->bss = bss->nbss;
++		goto unlink;
++	}
++
++	while (bss && bss != tbss) {
++		prev = bss;
++		bss = bss->nbss;
++	}
++
++	if (!bss)
++		return;
++
++	prev->nbss = bss->nbss;
++
++unlink:
++	tbss->mld->num_links--;
++	if (!tbss->mld->num_links) {
++		hostapd_remove_mld(tbss);
++	}
++
++	tbss->mld = NULL;
++}
++#endif
+ void hostapd_interface_free(struct hostapd_iface *iface)
+ {
+ 	size_t j;
+@@ -2575,7 +2828,12 @@ struct hostapd_iface * hostapd_init(stru
+ {
+ 	struct hostapd_iface *hapd_iface = NULL;
+ 	struct hostapd_config *conf = NULL;
+-	struct hostapd_data *hapd;
++	struct hostapd_data *hapd = NULL;
++#ifdef CONFIG_IEEE80211BE
++	struct hostapd_mld *mld, **all_mld;
++	struct hostapd_data *tail;
++	size_t j;
++#endif
+ 	size_t i;
+ 
+ 	hapd_iface = hostapd_alloc_iface();
+@@ -2604,6 +2862,55 @@ struct hostapd_iface * hostapd_init(stru
+ 		if (hapd == NULL)
+ 			goto fail;
+ 		hapd->msg_ctx = hapd;
++#ifdef CONFIG_IEEE80211BE
++		if (conf->ieee80211be && !conf->bss[i]->disable_11be) {
++			for (j = 0; j < interfaces->mld_count; j++) {
++				mld = interfaces->mld[j];
++
++				if (!(mld && os_strcmp(conf->bss[i]->iface, mld->name) == 0))
++					continue;
++
++				hapd->mld = mld;
++				if (mld->bss) {
++					tail = mld->bss;
++					while (tail->nbss != NULL)
++						tail = tail->nbss;
++					tail->nbss = hapd;
++				} else {
++					mld->bss = hapd;
++				}
++				mld->num_links++;
++				hapd->nbss = NULL;
++			}
++
++			if (!hapd->mld) {
++				hapd->mld = os_zalloc(sizeof(struct hostapd_mld));
++				if (hapd->mld == NULL)
++					goto fail;
++
++				os_strlcpy(hapd->mld->name,
++					   conf->bss[i]->iface,
++					   sizeof(conf->bss[i]->iface));
++				os_memcpy(hapd->mld->addr,
++						conf->bss[i]->bssid, ETH_ALEN);
++				hapd->mld->bss = hapd;
++				hapd->mld->num_links++;
++
++				//TODO: Need to know if this has to be parsed from config.
++				hapd->mld->mld_id = interfaces->mld_count + 1;
++				hapd->nbss = NULL;
++				all_mld = os_realloc_array(interfaces->mld,
++							   interfaces->mld_count + 1,
++							   sizeof(struct hostapd_mld *));
++				if (all_mld == NULL)
++					goto fail;
++
++				interfaces->mld = all_mld;
++				interfaces->mld[interfaces->mld_count] = hapd->mld;
++				interfaces->mld_count++;
++			}
++		}
++#endif
+ 	}
+ 
+ 	return hapd_iface;
+@@ -2620,6 +2927,14 @@ fail:
+ 			   __func__, hapd_iface);
+ 		os_free(hapd_iface);
+ 	}
++#ifdef CONFIG_IEEE80211BE
++	if (hapd && hapd->mld) {
++		wpa_printf(MSG_DEBUG, "%s: free mld %p",
++			   __func__, hapd->mld);
++		os_free(hapd->mld);
++		hapd->mld = NULL;
++	}
++#endif
+ 	return NULL;
+ }
+ 
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -45,6 +45,9 @@ struct mesh_conf;
+ #endif /* CONFIG_CTRL_IFACE_UDP */
+ 
+ struct hostapd_iface;
++#ifdef CONFIG_IEEE80211BE
++struct hostapd_mld;
++#endif
+ 
+ struct hapd_interfaces {
+ 	int (*reload_config)(struct hostapd_iface *iface);
+@@ -94,6 +97,11 @@ struct hapd_interfaces {
+        unsigned char ctrl_iface_cookie[CTRL_IFACE_COOKIE_LEN];
+ #endif /* CONFIG_CTRL_IFACE_UDP */
+ 
++#ifdef CONFIG_IEEE80211BE
++	struct hostapd_mld **mld;
++	size_t mld_count;
++	u8 free_mld_id_bmap;
++#endif /* CONFIG_IEEE80211BE */
+ };
+ 
+ enum hostapd_chan_status {
+@@ -167,6 +175,10 @@ struct hostapd_sae_commit_queue {
+  */
+ struct hostapd_data {
+ 	struct hostapd_iface *iface;
++#ifdef CONFIG_IEEE80211BE
++	struct hostapd_mld *mld;
++	struct hostapd_data *nbss; /* Next Link BSS in same MLD */
++#endif
+ 	struct hostapd_config *iconf;
+ 	struct hostapd_bss_config *conf;
+ 	struct hostapd_ubus_bss ubus;
+@@ -474,6 +486,20 @@ struct hostapd_sta_info {
+ #endif /* CONFIG_TAXONOMY */
+ };
+ 
++#ifdef CONFIG_IEEE80211BE
++/**
++ * struct hostapd_mld - hostapd per-mld data structure
++ */
++struct hostapd_mld {
++	char name[IFNAMSIZ + 1];
++	u8 addr[ETH_ALEN];
++	u8 mld_id;
++	u16 free_link_bitmap;
++	struct hostapd_data *bss; /* List Head of Link BSS affiliated with this MLD */
++	u8 num_links;
++};
++#endif
++
+ /**
+  * struct hostapd_iface - hostapd per-interface data structure
+  */
+@@ -655,6 +681,10 @@ struct hostapd_iface {
+ 
+ 	int (*enable_iface_cb)(struct hostapd_iface *iface);
+ 	int (*disable_iface_cb)(struct hostapd_iface *iface);
++
++#ifdef CONFIG_IEEE80211BE
++	u8 mlo_link_id;
++#endif
+ };
+ 
+ /* hostapd.c */
+@@ -749,6 +779,9 @@ struct hostapd_data * hostapd_get_iface(
+ void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
+ 				      enum smps_mode smps_mode,
+ 				      enum chan_width chan_width, u8 rx_nss);
++#ifdef CONFIG_IEEE80211BE
++int hostapd_mld_validate_link_conf(struct hostapd_mld *mld);
++#endif
+ struct hostapd_data * hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd);
+ int hostapd_mbssid_get_bss_index(struct hostapd_data *hapd);
+ 
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2450,6 +2450,9 @@ struct wpa_init_params {
+ 	void *global_priv;
+ 	const u8 *bssid;
+ 	const char *ifname;
++#ifdef CONFIG_IEEE80211BE
++	unsigned int mlo_link_id;
++#endif
+ 	const char *driver_params;
+ 	int use_pae_group_addr;
+ 	char **bridge;

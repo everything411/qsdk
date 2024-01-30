@@ -1,0 +1,345 @@
+From d4cde677b823114e947b230e84142d58fee0a710 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Thu, 6 Oct 2022 10:44:01 +0530
+Subject: [PATCH] hostapd: handle inheritance for per sta profile
+
+Handle inheritance from reporting sta for per sta profile
+Also use non inheritance ies while parsing per sta ies
+
+Signed-off-by: Adil Saeed Musthafa <quic_adilm@quicinc.com
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/ieee802_11.c            | 104 ++++++++++++++++++++++++++++++---
+ src/common/ieee802_11_common.c | 100 +++++++++++++++++++++++++------
+ src/common/ieee802_11_common.h |  15 +++++
+ 3 files changed, 195 insertions(+), 24 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index d1b2195..b38b900 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4603,9 +4603,67 @@ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
+ 	return false;
+ }
+ 
++static int mark_elems(u8 *mark_array, const u8 **ie_ptr, u8 *ie_len)
++{
++	const u8 *pos;
++	u8 len, num_ies;
++	int cnt;
++
++	pos = *ie_ptr;
++	len = *ie_len;
++
++	if (len == 0)
++		return -1;
++
++	num_ies = *pos;
++	pos++;
++	len--;
++	if (len < num_ies) {
++
++		wpa_printf(MSG_ERROR,
++				"%s: ERROR!! Not enough length in "
++				"non_inheritance IE\n", __func__);
++		return -1;
++	}
++
++	for (cnt = 0; cnt < num_ies; cnt++) {
++		u8 ie;
++
++		ie = *pos;
++		pos++;
++		len--;
++		/*
++		 * each IE is represented by a bit.
++		 * so set the appropriate bit in the 256-bit array
++		 * (32-byte array)
++		 */
++		mark_array[ie/8] |= (1 << (ie % 8));
++	}
++
++	*ie_ptr = pos;
++	*ie_len = len;
++	return 0;
++}
++
++/*
++ * This function creates the non_inherit structure from the
++ * non-inheritance IE inside the frame
++ */
++static void mark_non_inheritance_elems(struct non_inheritance_elems *non_inherit,
++				       const u8 *ie_ptr,
++				       u8 ie_len)
++{
++	if (mark_elems(non_inherit->non_inherit, &ie_ptr, &ie_len))
++		return;
++
++	if (mark_elems(non_inherit->non_inherit_ext, &ie_ptr, &ie_len))
++		return;
++}
+ 
+ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+-			   const u8 *ies, size_t ies_len, int reassoc)
++			   const u8 *ies, size_t ies_len,
++			   const u8* inherit_ies, size_t inherit_ies_len,
++			   int reassoc)
+ {
+ 	struct ieee802_11_elems elems;
+ 	int resp;
+@@ -4613,11 +4671,43 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 	size_t wpa_ie_len;
+ 	const u8 *p2p_dev_addr = NULL;
+ 
+-	if (ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed) {
+-		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+-			       HOSTAPD_LEVEL_INFO, "Station sent an invalid "
+-			       "association request");
+-		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	if (inherit_ies) {
++
++		const u8 *non_inherit_ie = NULL;
++		struct non_inheritance_elems non_inherit = {0};
++
++		non_inherit_ie =
++		get_ie_ext(ies, ies_len, WLAN_EID_EXT_NON_INHERITANCE);
++		if (non_inherit_ie)
++			mark_non_inheritance_elems(&non_inherit,
++						   non_inherit_ie+2+1,
++						   non_inherit_ie[1]-1);
++
++		if (ieee802_11_parse_elems_sta_profile(inherit_ies,
++						       inherit_ies_len,
++						       &elems, 1, 0,
++						       &non_inherit) ==
++						       ParseFailed) {
++			hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
++					HOSTAPD_LEVEL_INFO, "Station sent an invalid "
++					"association request");
++			return WLAN_STATUS_UNSPECIFIED_FAILURE;
++		}
++		if (ieee802_11_parse_elems_sta_profile(ies, ies_len, &elems, 1,
++						       1, NULL) == ParseFailed) {
++			hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
++					HOSTAPD_LEVEL_INFO, "Station sent an invalid "
++					"association request");
++			return WLAN_STATUS_UNSPECIFIED_FAILURE;
++		}
++
++	} else {
++		if (ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed) {
++			hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
++					HOSTAPD_LEVEL_INFO, "Station sent an invalid "
++					"association request");
++			return WLAN_STATUS_UNSPECIFIED_FAILURE;
++		}
+ 	}
+ 
+ 	resp = check_ssid(hapd, sta, elems.ssid, elems.ssid_len);
+@@ -5848,7 +5938,7 @@ static void handle_assoc(struct hostapd_data *hapd,
+ 
+ 	/* followed by SSID and Supported rates; and HT capabilities if 802.11n
+ 	 * is used */
+-	resp = check_assoc_ies(hapd, sta, pos, left, reassoc);
++	resp = check_assoc_ies(hapd, sta, pos, left, NULL, 0, reassoc);
+ 	if (resp != WLAN_STATUS_SUCCESS)
+ 		goto fail;
+ 	omit_rsnxe = !get_ie(pos, left, WLAN_EID_RSNX);
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index c0deea0..b4f38e6 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -199,9 +199,29 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
+ }
+ 
+ 
++static int
++is_part_of_non_inheritance(struct non_inheritance_elems *non_inherit,
++			   u8 id)
++{
++
++	if (non_inherit == NULL)
++		return 0;
++	return (non_inherit->non_inherit[id/8] & (1 << (id%8)));
++}
++
++static int
++is_part_of_non_inheritance_ext(struct non_inheritance_elems *non_inherit, u8 id)
++{
++	if (non_inherit == NULL)
++		return 0;
++	return (non_inherit->non_inherit_ext[id/8] & (1 << (id%8)));
++}
++
+ static int ieee802_11_parse_extension(const u8 *pos, size_t elen,
+ 				      struct ieee802_11_elems *elems,
+-				      int show_errors)
++				      int show_errors,
++				      int is_ml_sta_profile_ie,
++				      struct non_inheritance_elems *non_inherit)
+ {
+ 	u8 ext_id;
+ 
+@@ -218,6 +238,10 @@ static int ieee802_11_parse_extension(const u8 *pos, size_t elen,
+ 
+ 	elems->frag_ies.last_eid_ext = 0;
+ 
++	if (is_part_of_non_inheritance_ext(non_inherit, ext_id)) {
++		return 0;
++	}
++
+ 	switch (ext_id) {
+ 	case WLAN_EID_EXT_ASSOC_DELAY_INFO:
+ 		if (elen != 1)
+@@ -320,8 +344,22 @@ static int ieee802_11_parse_extension(const u8 *pos, size_t elen,
+ 		elems->mbssid_known_bss_len = elen;
+ 		break;
+ 	case WLAN_EID_EXT_MULTI_LINK:
+-		elems->mle = pos;
+-		elems->mle_len = elen;
++		/*
++		 * This check is needed to make sure we don't
++		 * 1. allow ML-IE inside STA-Profile IEs
++		 * 2. parse Multi-link again as part of the parent IEs
++		 *
++		 * Elaborating on point number-2, we have already parsed
++		 * the Multi-Link element in the outer core frame, then
++		 * we don't want to parse it again when this function is called
++		 * as part of the STA clone creation (copying the inherited
++		 * IEs to the clone STA). ML-IE from the parent should not be
++		 * part of the cloned STA.
++		 */
++		if ((non_inherit == NULL) && !is_ml_sta_profile_ie) {
++			elems->mle = pos;
++			elems->mle_len = elen;
++		}
+ 		break;
+ 	default:
+ 		if (show_errors) {
+@@ -365,22 +403,17 @@ static void ieee802_11_parse_fragment(struct frag_ies_info *frag_ies,
+ }
+ 
+ 
+-/**
+- * ieee802_11_parse_elems - Parse information elements in management frames
+- * @start: Pointer to the start of IEs
+- * @len: Length of IE buffer in octets
+- * @elems: Data structure for parsed elements
+- * @show_errors: Whether to show parsing errors in debug log
+- * Returns: Parsing result
+- */
+-ParseRes ieee802_11_parse_elems(const u8 *start, size_t len,
+-				struct ieee802_11_elems *elems,
+-				int show_errors)
++static ParseRes ieee802_11_parse_elems_helper(const u8 *start, size_t len,
++					      struct ieee802_11_elems *elems,
++					      int show_errors,
++					      int is_ie_part_of_sta_profile,
++					      struct non_inheritance_elems *non_inherit)
+ {
+ 	const struct element *elem;
+ 	int unknown = 0;
+ 
+-	os_memset(elems, 0, sizeof(*elems));
++	if (!is_ie_part_of_sta_profile)
++		os_memset(elems, 0, sizeof(*elems));
+ 
+ 	if (!start)
+ 		return ParseOK;
+@@ -389,6 +422,9 @@ ParseRes ieee802_11_parse_elems(const u8 *start, size_t len,
+ 		u8 id = elem->id, elen = elem->datalen;
+ 		const u8 *pos = elem->data;
+ 
++		if (is_part_of_non_inheritance(non_inherit, id))
++			continue;
++
+ 		switch (id) {
+ 		case WLAN_EID_SSID:
+ 			if (elen > SSID_MAX_LEN) {
+@@ -397,7 +433,7 @@ ParseRes ieee802_11_parse_elems(const u8 *start, size_t len,
+ 					   elen);
+ 				break;
+ 			}
+-			if (elems->ssid) {
++			if (!is_ie_part_of_sta_profile && elems->ssid) {
+ 				wpa_printf(MSG_MSGDUMP,
+ 					   "Ignored duplicated SSID element");
+ 				break;
+@@ -596,7 +632,9 @@ ParseRes ieee802_11_parse_elems(const u8 *start, size_t len,
+ 			break;
+ 		case WLAN_EID_EXTENSION:
+ 			if (ieee802_11_parse_extension(pos, elen, elems,
+-						       show_errors))
++						       show_errors,
++						       is_ie_part_of_sta_profile,
++						       non_inherit))
+ 				unknown++;
+ 			break;
+ 		default:
+@@ -631,6 +669,34 @@ done:
+ }
+ 
+ 
++/**
++ * ieee802_11_parse_elems - Parse information elements in management frames
++ * @start: Pointer to the start of IEs
++ * @len: Length of IE buffer in octets
++ * @elems: Data structure for parsed elements
++ * @show_errors: Whether to show parsing errors in debug log
++ * Returns: Parsing result
++ */
++ParseRes ieee802_11_parse_elems(const u8 *start, size_t len,
++				struct ieee802_11_elems *elems,
++				int show_errors)
++{
++	return ieee802_11_parse_elems_helper(start, len, elems,
++					     show_errors, 0, NULL);
++}
++
++ParseRes ieee802_11_parse_elems_sta_profile(const u8 *start, size_t len,
++					    struct ieee802_11_elems *elems,
++					    int show_errors,
++					    int is_ie_part_of_sta_profile,
++					    struct non_inheritance_elems *non_inherit)
++{
++	return ieee802_11_parse_elems_helper(start, len, elems,
++					     show_errors,
++					     is_ie_part_of_sta_profile,
++					     non_inherit);
++}
++
+ int ieee802_11_ie_count(const u8 *ies, size_t ies_len)
+ {
+ 	const struct element *elem;
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index afb93e9..cd27e6b 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -256,9 +256,24 @@ struct ieee802_11_elems {
+ 
+ typedef enum { ParseOK = 0, ParseUnknown = 1, ParseFailed = -1 } ParseRes;
+ 
++struct non_inheritance_elems {
++	/*
++	 * we need 256 bits each for EIDs and ext-EIDs
++	 * to get 256 bits, we need 32 bytes
++	 * so 32 bytes each for EIDs and  ext-EIDs
++	 */
++	u8 non_inherit[32];
++	u8 non_inherit_ext[32];
++};
++
+ ParseRes ieee802_11_parse_elems(const u8 *start, size_t len,
+ 				struct ieee802_11_elems *elems,
+ 				int show_errors);
++ParseRes ieee802_11_parse_elems_sta_profile(const u8 *start, size_t len,
++					    struct ieee802_11_elems *elems,
++					    int show_errors,
++					    int is_ie_part_of_sta_profile,
++					    struct non_inheritance_elems *non_inherit);
+ int ieee802_11_ie_count(const u8 *ies, size_t ies_len);
+ struct wpabuf * ieee802_11_vendor_ie_concat(const u8 *ies, size_t ies_len,
+ 					    u32 oui_type);
+-- 
+2.17.1
+

@@ -1,0 +1,54 @@
+From 89255917593a7b0aae440ef20e8c4938b0afeaf5 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <quic_pgowtham@quicinc.com>
+Date: Tue, 17 Jan 2023 04:36:40 -0800
+Subject: [PATCH 2/6] sigma-dut: Add ChnlFreq CAPI support
+
+Add CAPI support for ChnlFreq in AP configuration.
+
+Signed-off-by: Priyadharshini Gowthaman <quic_pgowtham@quicinc.com>
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c        | 10 ++++++++--
+ sigma_dut.h |  1 +
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -798,11 +798,17 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_interface_5g = 1;
+ 		else
+ 			dut->ap_interface_2g = 1;
++	}
+ 
+-		if (dut->ap_interface_5g && dut->ap_interface_2g)
+-			dut->ap_is_dual = 1;
++	val = get_param(cmd, "ChnlFreq");
++	if (val) {
++		/* ChnlFreq CAPI is specific to 6g */
++		dut->ap_interface_6g = 1;
+ 	}
+ 
++	if (dut->ap_interface_5g && dut->ap_interface_2g)
++		dut->ap_is_dual = 1;
++
+ 	val = get_param(cmd, "CountryCode");
+ 	if (val) {
+ 		if (strlen(val) > sizeof(dut->ap_countrycode) - 1)
+@@ -10715,6 +10721,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 
+ 	dut->mbo_pref_ap_cnt = 0;
+ 	dut->ft_bss_mac_cnt = 0;
++	dut->ap_interface_6g = 0;
+ 	dut->ap_interface_5g = 0;
+ 	dut->ap_interface_2g = 0;
+ 	dut->ap_pmf = AP_PMF_DISABLED;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -770,6 +770,7 @@ struct sigma_dut {
+ 	int ap_name;
+ 	int ap_interface_5g;
+ 	int ap_interface_2g;
++	int ap_interface_6g;
+ 	int ap_assoc_delay;
+ 	int ap_btmreq_bss_term_tsf;
+ 	int ap_fils_dscv_int;

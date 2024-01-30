@@ -1,0 +1,534 @@
+From e4b73d7748efe3a6fe273a87897254ac9fcebbb1 Mon Sep 17 00:00:00 2001
+From: Ramya Gnanasekar <quic_rgnanase@quicinc.com>
+Date: Wed, 26 Oct 2022 15:19:47 +0530
+Subject: [PATCH] hostapd: 240MHz Q-Q vendor IE support
+
+240MHz is Q-Q feature and it should be advertised through
+vendor IE in beacon, probe request/response and association.
+
+This patch has changes to add vendor IE to management frames,
+parse the IE from STA and copy the capability which is later
+advertised to mac80211 through NL attribute.
+
+Signed-off-by: Ramya Gnanasekar <quic_rgnanase@quicinc.com>
+
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -447,7 +447,9 @@ int hostapd_sta_add(struct hostapd_data
+ 		    size_t eht_capab_len,
+ 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
+ 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
+-		    int set, bool link_add_mod, int link_id, const u8 *mld_addr)
++		    int set, bool link_add_mod, int link_id, const u8 *mld_addr,
++		    const struct ieee80211_240mhz_vendor_oper *eht_240mhz_capab,
++		    size_t eht_240mhz_len)
+ {
+ 	struct hostapd_sta_add_params params;
+ 
+@@ -480,6 +482,8 @@ int hostapd_sta_add(struct hostapd_data
+ 	params.set = set;
+ 	params.link_id = link_id;
+ 	params.mld_addr = mld_addr;
++	params.eht_240mhz_capab = eht_240mhz_capab;
++	params.eht_240mhz_len = eht_240mhz_len;
+ 
+ 	if (link_add_mod)
+ 		return hapd->driver->link_sta_add_mod(hapd->drv_priv, &params);
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -47,7 +47,9 @@ int hostapd_sta_add(struct hostapd_data
+ 		    size_t eht_capab_len,
+ 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
+ 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
+-		    int set, bool link_add_mod, int link_id, const u8 *mld_addr);
++		    int set, bool link_add_mod, int link_id, const u8 *mld_addr,
++		    const struct ieee80211_240mhz_vendor_oper *eht_240mhz_capab,
++		    size_t eht_240mhz_len);
+ int hostapd_set_privacy(struct hostapd_data *hapd, int enabled);
+ int hostapd_set_generic_elem(struct hostapd_data *hapd, const u8 *elem,
+ 			     size_t elem_len);
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -955,6 +955,10 @@ static u8 * hostapd_gen_probe_resp(struc
+ 		if (include_mle)
+ 			buflen += hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_PROBE_RESP,
+ 							    ml_data);
++		/* QCN Vendor IE for 240MHz */
++		if (is_5ghz_freq(hapd->iface->freq))
++			buflen += (6 + 2 + 4 +
++				   sizeof(struct ieee80211_240mhz_vendor_oper));
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -1118,6 +1122,7 @@ static u8 * hostapd_gen_probe_resp(struc
+ 			pos = hostapd_eid_basic_mle(hapd, pos,
+ 						    WLAN_FC_STYPE_PROBE_RESP,
+ 						    ml_data);
++		pos = hostapd_eid_vendor_240mhz(hapd, pos, IEEE80211_MODE_AP);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -2126,6 +2131,9 @@ int ieee802_11_build_ap_params(struct ho
+ 
+ 		tail_len += hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_BEACON,
+ 						      NULL);
++		if (is_5ghz_freq(hapd->iface->freq))
++			tail_len += (6 + 2 + 4 +
++				     sizeof(struct ieee80211_240mhz_vendor_oper));
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -2295,6 +2303,7 @@ int ieee802_11_build_ap_params(struct ho
+ 		tailpos = hostapd_eid_basic_mle(hapd, tailpos,
+ 						WLAN_FC_STYPE_BEACON,
+ 						NULL);
++		tailpos = hostapd_eid_vendor_240mhz(hapd, tailpos, IEEE80211_MODE_AP);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4894,6 +4894,9 @@ static int check_assoc_ies(struct hostap
+ 					  elems.he_capabilities_len,
+ 					  elems.eht_capabilities,
+ 					  elems.eht_capabilities_len);
++		resp = copy_sta_eht_240mhz_capab(hapd, sta, IEEE80211_MODE_AP,
++						 elems.eht_240mhz_capab,
++						 elems.eht_240mhz_len);
+ 		if (resp != WLAN_STATUS_SUCCESS)
+ 			return resp;
+ 
+@@ -5277,6 +5280,7 @@ static int add_associated_sta(struct hos
+ 	struct ieee80211_vht_capabilities vht_cap;
+ 	struct ieee80211_he_capabilities he_cap;
+ 	struct ieee80211_eht_capabilities eht_cap;
++	struct ieee80211_240mhz_vendor_oper eht_240mhz_cap;
+ 	int set = 1;
+ 	u8 *mld_addr = NULL;
+ 	int link_id = -1;
+@@ -5350,9 +5354,13 @@ static int add_associated_sta(struct hos
+ 	}
+ #endif /* CONFIG_IEEE80211AX */
+ #ifdef CONFIG_IEEE80211BE
+-	if (sta->flags & WLAN_STA_EHT)
++	if (sta->flags & WLAN_STA_EHT) {
+ 		hostapd_get_eht_capab(hapd, sta->eht_capab, &eht_cap,
+ 				      sta->eht_capab_len);
++		hostapd_get_eht_240mhz_capab(hapd, sta->eht_240mhz_capab,
++					     &eht_240mhz_cap,
++					     sta->eht_240mhz_len);
++	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	/*
+@@ -5372,7 +5380,9 @@ static int add_associated_sta(struct hos
+ 			    sta->he_6ghz_capab,
+ 			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
+ 			    sta->vht_opmode, sta->p2p_ie ? 1 : 0,
+-			    set, ml_sta, link_id, mld_addr)) {
++			    set, ml_sta, link_id, mld_addr,
++			    sta->flags & WLAN_STA_EHT? sta->eht_240mhz_capab : NULL,
++			    sta->flags & WLAN_STA_EHT? sta->eht_240mhz_len : 0)) {
+ 		hostapd_logger(hapd, link_addr,
+ 			       HOSTAPD_MODULE_IEEE80211, HOSTAPD_LEVEL_NOTICE,
+ 			       "Could not %s %s STA to kernel ",
+@@ -5430,6 +5440,9 @@ u8 * hostapd_gen_assoc_resp(struct hosta
+ 			buflen += hostapd_eid_basic_mle_len(hapd,
+ 							    WLAN_FC_STYPE_ASSOC_RESP,
+ 							    ml_data);
++		if (is_5ghz_freq(hapd->iface->freq))
++			buflen += (6 + 2 + 4 +
++				   sizeof(struct ieee80211_240mhz_vendor_oper));
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -5583,6 +5596,7 @@ rsnxe_done:
+ 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+ 		p = hostapd_eid_eht_capab(hapd, p, IEEE80211_MODE_AP);
+ 		p = hostapd_eid_eht_operation(hapd, p, IEEE80211_MODE_AP);
++		p = hostapd_eid_vendor_240mhz(hapd, p, IEEE80211_MODE_AP);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -5926,7 +5940,7 @@ static u16 prepare_link_sta_assoc_resp(s
+ 				    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
+ 				    sta->flags, 0, 0, 0, 0, false,
+ 				    hapd->iface->mlo_link_id,
+-				    sta->addr))
++				    sta->addr, NULL, 0))
+ 				return WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+ 		}
+ 
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -95,6 +95,10 @@ void hostapd_get_eht_capab(struct hostap
+ 			   const struct ieee80211_eht_capabilities *src,
+ 			   struct ieee80211_eht_capabilities *dest,
+ 			   size_t len);
++void hostapd_get_eht_240mhz_capab(struct hostapd_data *hapd,
++				  const struct ieee80211_240mhz_vendor_oper *src,
++				  struct ieee80211_240mhz_vendor_oper *dest,
++				  size_t len);
+ int hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta);
+ u16 copy_sta_ht_capab(struct hostapd_data *hapd, struct sta_info *sta,
+ 		      const u8 *ht_capab);
+@@ -233,10 +237,15 @@ u8 * hostapd_eid_eht_capab(struct hostap
+ 			   enum ieee80211_op_mode opmode);
+ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid,
+ 			       enum ieee80211_op_mode opmode);
++u8 * hostapd_eid_vendor_240mhz(struct hostapd_data *hapd, u8 *eid,
++			       enum ieee80211_op_mode opmode);
+ u16 copy_sta_eht_capab(struct hostapd_data *hapd, struct sta_info *sta,
+ 		       enum ieee80211_op_mode opmode,
+ 		       const u8 *he_capab, size_t he_capab_len,
+ 		       const u8 *eht_capab, size_t eht_capab_len);
++u16 copy_sta_eht_240mhz_capab(struct hostapd_data *hapd, struct sta_info *sta,
++			      enum ieee80211_op_mode opmode,
++			      const u8 *eht_240mhz_capab, size_t eht_240mhz_len);
+ void ru_punct_update_bw(u16 bitmap, u8 pri_chan, enum oper_chan_width *width, u8 *seg0, u8 *seg1);
+ size_t hostapd_eid_basic_mle_len(struct hostapd_data *hapd, u32 type,
+ 				 struct multi_link_data *ml_data);
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -8,6 +8,7 @@
+ 
+ #include "utils/includes.h"
+ #include "utils/common.h"
++#include "common/qca-vendor.h"
+ #include "hostapd.h"
+ #include "sta_info.h"
+ #include "ieee802_11.h"
+@@ -116,7 +117,7 @@ u8 * hostapd_eid_eht_capab(struct hostap
+ 	struct eht_capabilities *eht_cap;
+ 	struct ieee80211_eht_capabilities *cap;
+ 	size_t mcs_nss_len, ppe_thresh_len;
+-	u8 *pos = eid, *length_pos, chwidth;
++	u8 *pos = eid, *length_pos;
+ 
+ 	mode = hapd->iface->current_mode;
+ 	if (!mode)
+@@ -134,10 +135,8 @@ u8 * hostapd_eid_eht_capab(struct hostap
+ 	os_memset(cap, 0, sizeof(*cap));
+ 	cap->mac_cap = host_to_le16(eht_cap->mac_cap);
+ 	os_memcpy(cap->phy_cap, eht_cap->phy_cap, EHT_PHY_CAPAB_LEN);
+-	chwidth = hapd->iconf->eht_oper_chwidth;
+ 
+-	if (!is_6ghz_op_class(hapd->iconf->op_class) &&
+-	    (chwidth != CONF_OPER_CHWIDTH_320MHZ))
++	if (!is_6ghz_op_class(hapd->iconf->op_class))
+ 		cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &=
+ 			~EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK;
+ 	if (!hapd->iface->conf->eht_phy_capab.su_beamformer)
+@@ -298,6 +297,70 @@ u8 * hostapd_eid_eht_operation(struct ho
+ 	return pos;
+ }
+ 
++u8 * hostapd_eid_vendor_240mhz(struct hostapd_data *hapd, u8 *eid,
++                               enum ieee80211_op_mode opmode)
++{
++       struct hostapd_hw_modes *mode;
++       u8 *pos = eid;
++       struct eht_capabilities *eht_cap;
++       struct ieee80211_240mhz_vendor_oper *eht_240_cap;
++       u8 ccfs0,ccfs1;
++
++       mode = hapd->iface->current_mode;
++       if (!mode || is_6ghz_op_class(hapd->iconf->op_class) ||
++	    hapd->iconf->eht_oper_chwidth != CONF_OPER_CHWIDTH_320MHZ)
++               return eid;
++
++       eht_cap = &mode->eht_capab[opmode];
++
++       if (!eht_cap->eht_supported)
++                   return eid;
++       ccfs0 = hostapd_get_oper_centr_freq_seg0_idx(hapd->iconf);
++       ccfs1 = ccfs0 - 16;
++
++       *pos++ = WLAN_EID_VENDOR_SPECIFIC;
++       *pos++ = 6 + /* Element ID, Length, OUI, OUI Type */
++	        4 + /* QCN version Attribute size */
++		sizeof(struct ieee80211_240mhz_vendor_oper);
++       WPA_PUT_BE24(pos, OUI_QCN);
++       pos += 3;
++       *pos++ = 1; /* QCN_OUI_TYPE */
++
++       /* QCN Version Attribute*/
++       *pos++ = 1; /* QCN_ATTRIB_VERSION */
++       *pos++ = 2; /* Length */
++       *pos++ = 1; /* QCN_VER_ATTR_VER */
++       *pos++ = 0; /* QCN_VER_ATTR_SUBVERSION */
++
++       /* QCN Attirbute */
++       *pos++ = QCN_ATTRIB_HE_240_MHZ_SUPP; /*QCN_ATTRIB_HE_240_MHZ_SUPP*/
++       *pos++ = sizeof(struct ieee80211_240mhz_vendor_oper);
++
++       /* 240Mhz fields */
++       eht_240_cap = (struct ieee80211_240mhz_vendor_oper*)pos;
++       os_memset(eht_240_cap, 0, sizeof(struct ieee80211_240mhz_vendor_oper));
++
++       eht_240_cap->ccfs1 = ccfs1;
++       eht_240_cap->ccfs0 = hostapd_get_oper_centr_freq_seg0_idx(hapd->iconf);
++       eht_240_cap->ru_punct_bitmap = hapd->iconf->ru_punct_bitmap;
++       eht_240_cap->phy_cap_320mhz = eht_cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
++                                     EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK;
++       eht_240_cap->phy_cap_320mhz |= eht_cap->phy_cap[EHT_PHYCAP_BEAMFORMEE_SS_320MHZ_IDX] &
++                                      EHT_PHYCAP_BEAMFORMEE_SS_320MHZ_MASK;
++       eht_240_cap->phy_cap_320mhz |= (eht_cap->phy_cap[EHT_PHYCAP_NUM_SOUND_DIM_320MHZ_IDX] &
++                                      EHT_PHYCAP_NUM_SOUND_DIM_320MHZ_MASK) |
++                                      (eht_cap->phy_cap[EHT_PHYCAP_NUM_SOUND_DIM_320MHZ_IDX_1] &
++                                       EHT_PHYCAP_NUM_SOUND_DIM_320MHZ_MASK);
++       eht_240_cap->phy_cap_320mhz |= eht_cap->phy_cap[EHT_PHYCAP_NON_OFDMA_UL_MUMIMO_320MHZ_IDX] &
++                                      EHT_PHYCAP_NON_OFDMA_UL_MUMIMO_320MHZ_MASK;
++       eht_240_cap->phy_cap_320mhz |= eht_cap->phy_cap[EHT_PHYCAP_MU_CAPABILITY_IDX] &
++                                       EHT_PHYCAP_MU_BEAMFORMER_MASK;
++
++       memcpy(&eht_240_cap->mcs_map_320mhz, &eht_cap->mcs, EHT_PHYCAP_MCS_NSS_LEN_160MHZ);
++       pos += sizeof(struct ieee80211_240mhz_vendor_oper);
++
++       return pos;
++}
+ 
+ static bool check_valid_eht_mcs_nss(struct hostapd_data *hapd, const u8 *ap_mcs,
+ 				    const u8 *sta_mcs, u8 mcs_count, u8 map_len)
+@@ -448,3 +511,41 @@ void hostapd_get_eht_capab(struct hostap
+ 	os_memset(dest, 0, sizeof(*dest));
+ 	os_memcpy(dest, src, len);
+ }
++
++u16 copy_sta_eht_240mhz_capab(struct hostapd_data *hapd, struct sta_info *sta,
++                       enum ieee80211_op_mode opmode,
++                       const u8 *eht_240mhz_capab, size_t eht_240mhz_capab_len)
++{
++        if (!eht_240mhz_capab || !hapd->iconf->ieee80211be ||
++            hapd->conf->disable_11be) {
++                os_free(sta->eht_240mhz_capab);
++                sta->eht_240mhz_capab = NULL;
++                return WLAN_STATUS_SUCCESS;
++        }
++
++        if (!sta->eht_240mhz_capab) {
++                sta->eht_240mhz_capab = os_zalloc(eht_240mhz_capab_len);
++                if (!sta->eht_240mhz_capab)
++                        return WLAN_STATUS_UNSPECIFIED_FAILURE;
++        }
++
++        os_memcpy(sta->eht_240mhz_capab, eht_240mhz_capab, eht_240mhz_capab_len);
++        sta->eht_240mhz_len = eht_240mhz_capab_len;
++
++        return WLAN_STATUS_SUCCESS;
++}
++
++
++void hostapd_get_eht_240mhz_capab(struct hostapd_data *hapd,
++				  const struct ieee80211_240mhz_vendor_oper *src,
++				  struct ieee80211_240mhz_vendor_oper *dest,
++				  size_t len)
++{
++	if (!src || !dest)
++		return;
++
++	if (len > sizeof(*dest))
++		len = sizeof(*dest);
++
++	os_memcpy(dest, src, len);
++}
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -359,6 +359,7 @@ void ap_free_sta(struct hostapd_data *ha
+ 	os_free(sta->he_capab);
+ 	os_free(sta->he_6ghz_capab);
+ 	os_free(sta->eht_capab);
++	os_free(sta->eht_240mhz_capab);
+ 	hostapd_free_psk_list(sta->psk);
+ 	os_free(sta->identity);
+ 	os_free(sta->radius_cui);
+@@ -1695,7 +1696,7 @@ int ap_sta_re_add(struct hostapd_data *h
+ 			    sta->supported_rates,
+ 			    sta->supported_rates_len,
+ 			    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
+-			    sta->flags, 0, 0, 0, 0, false, link_id, mld_addr)) {
++			    sta->flags, 0, 0, 0, 0, false, link_id, mld_addr, NULL, 0)) {
+ 		hostapd_logger(hapd, sta->addr,
+ 			       HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_NOTICE,
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -361,6 +361,8 @@ struct sta_info {
+ #ifdef CONFIG_PASN
+ 	struct pasn_data *pasn;
+ #endif /* CONFIG_PASN */
++	struct ieee80211_240mhz_vendor_oper *eht_240mhz_capab;
++	size_t eht_240mhz_len;
+ };
+ 
+ 
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -22,6 +22,7 @@ static int ieee802_11_parse_vendor_speci
+ 					    int show_errors)
+ {
+ 	unsigned int oui;
++	u8 len, updated_len;
+ 
+ 	/* first 3 bytes in vendor specific information element are the IEEE
+ 	 * OUI of the vendor. The following byte is used a vendor specific
+@@ -187,6 +188,36 @@ static int ieee802_11_parse_vendor_speci
+ 		}
+ 		break;
+ 
++	case OUI_QCN:
++		len = updated_len = 0;
++		if (pos[3] == 0x1 ) { /* QCN_OUI_TYPE */
++			updated_len += 4;
++			pos = pos + 4; /* Move OUI(3) and OUI_TYPE (1) */
++			while (elen > updated_len) {
++				switch(pos[0]) {
++					case QCN_ATTRIB_HE_240_MHZ_SUPP:
++						elems->eht_240mhz_len = pos[1];
++						if (elems->eht_240mhz_len > QCN_HE_240_MHZ_MAX_ELEM_LEN) {
++							wpa_printf(MSG_DEBUG, "Length %d for 240MHz Vendor IE exceeded",
++								   elems->eht_240mhz_len);
++							elems->eht_240mhz_len = 0;
++							continue;
++						}
++						len = elems->eht_240mhz_len;
++						pos = pos + 2;
++						elems->eht_240mhz_capab = pos;
++						pos += len;
++						updated_len += len + 2;
++						break;
++					default:
++						len = pos[1];
++						updated_len += len + 2;
++						pos += len + 2;
++						break;
++				}
++			}
++		}
++		break;
+ 	default:
+ 		wpa_printf(MSG_EXCESSIVE, "unknown vendor specific "
+ 			   "information element ignored (vendor OUI "
+@@ -467,6 +498,7 @@ static ParseRes ieee802_11_parse_elems_h
+ 			elems->ext_supp_rates_len = elen;
+ 			break;
+ 		case WLAN_EID_VENDOR_SPECIFIC:
++
+ 			if (ieee802_11_parse_vendor_specific(pos, elen,
+ 							     elems,
+ 							     show_errors))
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -195,6 +195,7 @@ struct ieee802_11_elems {
+ 	const u8 *eht_operation;
+ 	const u8 *mbssid_known_bss;
+ 	const u8* mle;
++	const u8 *eht_240mhz_capab;
+ 
+ 	u8 ssid_len;
+ 	u8 supp_rates_len;
+@@ -253,6 +254,7 @@ struct ieee802_11_elems {
+ 	u8 eht_operation_len;
+ 	u8 mbssid_known_bss_len;
+ 	u8 mle_len;
++	u8 eht_240mhz_len;
+ 
+ 	struct mb_ies_info mb_ies;
+ 	struct frag_ies_info frag_ies;
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2507,6 +2507,13 @@ struct ieee80211_he_mu_edca_parameter_se
+ 
+ #define DISABLED_SUBCHANNEL_BITMAP_BYTES_SIZE          2
+ 
++struct ieee80211_240mhz_vendor_oper {
++       u8 ccfs1;
++       u8 ccfs0;
++       u16 ru_punct_bitmap;
++       u16 phy_cap_320mhz;
++       u8 mcs_map_320mhz[3];
++} STRUCT_PACKED;
+ 
+ /* Figure 9-1002c: EHT Operation Information field format */
+ struct ieee80211_eht_oper_info {
+@@ -2677,6 +2684,19 @@ enum mscs_description_subelem {
+ 	MCSC_SUBELEM_STATUS = 1,
+ };
+ 
++#define EHT_PHYCAP_BEAMFORMEE_SS_320MHZ_IDX    3
++#define EHT_PHYCAP_BEAMFORMEE_SS_320MHZ_MASK   ((u8) (BIT(0) | BIT(1) | \
++                                                BIT(2) | BIT(3)))
++
++#define EHT_PHYCAP_NUM_SOUND_DIM_320MHZ_IDX    1
++#define EHT_PHYCAP_NUM_SOUND_DIM_320MHZ_MASK  	((u8) (BIT(0) | BIT(2) | \
++						 BIT(3)))
++#define EHT_PHYCAP_NUM_SOUND_DIM_320MHZ_IDX_1  2
++#define EHT_PHYCAP_NUM_SOUND_DIM_320MHZ_MASK_1 ((u8) (BIT(0))
++
++#define EHT_PHYCAP_NON_OFDMA_UL_MUMIMO_320MHZ_IDX      6
++#define EHT_PHYCAP_NON_OFDMA_UL_MUMIMO_320MHZ_MASK     ((u8) BIT(3))
++
+ /*
+  * IEEE Std 802.11ai-2016, 9.6.8.36 FILS Discovery frame format,
+  * Figure 9-687b - FILS Discovery Frame Control subfield format
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -19,6 +19,10 @@
+  */
+ 
+ #define OUI_QCA 0x001374
++#define OUI_QCN 0x8cfdf0
++
++#define QCN_ATTRIB_HE_240_MHZ_SUPP	0X0B
++#define QCN_HE_240_MHZ_MAX_ELEM_LEN	9
+ 
+ #ifndef BIT
+ #define BIT(x) (1U << (x))
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -187,6 +187,8 @@ struct hostapd_channel_data {
+ 	 * ru_punct_bitmap - RU puncturing bitmap
+ 	 */
+ 	u16 ru_punct_bitmap;
++	const struct ieee80211_240mhz_vendor_oper *eht_240mhz_capab;
++	size_t eht_240mhz_len;
+ };
+ 
+ #define HE_MAC_CAPAB_0		0
+@@ -2456,6 +2458,8 @@ struct hostapd_sta_add_params {
+ 	u16 ru_punct_bitmap;
+ 	int link_id; /* Link id of the ML STA */
+ 	const u8 *mld_addr; /* MLD MAC address */
++	const struct ieee80211_240mhz_vendor_oper *eht_240mhz_capab;
++	size_t eht_240mhz_len;
+ };
+ 
+ struct mac_address {
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5591,6 +5591,14 @@ static int wpa_driver_nl80211_sta_add(vo
+ 				goto fail;
+ 		}
+ 
++               if (params->eht_240mhz_capab) {
++                        wpa_hexdump(MSG_DEBUG, "  * 240mhz_capab",
++                                    (u8 *)params->eht_240mhz_capab, params->eht_240mhz_len);
++                        if (nla_put(msg, NL80211_ATTR_EHT_240MHZ_CAPABILITY,
++                                    params->eht_240mhz_len, params->eht_240mhz_capab))
++                                goto fail;
++                }
++
+ 		if (params->ext_capab) {
+ 			wpa_hexdump(MSG_DEBUG, "  * ext_capab",
+ 				    params->ext_capab, params->ext_capab_len);
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -3325,7 +3325,7 @@ enum nl80211_attrs {
+ 
+ 	NL80211_ATTR_MULTI_HW_MACS,
+ 	NL80211_ATTR_RADAR_BITMAP,
+-
++	NL80211_ATTR_EHT_240MHZ_CAPABILITY,
+ 	/* add attributes here, update the policy in nl80211.c */
+ 
+ 	__NL80211_ATTR_AFTER_LAST,

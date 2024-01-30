@@ -1,0 +1,277 @@
+From e29d85662ca31a7ff0f336f2a7e1488fbd5de9df Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Thu, 6 Oct 2022 10:33:31 +0530
+Subject: [PATCH] hostapd: handle auth
+
+Handle auth from ML STA which is identified by presence of
+ML IE. Use the MLD address from the IE and assign it as the
+sta address which will be identifeid as ML STA.
+
+Also replaced the const usage of the buffer so that the
+mgmt->sa is updated to the MLD address and can be used for
+sending auth reply and use for handling auth cb so that
+the ML STA can be looked up without much code changes.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/hostapd.h             |  1 +
+ src/ap/ieee802_11.c          | 68 +++++++++++++++++++++++++++++++-----
+ src/ap/sta_info.c            | 32 +++++++++++++++++
+ src/ap/sta_info.h            | 17 ++++++++-
+ src/common/ieee802_11_defs.h |  1 +
+ 5 files changed, 110 insertions(+), 9 deletions(-)
+
+Index: hostapd-2022-09-19/src/ap/hostapd.h
+===================================================================
+--- hostapd-2022-09-19.orig/src/ap/hostapd.h
++++ hostapd-2022-09-19/src/ap/hostapd.h
+@@ -507,6 +507,7 @@ struct hostapd_mld {
+ 	u8 mld_id;
+ 	u16 free_link_bitmap;
+ 	struct hostapd_data *bss; /* List Head of Link BSS affiliated with this MLD */
++	struct ml_sta_info *ml_sta_list; /* ML STA info list head */
+ 	u8 num_links;
+ };
+ #endif
+Index: hostapd-2022-09-19/src/ap/ieee802_11.c
+===================================================================
+--- hostapd-2022-09-19.orig/src/ap/ieee802_11.c
++++ hostapd-2022-09-19/src/ap/ieee802_11.c
+@@ -84,7 +84,7 @@ static void pasn_fils_auth_resp(struct h
+ #endif /* CONFIG_PASN */
+ 
+ static void handle_auth(struct hostapd_data *hapd,
+-			const struct ieee80211_mgmt *mgmt, size_t len,
++			struct ieee80211_mgmt *mgmt, size_t len,
+ 			int rssi, int from_queue,
+ 			struct hostapd_frame_info *fi);
+ 
+@@ -380,8 +380,12 @@ static int send_auth_reply(struct hostap
+ 	u8 *buf;
+ 	size_t rlen;
+ 	int reply_res = WLAN_STATUS_UNSPECIFIED_FAILURE;
++	u8 mle_len = 0;
+ 
+-	rlen = IEEE80211_HDRLEN + sizeof(reply->u.auth) + ies_len;
++	if (sta && sta->ml_sta)
++		mle_len = hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_AUTH, NULL);
++
++	rlen = IEEE80211_HDRLEN + sizeof(reply->u.auth) + ies_len + mle_len;
+ 	buf = os_zalloc(rlen);
+ 	if (buf == NULL)
+ 		return -1;
+@@ -400,6 +404,10 @@ static int send_auth_reply(struct hostap
+ 	if (ies && ies_len)
+ 		os_memcpy(reply->u.auth.variable, ies, ies_len);
+ 
++	if (mle_len)
++		hostapd_eid_basic_mle(hapd, reply->u.auth.variable + ies_len,
++				      WLAN_FC_STYPE_AUTH, NULL);
++
+ 	wpa_printf(MSG_DEBUG, "authentication reply: STA=" MACSTR
+ 		   " auth_alg=%d auth_transaction=%d resp=%d (IE len=%lu) (dbg=%s)",
+ 		   MAC2STR(dst), auth_alg, auth_transaction,
+@@ -1662,7 +1670,7 @@ void auth_sae_process_commit(void *eloop
+ 	wpa_printf(MSG_DEBUG,
+ 		   "SAE: Process next available message from queue");
+ 	dl_list_del(&q->list);
+-	handle_auth(hapd, (const struct ieee80211_mgmt *) q->msg, q->len,
++	handle_auth(hapd, (struct ieee80211_mgmt *) q->msg, q->len,
+ 		    q->rssi, 1, NULL);
+ 	os_free(q);
+ 
+@@ -3633,7 +3641,7 @@ static void handle_auth_pasn(struct host
+ 
+ 
+ static void handle_auth(struct hostapd_data *hapd,
+-			const struct ieee80211_mgmt *mgmt, size_t len,
++			struct ieee80211_mgmt *mgmt, size_t len,
+ 			int rssi, int from_queue,
+ 			struct hostapd_frame_info *fi)
+ {
+@@ -3652,6 +3660,8 @@ static void handle_auth(struct hostapd_d
+ 		.mgmt_frame = mgmt,
+ 		.frame_info = fi,
+ 	};
++	u8 link_addr[6];
++	struct multi_link_data ml_data = {0};
+ 
+ 	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
+ 		wpa_printf(MSG_INFO, "handle_auth - too short payload (len=%lu)",
+@@ -3659,6 +3669,25 @@ static void handle_auth(struct hostapd_d
+ 		return;
+ 	}
+ 
++	if (hapd->mld) {
++		struct ieee802_11_elems elems;
++		if (ieee802_11_parse_elems(mgmt->u.auth.variable,
++					   len - offsetof(struct ieee80211_mgmt,
++							  u.auth.variable),
++					   &elems, 0) == ParseFailed) {
++			wpa_printf(MSG_DEBUG,
++				   "MLO: Failed to parse auth ies to check mle");
++			return;
++		}
++
++		hostapd_parse_mle(hapd, WLAN_FC_STYPE_AUTH, &elems, &ml_data);
++
++		if (ml_data.present) {
++			os_memcpy(link_addr, mgmt->sa, ETH_ALEN);
++			os_memcpy(mgmt->sa, ml_data.u.basic.mld_addr, ETH_ALEN);
++		}
++	}
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (hapd->iconf->ignore_auth_probability > 0.0 &&
+ 	    drand48() < hapd->iconf->ignore_auth_probability) {
+@@ -3907,6 +3936,14 @@ static void handle_auth(struct hostapd_d
+ 	}
+ 	sta->last_seq_ctrl = seq_ctrl;
+ 	sta->last_subtype = WLAN_FC_STYPE_AUTH;
++
++	if (hapd->mld && ml_data.present) {
++		ap_ml_sta_add(hapd, sta, ml_data.u.basic.mld_addr);
++		os_memcpy(sta->link_addr, link_addr, ETH_ALEN);
++	} else {
++		os_memcpy(sta->link_addr, sta->addr, ETH_ALEN);
++	}
++
+ #ifdef CONFIG_MBO
+ 	sta->auth_rssi = rssi;
+ #endif /* CONFIG_MBO */
+@@ -8136,7 +8173,10 @@ size_t hostapd_eid_basic_mle_len(struct
+ 
+ 	total_len += MLE_HEADER_LEN;
+ 
+-	total_len += MLE_COMMON_INFO_BCN;
++	if (type != WLAN_FC_STYPE_AUTH)
++		total_len += MLE_COMMON_INFO_BCN;
++	else
++		total_len += MLE_COMMON_INFO_AUTH;
+ 
+ 	/* TODO EML caps and Medium Synchronization Delay Info fields */
+ 
+@@ -8170,9 +8210,11 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 	eid_len = eid++;
+ 	*eid++ = WLAN_EID_EXT_MULTI_LINK;
+ 
+-	/* Fill these info by default currently */
+-	presence_bmap = MLE_LINK_ID_PRESENT | MLE_BSS_PARAM_CHANGE_PRESENT |
+-			MLE_MLD_CAP_PRESENT;
++	if (type != WLAN_FC_STYPE_AUTH) {
++		/* Fill these info by default currently */
++		presence_bmap = MLE_LINK_ID_PRESENT | MLE_BSS_PARAM_CHANGE_PRESENT |
++				MLE_MLD_CAP_PRESENT;
++	}
+ 
+ 	*eid++ = MLE_TYPE_BASIC | ((presence_bmap & 0x0f) << MLE_PRESENCE_BMAP_SHIFT);
+ 
+@@ -8412,6 +8454,17 @@ void hostapd_parse_mle(struct hostapd_da
+ 		return;
+ 	}
+ 
++	if (type == WLAN_FC_STYPE_AUTH) {
++		/* Common info len should have only MLD mac addr */
++		if (*mle++ != ETH_ALEN + 1 || ml_data->control.presence) {
++			wpa_printf(MSG_ERROR, "Unexpected info present in AUTH basic MLE");
++			ml_data->present = false;
++			return;
++		}
++		memcpy(ml_data->u.basic.mld_addr, mle, ETH_ALEN);
++		return;
++	}
++
+ 	if (type != WLAN_FC_STYPE_ASSOC_REQ &&
+ 	    type != WLAN_FC_STYPE_REASSOC_REQ) {
+ 		ml_data->present = false;
+Index: hostapd-2022-09-19/src/ap/sta_info.c
+===================================================================
+--- hostapd-2022-09-19.orig/src/ap/sta_info.c
++++ hostapd-2022-09-19/src/ap/sta_info.c
+@@ -707,6 +707,38 @@ void ap_sta_session_warning_timeout(stru
+ }
+ 
+ 
++void ap_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta,
++		   const u8 *addr)
++{
++	struct ml_sta_info *ml_sta;
++
++	if (!hapd->mld)
++		return;
++
++	/* Shouldnt actually occur */
++	if (sta->ml_sta && !(memcmp(sta->ml_sta->addr, addr, ETH_ALEN)))
++		return;
++
++	ml_sta = os_zalloc(sizeof(struct ml_sta_info));
++	if (ml_sta == NULL) {
++		wpa_printf(MSG_ERROR, "malloc failed for ML STA creation");
++		return;
++	}
++
++	os_memcpy(ml_sta->addr, addr, ETH_ALEN);
++
++	/* create head of link stas */
++	ml_sta->linksta = sta;
++	/* no other partners currently */
++	sta->lnext = NULL;
++
++	sta->ml_sta = ml_sta;
++
++	ml_sta->mld = hapd->mld;
++
++	/* TODO add this ml sta to the list of ML sta in the MLD if required */
++}
++
+ struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
+ {
+ 	struct sta_info *sta;
+Index: hostapd-2022-09-19/src/ap/sta_info.h
+===================================================================
+--- hostapd-2022-09-19.orig/src/ap/sta_info.h
++++ hostapd-2022-09-19/src/ap/sta_info.h
+@@ -107,10 +107,23 @@ struct pasn_data {
+ #endif /* CONFIG_FILS */
+ };
+ 
++struct ml_sta_info {
++	struct ml_sta_info *ml_next; /* next entry in ML sta list */
++	struct sta_info *linksta; /* Head of Link STA list */
++	struct hostapd_mld *mld; /* ML BSS to which this ML STA belongs */
++	u8 addr[6];
++};
++
+ struct sta_info {
+ 	struct sta_info *next; /* next entry in sta list */
+ 	struct sta_info *hnext; /* next entry in hash table list */
+-	u8 addr[6];
++	struct sta_info *lnext; /* next link STA in ML sta list*/
++	struct ml_sta_info *ml_sta;
++	u8 addr[6]; /* This is STA MLD address in case of ML STA */
++	 /* This is Link STA address in case of ML ST, else both
++	  * link_addr and addr have same value
++	  */
++	u8 link_addr[6];
+ 	be32 ipaddr;
+ 	struct dl_list ip6addr; /* list head for struct ip6addr */
+ 	u16 aid; /* STA's unique AID (1 .. 2007) or 0 if not yet assigned */
+@@ -415,4 +428,6 @@ int ap_sta_re_add(struct hostapd_data *h
+ 
+ void ap_free_sta_pasn(struct hostapd_data *hapd, struct sta_info *sta);
+ 
++void ap_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta,
++		   const u8 *addr);
+ #endif /* STA_INFO_H */
+Index: hostapd-2022-09-19/src/common/ieee802_11_defs.h
+===================================================================
+--- hostapd-2022-09-19.orig/src/common/ieee802_11_defs.h
++++ hostapd-2022-09-19/src/common/ieee802_11_defs.h
+@@ -2452,6 +2452,7 @@ struct ieee80211_he_mu_edca_parameter_se
+  * MLD Capabilities (2)
+  */
+ #define MLE_COMMON_INFO_BCN			11
++#define MLE_COMMON_INFO_AUTH			7
+ 
+ #define MLE_TYPE_BASIC				0
+ #define MLE_TYPE_PREQ				1

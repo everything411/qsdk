@@ -1,0 +1,165 @@
+#!/bin/bash
+#
+# Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+SCRIPT_DIR=$(dirname ${BASH_SOURCE[0]})
+TOP_DIR="$SCRIPT_DIR/../../../"
+declare -a profile
+declare -a debug
+declare -a profile_name
+
+ret_val=1
+if [ "$#" -gt 0 ]; then
+    if [ "$1" == "-h" ]; then
+        echo "Usage: Provide target, arch and profile type for entire build (Please run \"make clean\" if this is an existing workspace)" >&2
+        exit 1
+    fi
+fi
+
+#echo "Help options, Run command with -h [$0 -h]"
+soc_list=("ipq807x" "ipq60xx" "ipq50xx" "ipq95xx" "ipq53xx")
+arch_list=("32" "64")
+
+populate_profile_list()
+{
+	profile=()
+	profile_name=()
+	for qsdk_profile in $(find $SCRIPT_DIR/ -name 'ipq*.config' ! -name '*qbuilder*' | sort );do
+		filename=$(basename $qsdk_profile)
+		profile+=( "${filename%.*}" )
+		QSDK_profile=$(grep -oP "CONFIG_TARGET_.*\KQSDK_[a-zA-Z0-9]*" $qsdk_profile)
+		name=${QSDK_profile:-"None"}
+		profile_name+=( "$name" )
+	done
+}
+
+read_inputs()
+{
+	echo ""
+	echo -e "\t1) ipq807x ( Hawkeye )"
+	echo -e "\t2) ipq60xx ( Cypress )"
+	echo -e "\t3) ipq50xx ( Maple ) "
+	echo -e "\t4) ipq95xx ( Alder ) "
+	echo -e "\t5) ipq53xx ( Miami ) "
+	read -p "Please enter your choice of target[1..5] : " in_soc
+	echo ""
+
+	if [[ $in_soc -lt 1 || $in_soc -gt 5 ]]; then
+	        echo "Wrong input.. exiting"
+		return 0
+	fi
+
+	echo -e "\t1) 32 Bit"
+	echo -e "\t2) 64 bit"
+	read -p "Please enter your choice of build type[1..2] : " in_arch
+	echo ""
+
+	if [[ $in_arch -lt 1 || $in_arch -gt 2 ]]; then
+	        echo "Wrong input.. exiting"
+		return 0
+	fi
+
+	qsdk_target=${soc_list[$in_soc-1]}
+	arch=${arch_list[$in_arch-1]}
+	if [ "$arch" -eq "64" ];then
+		qsdk_subtarget="generic"
+	else if [ "$arch" -eq "32" ];then
+		qsdk_subtarget="${qsdk_target}_32"
+		fi
+	fi
+
+	echo -e "\n\033[36m**** List of supported QSDK profiles *****\033[0m"
+	populate_profile_list
+	index=1
+	for i in ${profile[@]};do
+		echo -e "\t$index) ${i:4}"
+		index=$(( $index+1 ))
+	done
+	read -p "Choose the profile [1..${#profile[@]}] : " input
+	if [[ $input -lt 1 || $input -gt ${#profile[@]} ]];then
+		echo "Please enter a valid input...Exiting"
+		return 0
+	fi
+	declare qsdk_profile=${profile[$(( $input -1 ))]}
+	pfile=${profile[$(( $input -1 ))]}
+	pname=${profile_name[$(( $input -1 ))]}
+	echo -e "\n\033[36mSelected configuration: ${qsdk_target} - ${qsdk_subtarget} - ${qsdk_profile}\033[0m"
+	read -p "Debug build required ? [y/n] : " debug_in
+	case $debug_in in
+		'y') debug=("Debug" "Debug+Kasan")
+			# Check for debug builds
+			index=1
+			for i in ${debug[@]};do
+				echo -e "\t$index) $i"
+				index=$(( $index+1 ))
+			done
+
+			read -p "Choose the option for debug build : " debug_input
+			case $debug_input in
+				1)	if [[ "$pname" = QSDK_16M ]];then
+					       cat $SCRIPT_DIR/${pfile}.config \
+						       $SCRIPT_DIR/ipq_debug_16M > $TOP_DIR/.config
+				       else
+					       cat $SCRIPT_DIR/${pfile}.config \
+						       $SCRIPT_DIR/ipq_debug > $TOP_DIR/.config
+				       fi
+				       ;;
+
+				2)	cat $SCRIPT_DIR/${pfile}.config \
+					       $SCRIPT_DIR/ipq_debug_kasan > $TOP_DIR/.config
+				       ;;
+
+				*)	echo "Wrong input .... exiting"
+					return 0
+					;;
+		       esac
+		       ;;
+
+		'n')
+		       cp $SCRIPT_DIR/${pfile}.config $TOP_DIR/.config
+		       ;;
+		*)
+			echo "Wrong input .... exiting"
+			return 0
+			;;
+	esac
+	echo "CONFIG_TARGET_${qsdk_target}=y" >> $TOP_DIR/.config
+
+	# Set subtarget
+	echo "CONFIG_TARGET_${qsdk_target}_${qsdk_subtarget}=y" >> $TOP_DIR/.config
+	echo "CONFIG_TARGET_${qsdk_target}_${qsdk_subtarget}_${pname}=y" >> $TOP_DIR/.config
+	return 1
+}
+
+read_inputs
+ret_val=$?
+if [ $ret_val != 0 ];then
+	cd $TOP_DIR
+	umask 022
+	make package/symlinks
+	echo -e "\n================= Executing "make defconfig" =============="
+	make defconfig
+
+	echo ""
+	echo '================= .config is generated, you can build using below commands =============='
+	echo ""
+	echo "PLEASE RUN MAKE COMMAND FROM THE LIST OF BUILD OPTIONS AVAILABLE :"
+	echo -e "\t\t make -j8 V=s (Verbose logs)"
+	echo -e "\t\t make -j8 V=e (No detailed logs)"
+	echo -e "\t\t time make -j8 V=s (Verbose logs with total time taken by build)"
+	echo ""
+	echo "************ If you face any error, please rerun with 'make -j1 V=s'.*************"
+	echo ""
+fi

@@ -1,0 +1,312 @@
+From 8f024dc46a95b82f630e2413b36c50c7e4d979e2 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Fri, 18 Nov 2022 11:55:35 +0530
+Subject: [PATCH] hostapd: send global events for all link bss
+
+Since the global event handler checks only for the matching interface
+index and breaks after the first matching bss is found, these global
+events might not reach other link bss which also have the same ifidx
+since multiple bss can be created for a single netdev.
+
+Route these events also to partner bss. Note that not all the events
+are routed now, and this change enables only the infrastructure. The
+tx status event for example need not be routed to all bss. Based on
+the bss address it will be routed to specific link bss alone. Hence
+such exceptions needs to be handled specifically.
+
+As we add support for new features, new events needs to be routed
+appropriately or globally as required to all link bss.
+
+Since, global events could be received even before we start beaconing,
+the chaining of link bss of a MLD is moved before interface bringup.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/hostapd.c                   | 75 +++++++++++++++++++----------
+ src/drivers/driver_nl80211.c       |  7 ---
+ src/drivers/driver_nl80211_event.c | 76 +++++++++++++++++++++++++++---
+ 3 files changed, 121 insertions(+), 37 deletions(-)
+
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1678,6 +1678,37 @@ void hostapd_channel_list_updated(struct
+ 	setup_interface2(iface);
+ }
+ 
++static void hostapd_chain_ml_bss(struct hostapd_data *hapd)
++{
++	struct hostapd_data *curr_bss, *prev_bss;
++	struct hostapd_mld *mld = hapd->mld;
++
++	if (!(mld && mld->bss))
++		return;
++
++	/* Single link device */
++	if (mld->num_links < 2)
++		return;
++
++	/* if this is the first link bss, wait for consecutive
++	 * link bss to link in driver
++	 */
++	if (hapd == mld->bss)
++		return;
++
++	curr_bss = mld->bss;
++
++	while (curr_bss) {
++		prev_bss = curr_bss;
++		curr_bss = curr_bss->nbss;
++		if (curr_bss == hapd) {
++			curr_bss->driver->chain_link_bss(prev_bss->drv_priv,
++							 curr_bss->drv_priv);
++			break;
++		}
++	}
++}
++
+ 
+ static int setup_interface(struct hostapd_iface *iface)
+ {
+@@ -1710,6 +1741,21 @@ static int setup_interface(struct hostap
+ 		iface->bss[i]->drv_priv = hapd->drv_priv;
+ 	}
+ 
++	/* Add the default link of vif in case of ml bss */
++	if (hapd->mld) {
++		struct wpa_driver_link_params params;
++		params.link_id = hapd->iface->mlo_link_id;
++		params.link_addr = hapd->conf->bssid;
++		if (hostapd_drv_add_link(hapd, &params))
++			wpa_printf(MSG_DEBUG, "Failed Adding Link to kernel for %d addr "MACSTR,
++				   params.link_id, MAC2STR(params.link_addr));
++		else
++			wpa_printf(MSG_DEBUG, "Added Link to kernel for %d addr "MACSTR,
++				   params.link_id, MAC2STR(params.link_addr));
++
++		hostapd_chain_ml_bss(hapd);
++	}
++
+ 	if (hostapd_validate_bssid_configuration(iface))
+ 		return -1;
+ 
+@@ -2271,19 +2317,6 @@ static int hostapd_setup_interface_compl
+ 	hostapd_ubus_add_iface(iface);
+ 	wpa_printf(MSG_DEBUG, "Completing interface initialization");
+ 
+-	/* Add the default link of vif in case of ml bss */
+-	if (hapd->mld) {
+-		struct wpa_driver_link_params params;
+-		params.link_id = hapd->iface->mlo_link_id;
+-		params.link_addr = hapd->conf->bssid;
+-		if (hostapd_drv_add_link(hapd, &params))
+-			wpa_printf(MSG_DEBUG, "Failed Adding Link to kernel for %d addr "MACSTR,
+-				   params.link_id, MAC2STR(params.link_addr));
+-		else
+-			wpa_printf(MSG_DEBUG, "Added Link to kernel for %d addr "MACSTR,
+-				   params.link_id, MAC2STR(params.link_addr));
+-	}
+-
+ 	if (iface->freq) {
+ #ifdef NEED_AP_MLME
+ 		int res;
+@@ -2613,21 +2646,15 @@ int hostapd_setup_interface_complete(str
+ 	/* Once all link bss of the ifaces are setup, now start each beacon and chain these bsses*/
+ #ifdef CONFIG_IEEE80211BE
+ 	for (i = 0; i < interfaces->mld_count; i++) {
+-		struct hostapd_data *link_bss1, *link_bss2;
++		struct hostapd_data *link_bss;
+ 		struct hostapd_mld *mld;
+ 
+ 		mld = interfaces->mld[i];
+ 		if (mld && mld->bss) {
+-			link_bss1 = mld->bss;
+-			while (link_bss1) {
+-				hostapd_set_beacon(link_bss1);
+-
+-				link_bss2 = link_bss1;
+-				link_bss1 = link_bss2->nbss;
+-
+-				if (link_bss1)
+-					link_bss1->driver->chain_link_bss(link_bss2->drv_priv,
+-									 link_bss1->drv_priv);
++			link_bss = mld->bss;
++			while (link_bss) {
++				hostapd_set_beacon(link_bss);
++				link_bss = link_bss->nbss;
+ 			}
+ 		}
+ 	}
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -8284,13 +8284,6 @@ static void i802_chain_link_bss(void *pr
+ 		return;
+ 	}
+ 
+-	if (bss1->freq == bss2->freq) {
+-		wpa_printf(MSG_WARNING,
+-			   "nl80211: Failed to chain bss(link=%d and link=%d) due to matching freq",
+-			   bss1->drv->mlo_link_id, bss2->drv->mlo_link_id);
+-		return;
+-	}
+-
+ 	if (os_memcmp(bss1->ifname, bss2->ifname, IFNAMSIZ + 1)) {
+ 		wpa_printf(MSG_WARNING,
+ 			   "nl80211: Failed to chain bss(%s and %s) due to mismatch in ifname",
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -27,6 +27,9 @@ nl80211_control_port_frame_tx_status(str
+ 				     struct nlattr *ack, struct nlattr *cookie);
+ 
+ 
++static void do_process_drv_event(struct i802_bss *bss, int cmd,
++				 struct nlattr **tb, bool route);
++
+ static const char * nl80211_command_to_string(enum nl80211_commands cmd)
+ {
+ #define C2S(x) case x: return #x;
+@@ -918,7 +921,7 @@ static struct i802_bss *mlme_route_mgmt_
+ 
+ 	while (new_bss != bss) {
+ 		if (!os_memcmp(new_bss->addr, addr, ETH_ALEN) == 0) {
+-			new_bss = bss->next_link_bss;
++			new_bss = new_bss->next_link_bss;
+ 			continue;
+ 		}
+ 
+@@ -942,7 +945,7 @@ static struct i802_bss *mlme_route_mgmt_
+ 
+ 	while (new_bss != bss) {
+ 		if (new_bss->freq != freq) {
+-			new_bss = bss->next_link_bss;
++			new_bss = new_bss->next_link_bss;
+ 			continue;
+ 		}
+ 		wpa_printf(MSG_DEBUG,
+@@ -3328,15 +3331,75 @@ nl80211_color_change_announcement_comple
+ 
+ #endif /* CONFIG_IEEE80211AX */
+ 
++static bool check_route_global_event(int cmd)
++{
++	/* only below events are routed to all bss of MLD, other
++	 * events are routed during initial handling based on specific
++	 * NL attrs such as bss addr, freq etc
++	 */
++	switch (cmd) {
++	case NL80211_CMD_TRIGGER_SCAN:
++	case NL80211_CMD_START_SCHED_SCAN:
++	case NL80211_CMD_SCHED_SCAN_STOPPED:
++	case NL80211_CMD_NEW_SCAN_RESULTS:
++	case NL80211_CMD_SCHED_SCAN_RESULTS:
++	case NL80211_CMD_SCAN_ABORTED:
++	case NL80211_CMD_REG_CHANGE:
++	case NL80211_CMD_RADAR_DETECT:
++		/* It is safe to route RADAR_DETECT command since in the
++		 * corresponding event handler, appropriate check is in place
++		 * whether the event is applicable for that BSS or not
++		 */
++	case NL80211_CMD_WIPHY_REG_CHANGE:
++		/* These commands are passed to each bss of the MLD */
++		return true;
++	default:
++		/* TODO Either handle routing for this command
++		 * insider the default bss handler or return
++		 * without any action based on NL attrs for
++		 * unrelated bss. Ex. AWGN events needs
++		 * to be handled only by corresponding bss which
++		 * supports 6GHz/5GHz respectively.
++		 */
++		return false;
++	}
++}
++
++static void route_drv_event(struct i802_bss *bss, int cmd,
++			       struct nlattr **tb)
++{
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct i802_bss *new_bss;
++
++	if (drv->nlmode != NL80211_IFTYPE_AP)
++	       return;
++
++	if (drv->mlo_link_id == -1)
++		return;
++
++	if (bss ==  bss->next_link_bss)
++		return;
++
++	if (!check_route_global_event(cmd))
++		return;
++
++	new_bss = bss->next_link_bss;
++
++	while (new_bss != bss) {
++		do_process_drv_event(new_bss, cmd, tb, false);
++		new_bss = new_bss->next_link_bss;
++	}
++}
++
+ static void do_process_drv_event(struct i802_bss *bss, int cmd,
+-				 struct nlattr **tb)
++				 struct nlattr **tb, bool route)
+ {
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+ 	int external_scan_event = 0;
+ 	struct nlattr *frame = tb[NL80211_ATTR_FRAME];
+ 
+-	wpa_printf(MSG_DEBUG, "nl80211: Drv Event %d (%s) received for %s",
+-		   cmd, nl80211_command_to_string(cmd), bss->ifname);
++	wpa_printf(MSG_DEBUG, "nl80211: Drv Event %d (%s) received for %s route %d",
++		   cmd, nl80211_command_to_string(cmd), bss->ifname, route);
+ 
+ #ifdef CONFIG_DRIVER_NL80211_QCA
+ 	if (cmd == NL80211_CMD_ROAM &&
+@@ -3606,8 +3669,34 @@ static void do_process_drv_event(struct
+ 			"(cmd=%d)", cmd);
+ 		break;
+ 	}
++	/* Also check if this event needs to be routed to other bss of
++	 * the MLD, since we receive event only for the parent bss
++	 * which created the nl connection
++	 */
++	if (route)
++		route_drv_event(bss, cmd, tb);
+ }
+ 
++/* Wiphy event coming to drv should be routed to all participating drvs in that
++ * MLD as well */
++static int process_global_mlo_wiphy_event(struct nl80211_global *global, int cmd,
++					  struct nlattr **tb)
++{
++	struct wpa_driver_nl80211_data *drv, *tmp;
++	int wiphy_idx;
++
++	if (tb[NL80211_ATTR_WIPHY])
++		wiphy_idx = nla_get_u32(tb[NL80211_ATTR_WIPHY]);
++	else
++		return NL_SKIP;
++
++	dl_list_for_each_safe(drv, tmp, &global->interfaces,
++			      struct wpa_driver_nl80211_data, list) {
++		if (nl80211_get_wiphy_index(drv->first_bss) == wiphy_idx)
++			do_process_drv_event(drv->first_bss, cmd, tb, false);
++	}
++	return NL_SKIP;
++}
+ 
+ int process_global_event(struct nl_msg *msg, void *arg)
+ {
+@@ -3644,7 +3733,12 @@ int process_global_event(struct nl_msg *
+ 			    (wiphy_idx_set && wiphy_idx == wiphy_idx_rx) ||
+ 			    (wdev_id_set && bss->wdev_id_set &&
+ 			     wdev_id == bss->wdev_id)) {
+-				do_process_drv_event(bss, gnlh->cmd, tb);
++				if (wiphy_idx_set)
++					return process_global_mlo_wiphy_event(global,
++									      gnlh->cmd,
++									      tb);
++
++				do_process_drv_event(bss, gnlh->cmd, tb, true);
+ 				return NL_SKIP;
+ 			}
+ 		}

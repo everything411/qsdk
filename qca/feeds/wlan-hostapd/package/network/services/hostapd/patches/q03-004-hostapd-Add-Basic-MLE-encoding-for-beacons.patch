@@ -1,0 +1,204 @@
+From c37e8a858167892d9cf68d7c00c641dfb9991c25 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Wed, 5 Oct 2022 14:42:56 +0530
+Subject: [PATCH] hostapd: Add Basic MLE encoding for beacons
+
+Add the Basic ML element to beacons of link BSS
+affiliated to a MLD.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/beacon.c              |  7 +++
+ src/ap/ieee802_11.c          | 88 +++++++++++++++++++++++++++++++++++-
+ src/ap/ieee802_11.h          |  4 ++
+ src/common/ieee802_11_defs.h | 23 ++++++++++
+ 4 files changed, 120 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index f76a955..cac9ee5 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1780,6 +1780,9 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 		tail_len += 3 + sizeof(struct ieee80211_eht_operation);
+ 		if (hapd->iconf->ru_punct_bitmap)
+ 			tail_len +=  DISABLED_SUBCHANNEL_BITMAP_BYTES_SIZE;
++
++		tail_len += hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_BEACON,
++						      0);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -1945,6 +1948,10 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 		tailpos = hostapd_eid_eht_capab(hapd, tailpos,
+ 						IEEE80211_MODE_AP);
+ 		tailpos = hostapd_eid_eht_operation(hapd, tailpos, IEEE80211_MODE_AP);
++
++		tailpos = hostapd_eid_basic_mle(hapd, tailpos,
++						WLAN_FC_STYPE_BEACON,
++						0);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index a853265..d4abf9d 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7640,7 +7640,6 @@ static size_t hostapd_eid_rnr_mlo_len(struct hostapd_data *hapd, u32 type,
+ 						 ema_not_applicable,
+ 						 true);
+ 	}
+-
+ 	return len;
+ }
+ 
+@@ -7962,7 +7961,6 @@ static u8 * hostapd_eid_rnr_mlo(struct hostapd_data *hapd, u32 type, u8 *eid,
+ 					     ema_not_applicable,
+ 					     true);
+ 	}
+-
+ 	return eid;
+ }
+ 
+@@ -8014,6 +8012,92 @@ u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type)
+ }
+ 
+ 
++size_t hostapd_eid_basic_mle_len(struct hostapd_data *hapd, u32 type, u16 link_info_bmap)
++{
++	size_t total_len = 0;
++
++	if (!hapd->mld || !hapd->mld->num_links)
++		return 0;
++
++	total_len += MLE_HEADER_LEN;
++
++	total_len += MLE_COMMON_INFO_BCN;
++
++	/* TODO EML caps and Medium Synchronization Delay Info fields */
++
++	if (!link_info_bmap)
++		return total_len;
++
++	if (type != WLAN_FC_STYPE_PROBE_RESP && type != WLAN_FC_STYPE_ASSOC_RESP) {
++		wpa_printf(MSG_ERROR, "Link info is not expected frames except"
++			   " ML Probe response and Assoc Req/Response");
++		return total_len;
++	}
++
++	/* TODO Add Link Info for ML Probe response, Assoc Response */
++	return total_len;
++}
++
++
++u8 * hostapd_eid_basic_mle(struct hostapd_data *hapd, u8 *eid, u32 type,
++			   u16 link_info_bmap)
++{
++	u8 *eid_len, *eid_cmn_info_len;
++	u16 presence_bmap = 0;
++
++	if (!hapd->mld || !hapd->mld->num_links)
++		return eid;
++
++	*eid++ = WLAN_EID_EXTENSION;
++	eid_len = eid++;
++	*eid++ = WLAN_EID_EXT_MULTI_LINK;
++
++	/* Fill these info by default currently */
++	presence_bmap = MLE_LINK_ID_PRESENT | MLE_BSS_PARAM_CHANGE_PRESENT |
++			MLE_MLD_CAP_PRESENT;
++
++	*eid++ = MLE_TYPE_BASIC | ((presence_bmap & 0x0f) << MLE_PRESENCE_BMAP_SHIFT);
++
++	*eid++ = presence_bmap >> MLE_PRESENCE_BMAP_SHIFT;
++
++	eid_cmn_info_len = eid++;
++
++	os_memcpy(eid, hapd->mld->addr, ETH_ALEN);
++
++	eid += ETH_ALEN;
++
++	if (presence_bmap & MLE_LINK_ID_PRESENT)
++		*eid++ = hapd->iface->mlo_link_id;
++
++	if (presence_bmap & MLE_BSS_PARAM_CHANGE_PRESENT)
++		*eid++ = 0; /* TODO */
++
++	/* TODO EML caps and Medium Synchronization Delay Info fields */
++
++	if (presence_bmap & MLE_MLD_CAP_PRESENT) {
++		*eid++ = hapd->mld->num_links - 1; /* TODO Other caps info not present */
++		*eid++ = 0; /* TODO Other caps info not present */
++	}
++
++	*eid_cmn_info_len = eid - eid_cmn_info_len ;
++
++	*eid_len = eid - eid_len - 1;
++
++	if (!link_info_bmap)
++		return eid;
++
++	if (type != WLAN_FC_STYPE_PROBE_RESP && type != WLAN_FC_STYPE_ASSOC_RESP) {
++		wpa_printf(MSG_ERROR, "Link info is not expected frames except"
++			   " ML Probe response and Assoc Req/Response");
++		return eid;
++	}
++
++	/* TODO Add Link Info for ML Probe response, Assoc Response */
++
++	*eid_len = eid - eid_len - 1;
++	return eid;
++}
++
+ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+ 					  u32 frame_type, size_t *bss_index,
+ 					  const u8 *known_bss,
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index 61de96b..36ed281 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -230,4 +230,8 @@ u16 copy_sta_eht_capab(struct hostapd_data *hapd, struct sta_info *sta,
+ 		       const u8 *he_capab, size_t he_capab_len,
+ 		       const u8 *eht_capab, size_t eht_capab_len);
+ void ru_punct_update_bw(u16 bitmap, u8 pri_chan, enum oper_chan_width *width, u8 *seg0, u8 *seg1);
++size_t hostapd_eid_basic_mle_len(struct hostapd_data *hapd, u32 type,
++				 u16 link_info_bmap);
++u8 * hostapd_eid_basic_mle(struct hostapd_data *hapd, u8 *eid,
++			   u32 type, u16 link_info_bmap);
+ #endif /* IEEE802_11_H */
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 1043c74..2248e2e 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2443,6 +2443,29 @@ struct ieee80211_he_mu_edca_parameter_set {
+ #define RNR_BSS_PARAM_CO_LOCATED                    BIT(6)
+ #define RNR_20_MHZ_PSD_MAX_TXPOWER                  255 /* dBm */
+ 
++/*IEEE Std 802.11 D2.2 9.4.2.312 Multi-Link element static len */
++#define MLE_HEADER_LEN				5
++/* Beacon or a non ML Probe response should include
++ * Common Info Length(1) + MLD MAC Address(6) +
++ * Link ID Info(1) + BSS Parameters Change count(1) +
++ * MLD Capabilities (2)
++ */
++#define MLE_COMMON_INFO_BCN			11
++
++#define MLE_TYPE_BASIC				0
++#define MLE_TYPE_PREQ				1
++#define MLE_TYPE_RECOFIG			2
++#define MLE_TYPE_TDLS				3
++#define MLE_TYPE_PRIORITY_ACCESS		4
++
++#define MLE_LINK_ID_PRESENT			BIT(0)
++#define MLE_BSS_PARAM_CHANGE_PRESENT		BIT(1)
++#define MLE_MEDIUM_SYNC_DELAY_PRESENT		BIT(2)
++#define MLE_EML_CAP_PRESENT			BIT(3)
++#define MLE_MLD_CAP_PRESENT			BIT(4)
++
++#define MLE_PRESENCE_BMAP_SHIFT			4
++
+ /* IEEE P802.11be/D2.0, 9.4.2.311 - EHT Operation element */
+ 
+ /* Figure 9-1002b: EHT Operation Parameters field subfields */
+-- 
+2.17.1
+

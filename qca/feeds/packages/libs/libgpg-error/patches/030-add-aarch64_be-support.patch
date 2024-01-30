@@ -1,0 +1,50 @@
+From 60114ec06ee8245732adf1756c642a636ec32fad Mon Sep 17 00:00:00 2001
+From: Madhurya Kandamuru <quic_madhurya@quicinc.com>
+Date: Thu, 12 Jan 2023 14:31:41 +0530
+Subject: [PATCH] libgpg-error: Big Endian Support
+
+Change-Id: Iffab8c5b9f8c74b7b8ef92497a6b199ff0e7f132
+Signed-off-by: Madhurya Kandamuru <quic_madhurya@quicinc.com>
+---
+
+--- libgpg-error-1.36.orig/src/Makefile.am
++++ libgpg-error-1.36/src/Makefile.am
+@@ -57,6 +57,7 @@ lock_obj_pub = \
+         syscfg/lock-obj-pub.i686-unknown-gnu.h              \
+         syscfg/lock-obj-pub.i686-unknown-kfreebsd-gnu.h     \
+         syscfg/lock-obj-pub.i686-unknown-linux-gnu.h        \
++	syscfg/lock-obj-pub.linux-gnu.h                     \
+         syscfg/lock-obj-pub.m68k-unknown-linux-gnu.h        \
+         syscfg/lock-obj-pub.mips-unknown-linux-gnu.h        \
+         syscfg/lock-obj-pub.mips64el-unknown-linux-gnuabi64.h \
+Index: libgpg-error-1.36/src/syscfg/lock-obj-pub.linux-gnu.h
+===================================================================
+--- /dev/null
++++ libgpg-error-1.36/src/syscfg/lock-obj-pub.linux-gnu.h
+@@ -0,0 +1,26 @@
++## lock-obj-pub.aarch64-unknown-linux-gnu.h
++## File created by gen-posix-lock-obj - DO NOT EDIT
++## To be included by mkheader into gpg-error.h
++
++typedef struct
++{
++  long _vers;
++  union {
++    volatile char _priv[48];
++    long _x_align;
++    long *_xp_align;
++  } u;
++} gpgrt_lock_t;
++
++#define GPGRT_LOCK_INITIALIZER {1,{{0,0,0,0,0,0,0,0, \
++                                    0,0,0,0,0,0,0,0, \
++                                    0,0,0,0,0,0,0,0, \
++                                    0,0,0,0,0,0,0,0, \
++                                    0,0,0,0,0,0,0,0, \
++                                    0,0,0,0,0,0,0,0}}}
++##
++## Local Variables:
++## mode: c
++## buffer-read-only: t
++## End:
++##

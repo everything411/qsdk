@@ -1,0 +1,24 @@
+From 531bec4e117f61ddf6508bb8b18621ae72fab576 Mon Sep 17 00:00:00 2001
+From: P Praneesh <quic_ppranees@quicinc.com>
+Date: Wed, 12 Oct 2022 12:03:56 +0530
+Subject: [PATCH] ath12k: Disable HW checksum advertisement to netdevice
+
+Disabling Hardware checksum advertisement to ath12k netdevice
+to avoid unexpected failures in the transmit path as suggested
+by SFE.
+
+Signed-off-by: P Praneesh <quic_ppranees@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/mac.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -11450,7 +11450,6 @@ static int ath12k_mac_hw_register(struct
+ 	ah->hw->wiphy->reg_notifier = ath12k_reg_notifier;
+ 
+ 	if (!test_bit(ATH12K_FLAG_RAW_MODE, &ab_dflt->dev_flags)) {
+-		hw->netdev_features = NETIF_F_HW_CSUM;
+ 		ieee80211_hw_set(hw, SW_CRYPTO_CONTROL);
+ 		ieee80211_hw_set(hw, SUPPORT_FAST_XMIT);
+ 	}

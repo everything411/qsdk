@@ -1,0 +1,113 @@
+From 6776effd17481ef32aabcf0fe15b2eb7408c5423 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Mon, 15 May 2023 19:00:24 +0530
+Subject: [PATCH] hostapd: add Max Channel Switch Time IE support
+
+The Max Channel Switch Time (MCST) element indicates the time delta
+between the time the last beacon is transmitted by the AP in the
+current channel and the expected time of the first beacon transmitted
+by the AP in the new channel.
+
+IEEE Std 802.11be-Draft2.2-2022, Section 35.3.11 (Multi-link procedures
+for channel switching, extended channel switching, and channel quieting)
+indicates that if an AP affiliated with an AP MLD is switching channel,
+MCST IE shall be included in every beacon and probe response frames it
+transmits.
+
+Add support to include MCST IE in beacon and probe response during channel
+switch announcement for an AP affiliated to an AP MLD.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/beacon.c              | 34 ++++++++++++++++++++++++++++++++++
+ src/common/ieee802_11_defs.h |  1 +
+ 2 files changed, 35 insertions(+)
+
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -445,6 +445,35 @@ static u8 * hostapd_eid_ecsa(struct host
+ 	return eid;
+ }
+ 
++static u8 *hostapd_eid_mcst(struct hostapd_data *hapd, u8 *eid)
++{
++#ifdef CONFIG_IEEE80211BE
++	/* switch time is basically time between CSA count 1 and CSA count 0
++	 * (1 beacon interval) + time for interface restart + time to send beacon
++	 * in the new channel (1 beacon interval)
++	 *
++	 * TODO: Use dynamic interface restart time
++	 */
++	u64 switch_time_ms = host_to_le16(hapd->iconf->beacon_int) + 1000 +
++			     host_to_le16(hapd->iconf->beacon_int);
++	u64 switch_time = switch_time_ms / 100; /* 1 TU = 100ms */
++
++	/* add MCST IE only if its part of a MLD */
++	if (!hapd->mld)
++		return eid;
++
++	if (!hapd->cs_freq_params.channel)
++		return eid;
++
++	*eid++ = WLAN_EID_EXTENSION;
++	*eid++ = 4;
++	*eid++ = WLAN_EID_EXT_MAX_CHANNEL_SWITCH_TIME;
++	os_memcpy(eid, &switch_time, 3);
++	eid += 3;
++#endif /* CONFIG_IEEE80211BE */
++
++	return eid;
++}
+ 
+ static u8 * hostapd_eid_supported_op_classes(struct hostapd_data *hapd, u8 *eid)
+ {
+@@ -980,6 +1009,9 @@ static u8 * hostapd_gen_probe_resp(struc
+ 		if (is_5ghz_freq(hapd->iface->freq))
+ 			buflen += (6 + 2 + 4 +
+ 				   sizeof(struct ieee80211_240mhz_vendor_oper));
++
++		/* inclusion on MCST IE is mandatory */
++		buflen += 6;
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -1065,6 +1097,9 @@ static u8 * hostapd_gen_probe_resp(struc
+ 		hapd->cs_c_off_ecsa_proberesp = csa_pos - (u8 *) resp - 1;
+ 	pos = csa_pos;
+ 
++	/* MCST IE */
++	pos = hostapd_eid_mcst(hapd, pos);
++
+ 	pos = hostapd_eid_supported_op_classes(hapd, pos);
+ 	pos = hostapd_eid_ht_capabilities(hapd, pos);
+ 	pos = hostapd_eid_ht_operation(hapd, pos);
+@@ -2175,6 +2210,9 @@ int ieee802_11_build_ap_params(struct ho
+ 		if (is_5ghz_freq(hapd->iface->freq))
+ 			tail_len += (6 + 2 + 4 +
+ 				     sizeof(struct ieee80211_240mhz_vendor_oper));
++
++		/* inclusion on MCST IE is mandatory */
++		tail_len += 6;
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -2262,6 +2300,9 @@ int ieee802_11_build_ap_params(struct ho
+ 		hapd->cs_c_off_ecsa_beacon = csa_pos - tail - 1;
+ 	tailpos = csa_pos;
+ 
++	/* MCST IE */
++	tailpos = hostapd_eid_mcst(hapd, tailpos);
++
+ 	tailpos = hostapd_eid_supported_op_classes(hapd, tailpos);
+ 	tailpos = hostapd_eid_ht_capabilities(hapd, tailpos);
+ 	tailpos = hostapd_eid_ht_operation(hapd, tailpos);
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -480,6 +480,7 @@
+ #define WLAN_EID_EXT_HE_MU_EDCA_PARAMS 38
+ #define WLAN_EID_EXT_SPATIAL_REUSE 39
+ #define WLAN_EID_EXT_COLOR_CHANGE_ANNOUNCEMENT 42
++#define WLAN_EID_EXT_MAX_CHANNEL_SWITCH_TIME 52
+ #define WLAN_EID_EXT_OCV_OCI 54
+ #define WLAN_EID_EXT_MULTIPLE_BSSID_CONFIGURATION 55
+ #define WLAN_EID_EXT_NON_INHERITANCE 56

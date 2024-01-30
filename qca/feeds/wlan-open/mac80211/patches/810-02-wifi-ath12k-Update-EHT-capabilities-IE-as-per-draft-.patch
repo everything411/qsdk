@@ -1,0 +1,53 @@
+From bec7a2ad64f97aed2fb9b4aa45dcb6d06071cb70 Mon Sep 17 00:00:00 2001
+From: Yuvarani V <quic_yuvarani@quicinc.com>
+Date: Fri, 14 Jul 2023 11:28:34 +0530
+Subject: [PATCH] wifi: ath12k: Update EHT capabilities IE as per draft 3.0
+
+Update EHT capabilities IE definitions as per 11be draft 3.0
+specification.
+
+Add the below EHT capabilities IE definitions,
+EHT MAC Capabilities(Draft 3.1 - 9.4.2.313.2):
+Two BQRs Support - B11(1 Bit)
+EHT Link Adaptation Support - B12,B13(2 Bits)
+
+EHT PHY Capabilities(Draft 3.1 - 9.4.2.313.3):
+20 MHz-Only Limited Capabilities Support - B66(1 Bit)
+20 MHz-Only Triggered MU Beamforming Full BW Feedback And DL MU-MIMO - B67(1 Bit)
+20 MHz-Only M-RU Support - B68(1 Bit)
+
+Signed-off-by: Yuvarani V <quic_yuvarani@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/mac.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/net/wireless/ath/ath12k/mac.c b/drivers/net/wireless/ath/ath12k/mac.c
+index 09b2b49..d720ee5 100644
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -8201,6 +8201,10 @@ ath12k_mac_filter_eht_cap_mesh(struct ieee80211_eht_cap_elem_fixed *eht_cap_elem
+ 	m = IEEE80211_EHT_MAC_CAP0_EPCS_PRIO_ACCESS;
+ 	eht_cap_elem->mac_cap_info[0] &= ~m;
+ 
++	m = IEEE80211_EHT_MAC_CAP1_TWO_BQRS_SUPP |
++	    IEEE80211_EHT_MAC_CAP1_EHT_LINK_ADAPTATION_SUPP;
++	eht_cap_elem->mac_cap_info[1] &= ~m;
++
+ 	m = IEEE80211_EHT_PHY_CAP0_PARTIAL_BW_UL_MU_MIMO;
+ 	eht_cap_elem->phy_cap_info[0] &= ~m;
+ 
+@@ -8232,6 +8236,11 @@ ath12k_mac_filter_eht_cap_mesh(struct ieee80211_eht_cap_elem_fixed *eht_cap_elem
+ 	    IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_160MHZ |
+ 	    IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_320MHZ;
+ 	eht_cap_elem->phy_cap_info[7] &= ~m;
++
++	m = IEEE80211_EHT_PHY_CAP8_20MHZ_ONLY_CAPS |
++	    IEEE80211_EHT_PHY_CAP8_20MHZ_ONLY_TRIGGER_MUBF_FL_BW_FB_DLMUMIMO |
++	    IEEE80211_EHT_PHY_CAP8_20MHZ_ONLY_MRU_SUPP;
++	eht_cap_elem->phy_cap_info[8] &= ~m;
+ }
+ 
+ static void ath12k_mac_copy_eht_cap(struct ath12k *ar,
+-- 
+2.17.1
+

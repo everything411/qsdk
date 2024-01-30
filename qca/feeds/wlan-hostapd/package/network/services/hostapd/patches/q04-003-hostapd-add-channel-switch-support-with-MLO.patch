@@ -1,0 +1,143 @@
+From b8bb10ac3fc9bad53d00bee2e9780263035274da Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 21 Dec 2022 19:21:55 +0530
+Subject: [PATCH] hostapd: add channel switch support with MLO
+
+During channel switch, if its a multi-link operation, there is a requirement
+to send link_id on which channel switch should take place. Also, once channel
+switch is completed, the partner RNR IE should be updated with the new channel
+configuration in the impacted link.
+
+Add support for the above and hence enable channel switch with MLO.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/drv_callbacks.c             | 21 +++++++++++++
+ src/drivers/driver_nl80211.c       | 23 +++++++++++++++
+ src/drivers/driver_nl80211.h       |  2 ++
+ src/drivers/driver_nl80211_event.c | 47 +++++++++++++++++++++++++-----
+ 4 files changed, 85 insertions(+), 8 deletions(-)
+
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -888,6 +888,10 @@ void hostapd_event_ch_switch(struct host
+ 	int channel, chwidth, is_dfs;
+ 	u8 seg0_idx = 0, seg1_idx = 0, op_class;
+ 	size_t i;
++#ifdef CONFIG_IEEE80211BE
++	struct hostapd_mld *mld;
++	struct hostapd_data *link_bss;
++#endif
+ 
+ 	hostapd_logger(hapd, NULL, HOSTAPD_MODULE_IEEE80211,
+ 		       HOSTAPD_LEVEL_INFO,
+@@ -1030,6 +1034,23 @@ void hostapd_event_ch_switch(struct host
+ 
+ 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED
+ 			"freq=%d dfs=%d", freq, is_dfs);
++
++#ifdef CONFIG_IEEE80211BE
++		/* need to update RNR of partner links in case of MLO */
++		mld = hapd->mld;
++		if (mld) {
++			link_bss = mld->bss;
++			while (link_bss) {
++				/* no need for impacted link */
++				if (link_bss == hapd) {
++					link_bss = link_bss->nbss;
++					continue;
++				}
++				ieee802_11_set_beacon(link_bss);
++				link_bss = link_bss->nbss;
++			}
++		}
++#endif
+ 	} else if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) {
+ 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED
+ 			"freq=%d dfs=%d", freq, is_dfs);
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10997,6 +10997,16 @@ static int nl80211_switch_channel(void *
+ 	if (settings->handle_dfs && nla_put_flag(msg, NL80211_ATTR_HANDLE_DFS))
+ 		goto fail;
+ 
++	if (drv->mlo_link_id >= 0) {
++		wpa_printf(MSG_DEBUG, "nl80211: Channel switch request on link_id=%d",
++			   drv->mlo_link_id);
++
++		if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id)) {
++			nlmsg_free(msg);
++			return -1;
++		}
++	}
++
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: switch_channel failed err=%d (%s)",
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -801,8 +801,8 @@ static void mlme_event_ch_switch(struct
+ 	int chan_offset = 0;
+ 	int ifidx;
+ 
+-	wpa_printf(MSG_DEBUG, "nl80211: Channel switch%s event",
+-		   finished ? "" : " started");
++	wpa_printf(MSG_DEBUG, "nl80211: Channel switch%s event on link %d",
++		   finished ? "" : " started", link ? nla_get_u8(link) : 0);
+ 
+ 	if (!freq)
+ 		return;
+@@ -877,7 +877,7 @@ static void mlme_event_ch_switch(struct
+ 				EVENT_LINK_CH_SWITCH_STARTED, &data);
+ 		}
+ 
+-		if (link_id != drv->mlo_assoc_link_id)
++		if (drv->associated && (link_id != drv->mlo_assoc_link_id))
+ 			return;
+ 	}
+ 
+@@ -3354,6 +3354,12 @@ static bool check_route_global_event(int
+ 	case NL80211_CMD_WIPHY_REG_CHANGE:
+ 		/* These commands are passed to each bss of the MLD */
+ 		return true;
++	case NL80211_CMD_CH_SWITCH_STARTED_NOTIFY:
++	case NL80211_CMD_CH_SWITCH_NOTIFY:
++		/* Either handler has check to fetch appropriate bss based on the
++		 * link_id passed or link_id was provided with global event
++		 * hence no need to explicitly route this event */
++		return false;
+ 	default:
+ 		/* TODO Either handle routing for this command
+ 		 * insider the default bss handler or return
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2736,6 +2736,29 @@ static int hostapd_ctrl_iface_chan_switc
+                 return -1;
+         }
+ 
++#ifdef CONFIG_IEEE80211BE
++        if (iface->num_hw_features > 1) {
++        	bool block_eht_disabling = false;
++
++        	/* If any of the BSS in the iface is part of an MLD or is
++        	 * operating as SL0, we can't allow disabling EHT dynamically.
++        	 */
++		if (iface->conf->ieee80211be && !settings.freq_params.eht_enabled) {
++			for (i = 0; i < iface->num_bss; i++) {
++				if (iface->bss[i]->mld) {
++					block_eht_disabling = true;
++					break;
++				}
++			}
++
++			if (block_eht_disabling) {
++				wpa_printf(MSG_INFO, "chanswitch: can't disable EHT dynamically when already operating in SLO/MLO");
++				return -1;
++			}
++		}
++        }
++#endif /* CONFIG_IEEE80211BE */
++
+ 	ret = hostapd_ctrl_check_freq_params(&settings.freq_params);
+ 	if (ret) {
+ 		wpa_printf(MSG_INFO,

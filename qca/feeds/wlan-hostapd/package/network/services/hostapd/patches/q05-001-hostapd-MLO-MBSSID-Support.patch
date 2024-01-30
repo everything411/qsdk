@@ -1,0 +1,362 @@
+From b6f2599dc2afc0ce5f75e3950c27fb2ff3908beb Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Fri, 24 Feb 2023 11:46:55 +0530
+Subject: [PATCH 1/3] hostapd: MLO MBSSID Support
+
+For A ML AP single wdev can have multiple links and any
+of links can be a TX vdev for other ML/NON-ML APs in same
+radio those forming an MBSSID group.
+Hence if Tx interface of a non-tx AP is an ML AP,
+then link id of the corresponding transmitting link inside
+that TX ML AP has to be notified while starting non-tx vdev,
+so that the kernel can map tx vdev and tx link for this non-tx AP.
+
+Add additional attribute and send tx link id along tx ifindex
+in non-transmitting AP START CMD.
+
+For beacon Add ML IE for Non-tx profie inside MBSSID non-tx bss
+profile sub element if it is an MLD.
+
+For Probe repsonse Solcited MLD APs MLE should be added in the frame body
+of the multi-link probe response, whose location is outside of the Multiple
+BSSID element carried in the frame. The AP MLD ID Present subfield
+of the Presence Bitmap subfield of the Basic Multi-Link element shall be
+set to 1. The AP MLD ID subfield of the Common Info field of the
+Basic Multi-Link element shall be present, and shall be set to the same
+value as the BSSID Index subfield of the Multiple-BSSID Index element
+carried in the Nontransmitted BSSID Profile subelement of the
+Multiple BSSID element.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ src/ap/beacon.c              | 44 ++++++++++++++++++++++++++---------
+ src/ap/ieee802_11.c          | 45 +++++++++++++++++++++++++++++-------
+ src/ap/ieee802_11.h          |  6 +++--
+ src/common/ieee802_11_defs.h |  2 +-
+ src/drivers/driver.h         |  5 ++++
+ src/drivers/driver_nl80211.c |  3 +++
+ src/drivers/nl80211_copy.h   |  7 ++++++
+ 7 files changed, 90 insertions(+), 22 deletions(-)
+
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -500,11 +500,16 @@ static u8 * hostapd_set_mbssid_beacon(st
+ 
+ 	tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+ 	params->mbssid_tx_iface = tx_bss->conf->iface;
++	if (tx_bss->mld)
++		params->mbssid_tx_iface_linkid = tx_bss->iface->mlo_link_id;
++	else
++		params->mbssid_tx_iface_linkid = -1;
++
+ 	params->mbssid_index = hostapd_mbssid_get_bss_index(hapd);
+ 	params->mbssid_count = iface->num_bss;
+ 
+ 	len = hostapd_eid_mbssid_len(tx_bss, WLAN_FC_STYPE_BEACON, &num_mbssid,
+-				     NULL, 0, &params->rnr_elem_len);
++				     NULL, 0, &params->rnr_elem_len, NULL);
+ 	if (hapd->iconf->ema) {
+ 		if (!iface->ema_max_periodicity) {
+ 			wpa_printf(MSG_WARNING, "MBSSID: Driver doesn't support"
+@@ -548,7 +553,8 @@ static u8 * hostapd_set_mbssid_beacon(st
+ 				 params->mbssid_elem_count,
+ 				 params->mbssid_elem_offset, NULL, 0,
+ 				 params->rnr_elem, params->rnr_elem_offset,
+-				 &params->rnr_elem_count, params->rnr_elem_len);
++				 &params->rnr_elem_count, params->rnr_elem_len,
++				 NULL);
+ 	params->mbssid_elem_len = end - params->mbssid_elem;
+ 
+         if (hapd->iconf->ema) {
+@@ -911,9 +917,16 @@ static u8 * hostapd_gen_probe_resp(struc
+ 		buflen += 3 + sizeof(struct ieee80211_eht_operation);
+ 		if (hapd->iconf->ru_punct_bitmap)
+ 			buflen +=  DISABLED_SUBCHANNEL_BITMAP_BYTES_SIZE;
+-		if (include_mle)
+-			buflen += hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_PROBE_RESP,
+-							    ml_data);
++		if (include_mle) {
++			if (hapd_probed != hapd && ml_data && ml_data->present) {
++				buflen += hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_PROBE_RESP,
++								    NULL);
++				buflen += hostapd_eid_basic_mle_len(hapd_probed, WLAN_FC_STYPE_PROBE_RESP,
++								    ml_data);
++			} else
++				buflen += hostapd_eid_basic_mle_len(hapd, WLAN_FC_STYPE_PROBE_RESP,
++							  ml_data);
++		}
+ 		/* QCN Vendor IE for 240MHz */
+ 		if (is_5ghz_freq(hapd->iface->freq))
+ 			buflen += (6 + 2 + 4 +
+@@ -922,7 +935,7 @@ static u8 * hostapd_gen_probe_resp(struc
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	buflen += hostapd_eid_mbssid_len(hapd_probed, WLAN_FC_STYPE_PROBE_RESP,
+-					 NULL, known_bss, known_bss_len, NULL);
++					 NULL, known_bss, known_bss_len, NULL, ml_data);
+ 	buflen += hostapd_eid_rnr_len(hapd, WLAN_FC_STYPE_PROBE_RESP);
+ 	buflen += hostapd_mbo_ie_len(hapd);
+ 	buflen += hostapd_eid_owe_trans_len(hapd);
+@@ -1008,7 +1021,7 @@ static u8 * hostapd_gen_probe_resp(struc
+ 	pos = hostapd_eid_ht_operation(hapd, pos);
+ 	pos = hostapd_eid_mbssid(hapd_probed, pos, epos,
+ 				 WLAN_FC_STYPE_PROBE_RESP, 0, NULL,
+-				 known_bss, known_bss_len, NULL, NULL, NULL, 0);
++				 known_bss, known_bss_len, NULL, NULL, NULL, 0, ml_data);
+ 
+ 	ext_cap_pos = pos;
+ 	pos = hostapd_eid_ext_capab(hapd, pos);
+@@ -1077,10 +1090,19 @@ static u8 * hostapd_gen_probe_resp(struc
+ 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+ 		pos = hostapd_eid_eht_capab(hapd, pos, IEEE80211_MODE_AP);
+ 		pos = hostapd_eid_eht_operation(hapd, pos, IEEE80211_MODE_AP);
+-		if (include_mle)
+-			pos = hostapd_eid_basic_mle(hapd, pos,
+-						    WLAN_FC_STYPE_PROBE_RESP,
+-						    ml_data);
++		if (include_mle) {
++			if (hapd_probed != hapd && ml_data && ml_data->present) {
++				pos = hostapd_eid_basic_mle(hapd_probed, pos,
++							    WLAN_FC_STYPE_PROBE_RESP,
++							    ml_data);
++				pos = hostapd_eid_basic_mle(hapd, pos,
++							    WLAN_FC_STYPE_PROBE_RESP,
++							    NULL);
++			} else
++				pos = hostapd_eid_basic_mle(hapd, pos,
++							    WLAN_FC_STYPE_PROBE_RESP,
++							    ml_data);
++		}
+ 		pos = hostapd_eid_vendor_240mhz(hapd, pos, IEEE80211_MODE_AP);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8933,14 +8933,19 @@ size_t hostapd_eid_basic_mle_len(struct
+ {
+ 	size_t total_len = 0;
+ 	u8 frag_count;
++	struct hostapd_data *tx_hapd = hostapd_mbssid_get_tx_bss(hapd);
+ 
+ 	if (!hapd->mld || !hapd->mld->num_links)
+ 		return 0;
+ 
+ 	total_len += MLE_HEADER_LEN;
+ 
+-	if (type != WLAN_FC_STYPE_AUTH)
++	if (type != WLAN_FC_STYPE_AUTH) {
+ 		total_len += MLE_COMMON_INFO_BCN;
++		/* Additional one byte for non-tx bss probe resp to include mld id */
++		if (hapd != tx_hapd && type == WLAN_FC_STYPE_PROBE_RESP)
++			total_len++;
++	}
+ 	else
+ 		total_len += MLE_COMMON_INFO_AUTH;
+ 
+@@ -8973,6 +8978,7 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ {
+ 	u8 *eid_len, *eid_cmn_info_len;
+ 	u16 presence_bmap = 0;
++	struct hostapd_data *tx_hapd = hostapd_mbssid_get_tx_bss(hapd);
+ 
+ 	if (!hapd->mld || !hapd->mld->num_links)
+ 		return eid;
+@@ -8989,6 +8995,9 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 
+ 	*eid++ = MLE_TYPE_BASIC | ((presence_bmap & 0x0f) << MLE_PRESENCE_BMAP_SHIFT);
+ 
++	if (hapd != tx_hapd && type == WLAN_FC_STYPE_PROBE_RESP)
++		presence_bmap |= MLE_MLD_ID_PRESENT_PROBE_RESP;
++
+ 	*eid++ = presence_bmap >> MLE_PRESENCE_BMAP_SHIFT;
+ 
+ 	eid_cmn_info_len = eid++;
+@@ -9015,6 +9024,10 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 		eid += 2;
+ 	}
+ 
++	if (type == WLAN_FC_STYPE_PROBE_RESP &&
++	    presence_bmap & MLE_MLD_ID_PRESENT_PROBE_RESP)
++		*eid++ = hostapd_mbssid_get_bss_index(hapd);
++
+ 	*eid_cmn_info_len = eid - eid_cmn_info_len ;
+ 
+ 	*eid_len = eid - eid_len - 1;
+@@ -9067,7 +9080,7 @@ static void hostapd_parse_probe_req_mle(
+ 		 * TODO MBSS case
+ 		 */
+ 		if (mld_id != 0) {
+-			wpa_printf(MSG_ERROR, "MLD ID mismatch in ML Probe request");
++			wpa_printf(MSG_ERROR, "MLD ID mismatch in ML Probe request mld id %d", mld_id);
+ 			ml_data->present = false;
+ 			return;
+ 		}
+@@ -9292,10 +9305,12 @@ void hostapd_parse_mle(struct hostapd_da
+ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+ 					  u32 frame_type, size_t *bss_index,
+ 					  const u8 *known_bss,
+-					  size_t known_bss_len)
++					  size_t known_bss_len,
++					  struct multi_link_data *ml_data)
+ {
+ 	struct hostapd_data *tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+ 	size_t len = 3, i, tx_xrate_len;
++	bool ml_present_in_probe = (ml_data && ml_data->present);
+ 
+ 	hostapd_eid_ext_supp_rates(tx_bss, NULL, &tx_xrate_len);
+ 	for (i = *bss_index; i < hapd->iface->num_bss; i++) {
+@@ -9350,6 +9365,11 @@ static size_t hostapd_eid_mbssid_elem_le
+ 			nontx_profile_len += xrate_len;
+ 		else if (tx_xrate_len)
+ 			ie_count++;
++		/* For ML Probe resp, solicited hapd's MLE will be in the frame body */
++		if (bss != hapd || frame_type != WLAN_FC_STYPE_PROBE_RESP ||
++		    !ml_present_in_probe)
++			nontx_profile_len += hostapd_eid_basic_mle_len(bss, frame_type, NULL);
++
+ 		if (ie_count)
+ 			nontx_profile_len += (4 + ie_count);
+ 
+@@ -9369,7 +9389,8 @@ mbssid_too_big:
+ 
+ size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd, u32 frame_type,
+ 			      u8 *elem_count, const u8 *known_bss,
+-			      size_t known_bss_len, size_t *rnr_len)
++			      size_t known_bss_len, size_t *rnr_len,
++			      struct multi_link_data *ml_data)
+ {
+ 	size_t len = 0, bss_index = 1, rnr_cur_len = 0, rnr_count;
+ 
+@@ -9391,7 +9412,7 @@ size_t hostapd_eid_mbssid_len(struct hos
+ 		rnr_count = bss_index;
+ 		len += hostapd_eid_mbssid_elem_len(hapd, frame_type,
+ 						   &bss_index, known_bss,
+-						   known_bss_len);
++						   known_bss_len, NULL);
+ 
+ 		if (frame_type == WLAN_FC_STYPE_BEACON)
+ 			*elem_count += 1;
+@@ -9416,11 +9437,13 @@ size_t hostapd_eid_mbssid_len(struct hos
+ static u8 * hostapd_eid_mbssid_elem(struct hostapd_data *hapd, u8 *eid, u8 *end,
+ 				    u32 frame_type, u8 max_bssid_indicator,
+ 				    size_t *bss_index, u8 elem_count,
+-				    const u8 *known_bss, size_t known_bss_len)
++				    const u8 *known_bss, size_t known_bss_len,
++				    struct multi_link_data *ml_data)
+ {
+ 	struct hostapd_data *tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+ 	size_t i, tx_xrate_len;
+ 	u8 *eid_len_offset, *max_bssid_indicator_offset;
++	bool ml_present_in_probe = (ml_data && ml_data->present);
+ 
+ 	hostapd_eid_ext_supp_rates(tx_bss, NULL, &tx_xrate_len);
+ 	*eid++ = WLAN_EID_MULTIPLE_BSSID;
+@@ -9511,6 +9534,11 @@ static u8 * hostapd_eid_mbssid_elem(stru
+ 			non_inherit_ie[ie_count] = WLAN_EID_EXT_SUPP_RATES;
+ 			ie_count++;
+ 		}
++		/* For ML Probe resp, solicited hapd's MLE will be in the frame body */
++		if (bss != hapd || frame_type != WLAN_FC_STYPE_PROBE_RESP ||
++		    !ml_present_in_probe)
++			eid = hostapd_eid_basic_mle(bss, eid, frame_type, NULL);
++
+ 		if (ie_count) {
+ 			*eid++ = WLAN_EID_EXTENSION;
+ 			*eid++ = 3 + ie_count;
+@@ -9546,7 +9574,8 @@ mbssid_too_big:
+ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
+ 			u32 frame_type, u8 elem_count, u8 **elem_offset,
+ 			const u8 *known_bss, size_t known_bss_len, u8 *rnr_eid,
+-			u8 **rnr_offsets, int *rnr_count, int rnr_len)
++			u8 **rnr_offsets, int *rnr_count, int rnr_len,
++			struct multi_link_data *ml_data)
+ {
+ 	size_t bss_index = 1, cur_len = 0;
+ 	u8 elem_index = 0, *rnr_start_eid = rnr_eid;
+@@ -9582,7 +9611,7 @@ u8 * hostapd_eid_mbssid(struct hostapd_d
+ 		eid = hostapd_eid_mbssid_elem(hapd, eid, end, frame_type,
+ 					      max_bssid_indicator, &bss_index,
+ 					      elem_count, known_bss,
+-					      known_bss_len);
++					      known_bss_len, NULL);
+ 
+ 		if (add_rnr == true) {
+ 			rnr_offsets[*rnr_count] = rnr_eid;
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -144,11 +144,13 @@ u8 * hostapd_eid_bss_max_idle_period(str
+ int auth_sae_init_committed(struct hostapd_data *hapd, struct sta_info *sta);
+ size_t hostapd_eid_mbssid_len(struct hostapd_data *hapd, u32 frame_type,
+ 			      u8 *elem_count, const u8 *known_bss,
+-			      size_t known_bss_len, size_t *rnr_len);
++			      size_t known_bss_len, size_t *rnr_len,
++			      struct multi_link_data *ml_data);
+ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
+ 			u32 frame_type, u8 elem_count, u8 **elem_offset,
+ 			const u8 *known_bss, size_t known_bss_len, u8 *rnr_eid,
+-			u8 **rnr_offsets, int *rnr_count, int rnr_len);
++			u8 **rnr_offsets, int *rnr_count, int rnr_len,
++			struct multi_link_data *ml_data);
+ #ifdef CONFIG_SAE
+ void sae_clear_retransmit_timer(struct hostapd_data *hapd,
+ 				struct sta_info *sta);
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2465,7 +2465,7 @@ struct ieee80211_he_mu_edca_parameter_se
+ #define MLE_MEDIUM_SYNC_DELAY_PRESENT		BIT(2)
+ #define MLE_EML_CAP_PRESENT			BIT(3)
+ #define MLE_MLD_CAP_PRESENT			BIT(4)
+-
++#define MLE_MLD_ID_PRESENT_PROBE_RESP		BIT(5)
+ /* ML Probe Request Precense bitmap */
+ #define MLE_MLD_ID_PRESENT			BIT(0)
+ 
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -1730,6 +1730,11 @@ struct wpa_driver_ap_params {
+ 	 * mbssid_tx_iface - Transmitting interface of the set
+ 	 */
+ 	const char *mbssid_tx_iface;
++	/**
++	 * mbssid_tx_iface_linkid linkid which is Transmitting interface
++	 * for this non-tx link if mbssid_tx_iface is an MLD
++	 */
++	int mbssid_tx_iface_linkid;
+ 
+ 	/**
+ 	 * mbssid_index - The index of this BSS in the group
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -4853,6 +4853,9 @@ static int nl80211_mbssid(struct nl_msg
+ 		nla_put_u32(msg,
+ 			    NL80211_MBSSID_CONFIG_ATTR_TX_IFINDEX,
+ 			    ifidx);
++		if (params->mbssid_tx_iface_linkid >= 0)
++			nla_put_u8(msg, NL80211_MBSSID_CONFIG_ATTR_TX_LINK_ID,
++				   params->mbssid_tx_iface_linkid);
+ 	}
+ 
+ 	if (params->ema)
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -7787,6 +7787,12 @@ enum nl80211_sar_specs_attrs {
+  *	Setting this flag is permitted only if the driver advertises EMA support
+  *	by setting wiphy->ema_max_profile_periodicity to non-zero.
+  *
++ * @NL80211_MBSSID_CONFIG_ATTR_TX_LINK_ID
++ *	Mandatory parameter for a non-transmitted profile
++ *	which provides the interface index (u32) of the transmitted profile which
++ *	is an MLD. The link id must be valid in the wdev of given Transmitting interface
++ *	index.
++ *
+  * @__NL80211_MBSSID_CONFIG_ATTR_LAST: Internal
+  * @NL80211_MBSSID_CONFIG_ATTR_MAX: highest attribute
+  */
+@@ -7798,6 +7804,7 @@ enum nl80211_mbssid_config_attributes {
+ 	NL80211_MBSSID_CONFIG_ATTR_INDEX,
+ 	NL80211_MBSSID_CONFIG_ATTR_TX_IFINDEX,
+ 	NL80211_MBSSID_CONFIG_ATTR_EMA,
++	NL80211_MBSSID_CONFIG_ATTR_TX_LINK_ID,
+ 
+ 	/* keep last */
+ 	__NL80211_MBSSID_CONFIG_ATTR_LAST,

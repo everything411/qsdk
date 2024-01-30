@@ -1,0 +1,336 @@
+From cbc08cee2dafd38fe04fceb3c4d73ad6e9baf441 Mon Sep 17 00:00:00 2001
+From: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+Date: Mon, 21 Aug 2023 12:42:33 +0530
+Subject: [PATCH] hostapd: Add NL attribute to set critical update params
+
+Detect Category-1 critical update like CSA, eCSA, CCA element id inclusion
+and set critical update attribute.
+Detect Category-2 critical update like EHTOP, HEOP, VHTOP, HTOP, WMM,
+MU_EDCA and spatial reuse element id modification and set
+critical update attribute.
+
+Change-Id: I041d22f0677d4e1ee10377d0561f4451dd116b20
+Signed-off-by: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+---
+ src/ap/beacon.c              | 64 ++++++++++++++++++++++++++++++++++--
+ src/ap/hostapd.h             | 24 ++++++++++++++
+ src/drivers/driver.h         |  4 +++
+ src/drivers/driver_nl80211.c | 21 ++++++++++++
+ src/drivers/nl80211_copy.h   | 19 +++++++++++
+ 5 files changed, 130 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 0c590cd..7062ef7 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -13,6 +13,7 @@
+ #ifndef CONFIG_NATIVE_WINDOWS
+ 
+ #include "utils/common.h"
++#include "utils/crc32.h"
+ #include "common/ieee802_11_defs.h"
+ #include "common/ieee802_11_common.h"
+ #include "common/hw_features_common.h"
+@@ -2143,6 +2144,29 @@ static u8 * hostapd_fils_discovery(struct hostapd_data *hapd,
+ 
+ #endif /* CONFIG_FILS */
+ 
++#ifdef CONFIG_IEEE80211BE
++static void hostapd_eid_update_cu_info(struct hostapd_data *hapd, u8* elemid_modified,
++				       const u8* eid_pos, size_t eid_len,
++				       enum elemid_cu eid_cu)
++{
++	u32 hash;
++
++	if (!hapd->mld)
++		return;
++	if (!eid_pos || (eid_len == 0) || (eid_len > 255))
++		return;
++	if (eid_cu >= ELEMID_CU_PARAM_MAX)
++		return;
++
++	hash = ieee80211_crc32(eid_pos, eid_len);
++	if ((hapd->cu_eid[eid_cu].eid_len != eid_len) ||
++	    (hapd->cu_eid[eid_cu].hash != hash)) {
++		hapd->cu_eid[eid_cu].eid_len = eid_len;
++		hapd->cu_eid[eid_cu].hash = hash;
++		*elemid_modified |= BIT(eid_cu);
++	}
++}
++#endif
+ 
+ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 			       struct wpa_driver_ap_params *params)
+@@ -2155,6 +2179,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ #ifdef NEED_AP_MLME
+ 	u16 capab_info;
+ 	u8 *pos, *tailpos, *tailend, *csa_pos, *ext_cap_pos;
++	u8 *startpos;
++	u8 elemid_modified = 0;
+ #endif /* NEED_AP_MLME */
+ 
+ 	os_memset(params, 0, sizeof(*params));
+@@ -2311,7 +2337,12 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 
+ 	tailpos = hostapd_eid_supported_op_classes(hapd, tailpos);
+ 	tailpos = hostapd_eid_ht_capabilities(hapd, tailpos);
++	startpos = tailpos;
+ 	tailpos = hostapd_eid_ht_operation(hapd, tailpos);
++#ifdef CONFIG_IEEE80211BE
++	hostapd_eid_update_cu_info(hapd, &elemid_modified, startpos,
++				   tailpos-startpos, ELEMID_CU_PARAM_HTOP);
++#endif
+ 	tailpos = hostapd_set_mbssid_beacon(hapd, params, tailpos);
+ 
+ 	ext_cap_pos = tailpos;
+@@ -2342,7 +2373,12 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac &&
+ 	    !is_6ghz_op_class(hapd->iconf->op_class)) {
+ 		tailpos = hostapd_eid_vht_capabilities(hapd, tailpos, 0);
++		startpos = tailpos;
+ 		tailpos = hostapd_eid_vht_operation(hapd, tailpos);
++#ifdef CONFIG_IEEE80211BE
++		hostapd_eid_update_cu_info(hapd, &elemid_modified, startpos,
++					   tailpos-startpos, ELEMID_CU_PARAM_VHTOP);
++#endif
+ 		tailpos = hostapd_eid_txpower_envelope(hapd, tailpos);
+ 	}
+ #endif /* CONFIG_IEEE80211AC */
+@@ -2369,16 +2405,30 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 
+ 		tailpos = hostapd_eid_he_capab(hapd, tailpos,
+ 					       IEEE80211_MODE_AP);
++		startpos = tailpos;
+ 		tailpos = hostapd_eid_he_operation(hapd, tailpos);
+-
++#ifdef CONFIG_IEEE80211BE
++		hostapd_eid_update_cu_info(hapd, &elemid_modified, startpos,
++					   tailpos-startpos, ELEMID_CU_PARAM_EXT_HEOP);
++#endif
+ 		/* BSS Color Change Announcement element */
+ 		cca_pos = hostapd_eid_cca(hapd, tailpos);
+ 		if (cca_pos != tailpos)
+ 			hapd->cca_c_off_beacon = cca_pos - tail - 2;
+ 		tailpos = cca_pos;
+ 
++		startpos = tailpos;
+ 		tailpos = hostapd_eid_spatial_reuse(hapd, tailpos);
++#ifdef CONFIG_IEEE80211BE
++		hostapd_eid_update_cu_info(hapd, &elemid_modified, startpos,
++					   tailpos-startpos, ELEMID_CU_PARAM_SPATIAL_REUSE);
++#endif
++		startpos = tailpos;
+ 		tailpos = hostapd_eid_he_mu_edca_parameter_set(hapd, tailpos);
++#ifdef CONFIG_IEEE80211BE
++		hostapd_eid_update_cu_info(hapd, &elemid_modified, startpos,
++					   tailpos-startpos, ELEMID_CU_PARAM_MU_EDCA);
++#endif
+ 		tailpos = hostapd_eid_he_6ghz_band_cap(hapd, tailpos);
+ 	}
+ #endif /* CONFIG_IEEE80211AX */
+@@ -2387,7 +2437,10 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
+ 		tailpos = hostapd_eid_eht_capab(hapd, tailpos,
+ 						IEEE80211_MODE_AP);
++		startpos = tailpos;
+ 		tailpos = hostapd_eid_eht_operation(hapd, tailpos, IEEE80211_MODE_AP);
++		hostapd_eid_update_cu_info(hapd, &elemid_modified, startpos,
++					   tailpos-startpos, ELEMID_CU_PARAM_EXT_EHTOP);
+ 
+ 		tailpos = hostapd_eid_basic_mle(hapd, tailpos,
+ 						WLAN_FC_STYPE_BEACON,
+@@ -2406,8 +2459,12 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 	tailpos = hostapd_get_osen_ie(hapd, tailpos, tailend - tailpos);
+ 
+ 	/* Wi-Fi Alliance WMM */
++	startpos = tailpos;
+ 	tailpos = hostapd_eid_wmm(hapd, tailpos);
+-
++#ifdef CONFIG_IEEE80211BE
++	hostapd_eid_update_cu_info(hapd, &elemid_modified, startpos,
++				   tailpos-startpos, ELEMID_CU_PARAM_WMM);
++#endif
+ #ifdef CONFIG_WPS
+ 	if (hapd->conf->wps_state && hapd->wps_beacon_ie) {
+ 		os_memcpy(tailpos, wpabuf_head(hapd->wps_beacon_ie),
+@@ -2541,6 +2598,9 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 
+ 	params->beacon_tx_mode = hapd->conf->beacon_tx_mode;
+ 
++	if (hapd->mld && elemid_modified)
++		params->elemid_modified = 1;
++
+ 	return 0;
+ }
+ 
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 2df76fc..a9bd118 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -182,6 +182,28 @@ struct rx_critical_param {
+ 	u8 bpcc;
+ 	u8 switch_count;
+ };
++
++/**
++ * enum elemid_cu - used for detecting element id modification
++ * category 2 critical update
++ */
++enum elemid_cu {
++	ELEMID_CU_PARAM_EXT_EHTOP = 0,
++	ELEMID_CU_PARAM_EXT_HEOP,
++	ELEMID_CU_PARAM_VHTOP,
++	ELEMID_CU_PARAM_HTOP,
++	ELEMID_CU_PARAM_WMM,
++	ELEMID_CU_PARAM_MU_EDCA,
++	ELEMID_CU_PARAM_SPATIAL_REUSE,
++
++	ELEMID_CU_PARAM_MAX,
++};
++
++struct elemid_cu_param {
++	u8 eid_len;
++	u32 hash;
++};
++
+ /**
+  * struct hostapd_data - hostapd per-BSS data structure
+  */
+@@ -491,6 +513,8 @@ struct hostapd_data {
+ 
+ 	struct hostapd_per_sta_profile link_profile[MAX_SUPPORTED_LINKS];
+ 	struct rx_critical_param rx_cu_param;
++	/*Element ID critical update data*/
++	struct elemid_cu_param cu_eid[ELEMID_CU_PARAM_MAX];
+ };
+ 
+ 
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index c2616f4..65c872a 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -1815,6 +1815,10 @@ struct wpa_driver_ap_params {
+ 
+ 	/* Unsolicited broadcast Probe Response data*/
+ 	struct unsol_bcast_probe_resp ubpr;
++
++	/* critical_update_flag - critical update flag*/
++	bool elemid_added;
++	bool elemid_modified;
+ };
+ struct wpa_driver_link_params {
+ 	/** Link id of a given link in an MLD AP
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 56b9bdb..b154f30 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5037,6 +5037,7 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ #ifdef CONFIG_MESH
+ 	struct wpa_driver_mesh_bss_params mesh_params;
+ #endif /* CONFIG_MESH */
++	u8 critical_update = 0;
+ 
+ 	beacon_set = params->reenable ? 0 : bss->beacon_set;
+ 
+@@ -5349,6 +5350,14 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 	if (params->mbssid_count && nl80211_mbssid(msg, params) < 0)
+ 		goto fail;
+ 
++	if (bss->mlo && (params->elemid_added || params->elemid_modified)) {
++		if (params->elemid_added)
++			critical_update |= NL80211_CU_ELEMID_ADDED;
++		if (params->elemid_modified)
++			critical_update |= NL80211_CU_ELEMID_MODIFIED;
++		if (nla_put_u8(msg, NL80211_ATTR_SET_CRITICAL_UPDATE, critical_update))
++			goto fail;
++	}
+ 	ret = send_and_recv_msgs_connect_handle(drv, msg, bss, 1);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Beacon set failed: %d (%s)",
+@@ -10943,6 +10952,7 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
+ 	int ret = -ENOBUFS;
+ 	int csa_off_len = 0;
+ 	int i;
++	u8 critical_update = 0;
+ 
+ 	wpa_printf(MSG_DEBUG,
+ 		   "nl80211: Channel switch request (cs_count=%u block_tx=%u freq=%d channel=%d sec_channel_offset=%d width=%d cf1=%d cf2=%d%s%s%s puncturing bitmap=0x%04x, ru_punct_ofdma=%u)",
+@@ -11070,6 +11080,11 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
+ 		nl80211_unsol_bcast_probe_resp(bss, msg, &settings->ubpr) < 0)
+ 		goto fail;
+ #endif /* CONFIG_IEEE80211AX */
++	if (bss->mlo) {
++		critical_update |= NL80211_CU_ELEMID_ADDED;
++		if (nla_put_u8(msg, NL80211_ATTR_SET_CRITICAL_UPDATE, critical_update))
++			goto fail;
++	}
+ 
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	if (ret) {
+@@ -11095,6 +11110,7 @@ static int nl80211_switch_color(void *priv, struct cca_settings *settings)
+ 	struct nlattr *beacon_cca;
+ 	struct nl_msg *msg;
+ 	int ret = -ENOBUFS;
++	u8 critical_update = 0;
+ 
+ 	wpa_printf(MSG_DEBUG,
+ 		   "nl80211: Color change request (cca_count=%u color=%d)",
+@@ -11167,6 +11183,11 @@ static int nl80211_switch_color(void *priv, struct cca_settings *settings)
+ 		ret = -ENOBUFS;
+ 		goto error;
+ 	}
++	if (bss->mlo) {
++		critical_update |= NL80211_CU_ELEMID_ADDED;
++		if (nla_put_u8(msg, NL80211_ATTR_SET_CRITICAL_UPDATE, critical_update))
++			goto error;
++	}
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG,
+diff --git a/src/drivers/nl80211_copy.h b/src/drivers/nl80211_copy.h
+index 40c756b..3484efe 100644
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -2780,6 +2780,9 @@ enum nl80211_commands {
+  *     update for each MLD. In each nested item, it contains attributes
+  *     defined in &enum nl80211_cu_attrs.
+  *
++ * @NL80211_ATTR_SET_CRITICAL_UPDATE: set critical update for the bss
++ *	(see &enum nl80211_set_cu).
++ *
+  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
+  * @NL80211_ATTR_MAX: highest attribute number currently defined
+  * @__NL80211_ATTR_AFTER_LAST: internal use
+@@ -3333,6 +3336,7 @@ enum nl80211_attrs {
+         NL80211_ATTR_ADD_MULTI_CHAN,
+         NL80211_ATTR_DEL_MULTI_CHAN,
+         NL80211_ATTR_RXMGMT_CRITICAL_UPDATE,
++	NL80211_ATTR_SET_CRITICAL_UPDATE,
+ 
+ 	/* add attributes here, update the policy in nl80211.c */
+ 
+@@ -5952,6 +5956,21 @@ enum plink_actions {
+ 	NUM_NL80211_PLINK_ACTIONS,
+ };
+ 
++/**
++ * enum nl80211_set_cu - set critical update params
++ *
++ * @NL80211_CU_UNSPEC: reserved
++ * @NL80211_CU_ELEMID_ADDED: Critical update - Element id added
++ * @NL80211_CU_ELEMID_MODIFIED: Critical update - Element id Modified
++ * @NUM_NL80211_CUS: number of CU attributes
++ */
++enum nl80211_set_cu {
++	NL80211_CU_UNSPEC,
++	NL80211_CU_ELEMID_ADDED,
++	NL80211_CU_ELEMID_MODIFIED,
++
++	NUM_NL80211_CUS,
++};
+ 
+ #define NL80211_KCK_LEN			16
+ #define NL80211_KEK_LEN			16
+-- 
+2.17.1
+

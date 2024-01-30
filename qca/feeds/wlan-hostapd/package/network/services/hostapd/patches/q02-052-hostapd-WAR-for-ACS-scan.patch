@@ -1,0 +1,174 @@
+From 6dadc0f867e7e1b73d5fd252fa6b1f395e87ddc2 Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <quic_hprem@quicinc.com>
+Date: Tue, 18 Oct 2022 11:56:19 +0530
+Subject: [PATCH] hostapd: WAR for ACS scan
+
+With single wiphy, when auto channel is configured
+for multiple radios simultaneously, then acs scan
+fails with EBUSY as the scan has been initiated for
+other radio already.
+
+To handle this, a workaround has been implemented
+to retry the scan request if it fails with EBUSY
+reason
+
+Signed-off-by: Harshitha Prem <quic_hprem@quicinc.com>
+---
+ src/ap/acs.c     | 85 ++++++++++++++++++++++++++++++++++++++++++++----
+ src/ap/hostapd.h |  1 +
+ 2 files changed, 79 insertions(+), 7 deletions(-)
+
+diff --git a/src/ap/acs.c b/src/ap/acs.c
+index fe4c2ed..49fedb9 100644
+--- a/src/ap/acs.c
++++ b/src/ap/acs.c
+@@ -12,6 +12,7 @@
+ 
+ #include "utils/common.h"
+ #include "utils/list.h"
++#include "utils/eloop.h"
+ #include "common/ieee802_11_defs.h"
+ #include "common/hw_features_common.h"
+ #include "common/wpa_ctrl.h"
+@@ -1342,14 +1343,13 @@ static void acs_scan_complete(struct hostapd_iface *iface)
+ 
+ 	if (++iface->acs_num_completed_scans < iface->conf->acs_num_scans) {
+ 		err = acs_request_scan(iface);
+-		if (err) {
++		if (err && err != -EBUSY) {
+ 			wpa_printf(MSG_ERROR, "ACS: Failed to request scan");
+ 			goto fail;
+ 		}
+ 
+ 		return;
+ 	}
+-
+ 	acs_study(iface);
+ 	return;
+ fail:
+@@ -1396,6 +1396,67 @@ static int * acs_request_scan_add_freqs(struct hostapd_iface *iface,
+ 	return freq;
+ }
+ 
++static void acs_scan_retry(void *eloop_data, void *user_data)
++{
++#define ACS_SCAN_RETRY 15
++        struct hostapd_iface *iface = eloop_data;
++        struct wpa_driver_scan_params params;
++        int ret;
++        int i, *freq;
++        int num_channels;
++        struct hostapd_hw_modes *mode;
++
++        os_memset(&params, 0, sizeof(params));
++
++        num_channels = 0;
++        for (i = 0; i < iface->num_hw_features; i++) {
++                mode = &iface->hw_features[i];
++                if (!hostapd_hw_skip_mode(iface, mode))
++                        num_channels += mode->num_channels;
++        }
++
++        params.freqs = os_calloc(num_channels + 1, sizeof(params.freqs[0]));
++        if (params.freqs == NULL)
++                return;
++
++        freq = params.freqs;
++
++        for (i = 0; i < iface->num_hw_features; i++) {
++                mode = &iface->hw_features[i];
++                if (!hostapd_hw_skip_mode(iface, mode))
++                        freq = acs_request_scan_add_freqs(iface, mode, freq);
++        }
++
++        *freq = 0;
++
++        if (params.freqs == freq) {
++                wpa_printf(MSG_ERROR, "ACS: No available channels found");
++                os_free(params.freqs);
++                return;
++        }
++
++
++        ret = hostapd_driver_scan(iface->bss[0], &params);
++        os_free(params.freqs);
++
++	iface->num_acs_scan_tries++;
++
++        if (ret == -EBUSY &&
++            iface->num_acs_scan_tries < ACS_SCAN_RETRY) {
++                wpa_printf(MSG_ERROR,
++                           "Failed to request acs scan ret=%d (%s) - try to scan again (attempt %d)",
++                           ret, strerror(-ret), iface->num_acs_scan_tries);
++                eloop_register_timeout(5, 0, acs_scan_retry, iface, NULL);
++                return;
++        }
++
++        if (ret == 0) {
++                iface->scan_cb = acs_scan_complete;
++                return;
++        }
++
++}
++
+ 
+ static int acs_request_scan(struct hostapd_iface *iface)
+ {
+@@ -1403,6 +1464,7 @@ static int acs_request_scan(struct hostapd_iface *iface)
+ 	int i, *freq;
+ 	int num_channels;
+ 	struct hostapd_hw_modes *mode;
++	int ret = 0;
+ 
+ 	os_memset(&params, 0, sizeof(params));
+ 
+@@ -1433,20 +1495,29 @@ static int acs_request_scan(struct hostapd_iface *iface)
+ 		return -1;
+ 	}
+ 
+-	iface->scan_cb = acs_scan_complete;
+ 
+ 	wpa_printf(MSG_DEBUG, "ACS: Scanning %d / %d",
+ 		   iface->acs_num_completed_scans + 1,
+ 		   iface->conf->acs_num_scans);
+ 
+-	if (hostapd_driver_scan(iface->bss[0], &params) < 0) {
+-		wpa_printf(MSG_ERROR, "ACS: Failed to request initial scan");
++
++        ret = hostapd_driver_scan(iface->bss[0], &params);
++        os_free(params.freqs);
++
++        if (ret == -EBUSY) {
++                wpa_printf(MSG_ERROR,
++                           "Failed to request acs scan ret=%d (%s) - try to scan again",
++                           ret, strerror(-ret));
++                iface->num_acs_scan_tries = 1;
++                eloop_cancel_timeout(acs_scan_retry, iface, NULL);
++                eloop_register_timeout(2, 0, acs_scan_retry, iface, NULL);
++                return 0;
++        } else if (ret < 0) {
+ 		acs_cleanup(iface);
+-		os_free(params.freqs);
+ 		return -1;
+ 	}
+ 
+-	os_free(params.freqs);
++	iface->scan_cb = acs_scan_complete;
+ 	return 0;
+ }
+ 
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 063680f..3771ca8 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -655,6 +655,7 @@ struct hostapd_iface {
+ 
+ #ifdef CONFIG_ACS
+ 	unsigned int acs_num_completed_scans;
++	int num_acs_scan_tries;
+ #endif /* CONFIG_ACS */
+ 
+ 	void (*scan_cb)(struct hostapd_iface *iface);
+-- 
+2.17.1
+

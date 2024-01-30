@@ -1,0 +1,143 @@
+From 155d17e73474f85d6da1462567beceec99c4925f Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Tue, 28 Feb 2023 12:29:18 +0530
+Subject: [PATCH] hostapd: fetch proper link bss in global NL events
+
+Currently, while processing global NL events, the event in routed to
+each link bss. However, if link_id is also passed in the event, then proper
+link bss can be fetched directly and routing is not needed.
+
+Add support to fetch link bss using link id passed in the global NL events.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211_event.c | 33 ++++++++++++++++++++++++++----
+ 1 file changed, 29 insertions(+), 4 deletions(-)
+
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3706,10 +3706,12 @@ int process_global_event(struct nl_msg *
+ 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
+ 	struct wpa_driver_nl80211_data *drv, *tmp;
+ 	int ifidx = -1, wiphy_idx = -1, wiphy_idx_rx = -1;
+-	struct i802_bss *bss;
++	struct i802_bss *bss, *link_bss;
+ 	u64 wdev_id = 0;
+ 	int wdev_id_set = 0;
+ 	int wiphy_idx_set = 0;
++	int mlo_link_id_set = 0;
++	int mlo_link_id = -1;
+ 
+ 	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
+ 		  genlmsg_attrlen(gnlh, 0), NULL);
+@@ -3724,6 +3726,18 @@ int process_global_event(struct nl_msg *
+ 		wiphy_idx_set = 1;
+ 	}
+ 
++	if (tb[NL80211_ATTR_MLO_LINK_ID] && (wdev_id_set || ifidx != -1)) {
++		mlo_link_id = nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]);
++
++		if (mlo_link_id > MAX_NUM_MLD_LINKS) {
++			wpa_printf(MSG_DEBUG, "nl80211: Invalid link id %d passed in event %d (%s)",
++				   mlo_link_id, gnlh->cmd, nl80211_command_to_string(gnlh->cmd));
++			return NL_SKIP;
++		}
++
++		mlo_link_id_set = 1;
++	}
++
+ 	dl_list_for_each_safe(drv, tmp, &global->interfaces,
+ 			      struct wpa_driver_nl80211_data, list) {
+ 		for (bss = drv->first_bss; bss; bss = bss->next) {
+@@ -3734,19 +3748,38 @@ int process_global_event(struct nl_msg *
+ 			    (wiphy_idx_set && wiphy_idx == wiphy_idx_rx) ||
+ 			    (wdev_id_set && bss->wdev_id_set &&
+ 			     wdev_id == bss->wdev_id)) {
+-				if (wiphy_idx_set)
++				if (!mlo_link_id_set) {
++					if (!wiphy_idx_set) {
++						do_process_drv_event(bss, gnlh->cmd,
++								     tb, true);
++						return NL_SKIP;
++					}
+ 					return process_global_mlo_wiphy_event(global,
+ 									      gnlh->cmd,
+ 									      tb);
++				}
++
++				if (!(drv->mlo_link_id >= 0))
++					break;
++
++				link_bss = get_link_bss_ifindex(bss, ifidx != -1 ?
++								ifidx : bss->ifindex,
++								mlo_link_id);
++				if (!link_bss) {
++					wpa_printf(MSG_DEBUG,
++						   "nl80211: Link BSS not found for event %d (%s)",
++						   gnlh->cmd, nl80211_command_to_string(gnlh->cmd));
++					break;
++				}
+ 
+-				do_process_drv_event(bss, gnlh->cmd, tb, true);
+-				return NL_SKIP;
++				do_process_drv_event(link_bss, gnlh->cmd, tb, false);
++ 				return NL_SKIP;
+ 			}
+ 		}
+ 		wpa_printf(MSG_DEBUG,
+-			   "nl80211: Ignored event %d (%s) for foreign interface (ifindex %d wdev 0x%llx)",
++			   "nl80211: Ignored event %d (%s) for foreign interface (ifindex %d wdev 0x%llx link %d)",
+ 			   gnlh->cmd, nl80211_command_to_string(gnlh->cmd),
+-			   ifidx, (long long unsigned int) wdev_id);
++			   ifidx, (long long unsigned int) wdev_id, mlo_link_id);
+ 	}
+ 
+ 	return NL_SKIP;
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -259,6 +259,34 @@ struct i802_bss * get_bss_ifindex(struct
+ 	return NULL;
+ }
+ 
++struct i802_bss * get_link_bss_ifindex(struct i802_bss *bss, int ifindex,
++				       u8 link_id)
++{
++	struct i802_bss *start_link_bss, *next_link_bss;
++
++	start_link_bss = bss;
++	next_link_bss = bss->next_link_bss;
++
++	if (start_link_bss->drv->mlo_link_id == link_id)
++		return start_link_bss;
++
++	/* should never happen because if only 1 link is
++	 * present, then link_id would have matched above and
++	 * we won't be coming here */
++	if (start_link_bss == next_link_bss) {
++		wpa_printf(MSG_ERROR,
++			   "Single link bss yet link_id did not match");
++		return NULL;
++	}
++
++	while (next_link_bss != start_link_bss) {
++		if (next_link_bss->drv->mlo_link_id == link_id)
++			return next_link_bss;
++		next_link_bss = next_link_bss->next_link_bss;
++	}
++
++	return NULL;
++}
+ 
+ static int is_mesh_interface(enum nl80211_iftype nlmode)
+ {
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -271,6 +271,8 @@ enum chan_width convert2width(int width)
+ void nl80211_mark_disconnected(struct wpa_driver_nl80211_data *drv);
+ struct i802_bss * get_bss_ifindex(struct wpa_driver_nl80211_data *drv,
+ 				  int ifindex);
++struct i802_bss * get_link_bss_ifindex(struct i802_bss *bss, int ifindex,
++				       u8 link_id);
+ int is_ap_interface(enum nl80211_iftype nlmode);
+ int is_sta_interface(enum nl80211_iftype nlmode);
+ int wpa_driver_nl80211_authenticate_retry(struct wpa_driver_nl80211_data *drv);

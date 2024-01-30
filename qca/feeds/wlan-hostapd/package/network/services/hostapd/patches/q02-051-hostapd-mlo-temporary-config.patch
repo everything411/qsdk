@@ -1,0 +1,62 @@
+From a0c63276dfdeaa074d0b2369fd0ebec07893eb77 Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <quic_hprem@quicinc.com>
+Date: Wed, 12 Oct 2022 21:43:24 +0530
+Subject: [PATCH] hostapd: mlo temporary config
+
+Signed-off-by: Harshitha Prem <quic_hprem@quicinc.com>
+---
+ hostapd/config_file.c | 4 ++++
+ src/ap/ap_config.c    | 3 ++-
+ src/ap/ap_config.h    | 3 +++
+ src/ap/hostapd.c      | 3 ++-
+ 4 files changed, 11 insertions(+), 2 deletions(-)
+
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4730,6 +4730,10 @@ static int hostapd_config_fill(struct ho
+ #endif /* CONFIG_IEEE80211BE */
+ 	} else if (os_strcmp(buf, "disable_csa_dfs") == 0) {
+ 		conf->disable_csa_dfs = atoi(pos);
++#ifdef CONFIG_IEEE80211BE
++	} else if (os_strcmp(buf, "mlo") == 0) {
++		conf->mlo = atoi(pos);
++#endif
+ 	} else {
+ 		wpa_printf(MSG_ERROR,
+ 			   "Line %d: unknown configuration item '%s'",
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -1288,7 +1288,8 @@ static int hostapd_config_check_bss(stru
+ 				return -1;
+ 			}
+ #ifdef CONFIG_IEEE80211BE
+-			if (conf->bss[i] != bss && (conf->ieee80211be && !bss->disable_11be)) {
++			if (conf->mlo &&
++				conf->bss[i] != bss && (conf->ieee80211be && !bss->disable_11be)) {
+ 				if (os_strncmp(conf->bss[i]->iface, bss->iface,
+ 				       IFNAMSIZ) == 0) {
+ 					wpa_printf(MSG_ERROR, "Duplicate MLD %s on link"
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1169,6 +1169,9 @@ struct hostapd_config {
+ 	u8 ru_punct_acs_threshold;
+ 	int enable_320mhz_bw;
+ 	int disable_csa_dfs;
++#ifdef CONFIG_IEEE80211BE
++	u8 mlo;
++#endif
+ };
+ 
+ 
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2747,7 +2747,8 @@ struct hostapd_iface * hostapd_init(stru
+ 			goto fail;
+ 		hapd->msg_ctx = hapd;
+ #ifdef CONFIG_IEEE80211BE
+-		if (conf->ieee80211be && !conf->bss[i]->disable_11be) {
++		if (conf->mlo &&
++			conf->ieee80211be && !conf->bss[i]->disable_11be) {
+ 			for (j = 0; j < interfaces->mld_count; j++) {
+ 				mld = interfaces->mld[j];
+ 

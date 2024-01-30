@@ -1,0 +1,230 @@
+From afb346dad0b98ebfe72672ac1695697c255779b4 Mon Sep 17 00:00:00 2001
+From: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+Date: Thu, 25 May 2023 11:28:36 +0530
+Subject: [PATCH] hostapd: add links to bridge fdb for FT roaming
+
+During FT, RRB message is getting dropped at bridge since bridge doesn't
+know all the link address, so roaming gets failed. Add link address to
+the bridge fdb, so that RRB pkts gets forwarded through bridge to
+hostapd.
+
+Signed-off-by: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 151 ++++++++++++++++++++++++-----------
+ 1 file changed, 105 insertions(+), 46 deletions(-)
+
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -3151,6 +3151,89 @@ chain:
+ 		   pbss->drv->mlo_link_id, bss->ifname);
+ }
+ 
++static void rtnl_neigh_add_fdb_entry(struct i802_bss *bss, const u8 *addr, bool is_bridge)
++{
++#ifdef CONFIG_LIBNL3_ROUTE
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct rtnl_neigh *rn;
++	struct nl_addr *nl_addr;
++	int err;
++	int ifidx = is_bridge ? bss->br_ifindex : bss->ifindex;
++
++	rn = rtnl_neigh_alloc();
++	if (!rn)
++		return;
++
++	rtnl_neigh_set_family(rn, AF_BRIDGE);
++	rtnl_neigh_set_ifindex(rn, ifidx);
++
++	//TODO: remove this check if this flag needs to be used
++	//for other interfaces type
++	if (is_bridge)
++		rtnl_neigh_set_flags(rn, NTF_SELF);
++	nl_addr = nl_addr_build(AF_BRIDGE, (void *) addr, ETH_ALEN);
++	if (!nl_addr) {
++		rtnl_neigh_put(rn);
++		return;
++	}
++	rtnl_neigh_set_lladdr(rn, nl_addr);
++
++	err = rtnl_neigh_add(drv->rtnl_sk, rn, NLM_F_CREATE);
++	if (err < 0) {
++		wpa_printf(MSG_DEBUG, "nl80211: bridge FDB entry addition for "
++			   MACSTR " ifindex=%d ifname=%s failed: %s", MAC2STR(addr),
++			   ifidx, is_bridge ? bss->brname : bss->ifname, nl_geterror(err));
++	} else {
++		wpa_printf(MSG_DEBUG, "nl80211: added bridge FDB entry for "
++			   MACSTR" to %s", MAC2STR(addr), is_bridge ? bss->brname : bss->ifname);
++	}
++
++	nl_addr_put(nl_addr);
++	rtnl_neigh_put(rn);
++#endif /* CONFIG_LIBNL3_ROUTE */
++}
++
++static void rtnl_neigh_delete_fdb_entry(struct i802_bss *bss, const u8 *addr, bool is_bridge)
++{
++#ifdef CONFIG_LIBNL3_ROUTE
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct rtnl_neigh *rn;
++	struct nl_addr *nl_addr;
++	int err;
++	int ifidx = is_bridge ? bss->br_ifindex : bss->ifindex;
++
++	rn = rtnl_neigh_alloc();
++	if (!rn)
++		return;
++
++	rtnl_neigh_set_family(rn, AF_BRIDGE);
++	rtnl_neigh_set_ifindex(rn, ifidx);
++
++	//TODO: remove this check if this flag needs to be used
++	//for other interfaces type
++	if (is_bridge)
++		rtnl_neigh_set_flags(rn, NTF_SELF);
++	nl_addr = nl_addr_build(AF_BRIDGE, (void *) addr, ETH_ALEN);
++	if (!nl_addr) {
++		rtnl_neigh_put(rn);
++		return;
++	}
++	rtnl_neigh_set_lladdr(rn, nl_addr);
++
++	err = rtnl_neigh_delete(drv->rtnl_sk, rn, 0);
++	if (err < 0) {
++		wpa_printf(MSG_DEBUG, "nl80211: bridge FDB entry delete for "
++			   MACSTR " ifindex=%d ifname=%s failed: %s", MAC2STR(addr),
++			   ifidx, is_bridge ? bss->brname : bss->ifname, nl_geterror(err));
++	} else {
++		wpa_printf(MSG_DEBUG, "nl80211: deleted bridge FDB entry for "
++			   MACSTR" from %s", MAC2STR(addr), is_bridge ? bss->brname : bss->ifname);
++	}
++
++	nl_addr_put(nl_addr);
++	rtnl_neigh_put(rn);
++#endif /* CONFIG_LIBNL3_ROUTE */
++}
+ 
+ static void wpa_driver_nl80211_remove_link(struct i802_bss *bss)
+ {
+@@ -3165,17 +3248,22 @@ static void wpa_driver_nl80211_remove_li
+ 	wpa_printf(MSG_DEBUG, "nl80211: Remove link");
+ 	wpa_printf(MSG_DEBUG, "nl80211: ifindex=%d", bss->ifindex);
+ 	wpa_printf(MSG_DEBUG, "nl80211: link_id=%u", drv->mlo_link_id);
++	wpa_printf(MSG_DEBUG, "nl80211: link_addr= "MACSTR, MAC2STR(bss->addr));
+ 
+ 	if (!(msg = nl80211_bss_msg(bss, 0, cmd)) ||
+ 	    (bss->mlo && nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id)))
+ 		goto fail;
+ 
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+-        if (ret) {
+-                wpa_printf(MSG_DEBUG, "nl80211: Link remove failed: %d (%s)",
+-                           ret, strerror(-ret));
++	if (ret) {
++		wpa_printf(MSG_DEBUG, "nl80211: Link remove failed: %d (%s)",
++			   ret, strerror(-ret));
++		return;
+ 	}
+ 
++	if (drv->rtnl_sk && os_memcmp(bss->mld_addr, bss->addr, ETH_ALEN))
++		rtnl_neigh_delete_fdb_entry(bss, bss->addr, true);
++
+ 	return;
+ fail:
+ 	nlmsg_free(msg);
+@@ -3214,9 +3302,6 @@ static void wpa_driver_nl80211_deinit(st
+ 				   bss->ifname, bss->brname, strerror(errno));
+ 	}
+ 
+-	if (drv->rtnl_sk)
+-		nl_socket_free(drv->rtnl_sk);
+-
+ 	if (bss->added_bridge) {
+ 		if (linux_set_iface_flags(drv->global->ioctl_sock, bss->brname,
+ 					  0) < 0)
+@@ -3238,6 +3323,9 @@ static void wpa_driver_nl80211_deinit(st
+ 		wpa_driver_nl80211_remove_link(bss);
+ 	}
+ 
++	if (drv->rtnl_sk)
++		nl_socket_free(drv->rtnl_sk);
++
+ 	if (drv->eapol_sock >= 0) {
+ 		eloop_unregister_read_sock(drv->eapol_sock);
+ 		close(drv->eapol_sock);
+@@ -4914,11 +5002,18 @@ static int wpa_driver_nl80211_add_link(v
+ 		goto fail;
+ 
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+-        if (ret) {
+-                wpa_printf(MSG_DEBUG, "nl80211: Link add failed: %d (%s)",
+-                           ret, strerror(-ret));
++	if (ret) {
++		wpa_printf(MSG_DEBUG, "nl80211: Link add failed: %d (%s)",
++				ret, strerror(-ret));
++		return ret;
+ 	}
+-	
++
++	/*
++	 * Do not add mld addr to bridge fdb as it is already added
++	 */
++	if (drv->rtnl_sk && os_memcmp(bss->mld_addr, params->link_addr, ETH_ALEN))
++		rtnl_neigh_add_fdb_entry(bss, params->link_addr, true);
++
+ 	return ret;
+ 
+ fail:
+@@ -5939,44 +6034,6 @@ fail:
+ 	return ret;
+ }
+ 
+-
+-static void rtnl_neigh_delete_fdb_entry(struct i802_bss *bss, const u8 *addr)
+-{
+-#ifdef CONFIG_LIBNL3_ROUTE
+-	struct wpa_driver_nl80211_data *drv = bss->drv;
+-	struct rtnl_neigh *rn;
+-	struct nl_addr *nl_addr;
+-	int err;
+-
+-	rn = rtnl_neigh_alloc();
+-	if (!rn)
+-		return;
+-
+-	rtnl_neigh_set_family(rn, AF_BRIDGE);
+-	rtnl_neigh_set_ifindex(rn, bss->ifindex);
+-	nl_addr = nl_addr_build(AF_BRIDGE, (void *) addr, ETH_ALEN);
+-	if (!nl_addr) {
+-		rtnl_neigh_put(rn);
+-		return;
+-	}
+-	rtnl_neigh_set_lladdr(rn, nl_addr);
+-
+-	err = rtnl_neigh_delete(drv->rtnl_sk, rn, 0);
+-	if (err < 0) {
+-		wpa_printf(MSG_DEBUG, "nl80211: bridge FDB entry delete for "
+-			   MACSTR " ifindex=%d failed: %s", MAC2STR(addr),
+-			   bss->ifindex, nl_geterror(err));
+-	} else {
+-		wpa_printf(MSG_DEBUG, "nl80211: deleted bridge FDB entry for "
+-			   MACSTR, MAC2STR(addr));
+-	}
+-
+-	nl_addr_put(nl_addr);
+-	rtnl_neigh_put(rn);
+-#endif /* CONFIG_LIBNL3_ROUTE */
+-}
+-
+-
+ static int wpa_driver_nl80211_sta_remove(struct i802_bss *bss, const u8 *addr,
+ 					 int deauth, u16 reason_code)
+ {
+@@ -6004,7 +6061,7 @@ static int wpa_driver_nl80211_sta_remove
+ 		   bss->ifname, MAC2STR(addr), ret, strerror(-ret));
+ 
+ 	if (drv->rtnl_sk)
+-		rtnl_neigh_delete_fdb_entry(bss, addr);
++		rtnl_neigh_delete_fdb_entry(bss, addr, false);
+ 
+ 	if (ret == -ENOENT)
+ 		return 0;

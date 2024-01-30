@@ -1,0 +1,39 @@
+From 8386ff736a5dea9289b86cd083389a1409cd87fd Mon Sep 17 00:00:00 2001
+From: Sivashankari Madhavan <quic_sivamadh@quicinc.com>
+Date: Wed, 28 Sep 2022 23:35:45 +0530
+Subject: [PATCH] sigma-dut: Fix GI setting CAPI command failure issue
+
+While setting the GI for 6G radio using a conditional operator to
+get interface mode for iw command formation. For 6G, there is no
+case present in condition checking to fill mode. Thus the formation
+of command was created wrongly and getting failed for 6G.
+
+root@OpenWrt:/# sigma_dut -l ap_set_rfeature,NAME,Wi-Fi_6E_APUT,type,HE,LTF,6.4,GI,1.6
+1662582328.798960: Run command: ap_set_rfeature
+1662582328.799042: Running 'iw wlan1 set bitrates he-gi-5 0.8 he-ltf-5 2'
+command failed: Invalid argument (-22)
+1662582328.804289: resp: status=3 buf=N/A
+
+Fix it by adding the condition to fill the mode for 6G.
+
+Signed-off-by: Sivashankari Madhavan <quic_sivamadh@quicinc.com>
+---
+ ap.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index e6232eb..4de7ef0 100644
+--- a/ap.c
++++ b/ap.c
+@@ -15297,7 +15297,7 @@ static enum sigma_cmd_result mac80211_he_gi(struct sigma_dut *dut,
+ 					    const char *val)
+ {
+ 	int16_t he_ltf = 0xFF;
+-	char *mode = dut->use_5g ? "5" : "2.4";
++	char *mode = dut->ap_band_6g ? "6" : dut->use_5g ? "5" : "2.4";
+ 	int ret = -1;
+ 
+ 	if (dut->ar_ltf) {
+-- 
+2.17.1
+

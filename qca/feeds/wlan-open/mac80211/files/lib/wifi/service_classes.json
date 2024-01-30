@@ -1,0 +1,17 @@
+{
+	"service_class":[
+		{
+			"disable": 1,
+			"svc_id": 9,
+			"app_name": "Test",
+			"min_thruput_rate": 50000,
+			"burst_size": 100000,
+			"service_interval": 16,
+			"delay_bound":6,
+			"msdu_ttl": 20,
+			"priority": 1,
+			"tid": 1,
+			"msdu_rate_loss": 1,
+		},
+	]
+}

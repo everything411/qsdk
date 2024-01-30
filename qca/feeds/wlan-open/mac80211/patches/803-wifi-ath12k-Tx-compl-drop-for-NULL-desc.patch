@@ -1,0 +1,58 @@
+From f111d2552435f54da812b389de2c3818c733e348 Mon Sep 17 00:00:00 2001
+From: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
+Date: Wed, 12 Jul 2023 22:33:09 +0530
+Subject: [PATCH] wifi: ath12k: Tx compl drop for NULL desc
+
+When Tx completion happen for already completed Tx buffer, skb
+will be NULL. It lead to NULL crash. So added the msdu NULL check
+and avoid the descriptor processing with DP Statistics account.
+
+Signed-off-by: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/bondif.c  |  2 --
+ drivers/net/wireless/ath/ath12k/core.h    |  1 +
+ drivers/net/wireless/ath/ath12k/debugfs.c |  7 +++++++
+ drivers/net/wireless/ath/ath12k/dp_tx.c   | 13 +++++++++++--
+ 4 files changed, 19 insertions(+), 4 deletions(-)
+
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -1145,6 +1145,7 @@ struct ath12k_soc_dp_stats {
+ 	u32 fw_tx_status[MAX_FW_TX_STATUS];
+ 	u32 tx_enqueued[MAX_TCL_RING];
+ 	u32 tx_completed[MAX_TCL_RING];
++	u32 null_tx_complete[MAX_TCL_RING];
+ 	u32 bond_tx_ucast_enqueued[MAX_TCL_RING];
+ 	u32 bond_tx_mcast_enqueued[MAX_TCL_RING];
+ 	u32 bond_tx_ucast_dropped[MAX_TCL_RING];
+--- a/drivers/net/wireless/ath/ath12k/debugfs.c
++++ b/drivers/net/wireless/ath/ath12k/debugfs.c
+@@ -1724,6 +1724,13 @@ static ssize_t ath12k_debugfs_dump_soc_d
+ 			soc_stats->tx_enqueued[3]);
+ 
+ 	len += scnprintf(buf + len, size - len,
++			"\nnull tx complete: 0:%u 1:%u 2:%u 3:%u\n",
++			soc_stats->null_tx_complete[0],
++			soc_stats->null_tx_complete[1],
++			soc_stats->null_tx_complete[2],
++			soc_stats->null_tx_complete[3]);
++
++	len += scnprintf(buf + len, size - len,
+ 			"\ntx_completed: 0:%u 1:%u 2:%u 3:%u\n",
+ 			soc_stats->tx_completed[0],
+ 			soc_stats->tx_completed[1],
+--- a/drivers/net/wireless/ath/ath12k/dp_tx.c
++++ b/drivers/net/wireless/ath/ath12k/dp_tx.c
+@@ -1394,6 +1394,12 @@ int ath12k_dp_tx_completion_handler(stru
+ 		 * to reduce contention
+ 		 */
+ 		ath12k_dp_tx_release_txbuf(dp, tx_desc, tx_desc->pool_id);
++
++		if (unlikely(!msdu)) {
++			ab->soc_stats.null_tx_complete[tx_ring->tcl_data_ring_id]++;
++			continue;
++		}
++
+ 		/* Find the HAL_WBM_RELEASE_INFO0_REL_SRC_MODULE value */
+ 		buf_rel_source = tx_status->info0 & HAL_WBM_RELEASE_INFO0_REL_SRC_MASK;
+ 		ab->soc_stats.tx_wbm_rel_source[buf_rel_source]++;

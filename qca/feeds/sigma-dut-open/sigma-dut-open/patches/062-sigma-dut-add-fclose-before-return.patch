@@ -1,0 +1,46 @@
+From c384c42e97bee65eeee6e3754156fdebae99b7bc Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Tue, 17 Jan 2023 04:34:30 -0800
+Subject: [PATCH 1/6] sigma-dut: add fclose before return
+
+Add fclose in areas that were missing when returning with an error
+code.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index e0a75304e750..32cd7727dceb 100644
+--- a/ap.c
++++ b/ap.c
+@@ -8785,6 +8785,7 @@ write_conf:
+ 			} else {
+ 				sigma_dut_print(dut, DUT_MSG_ERROR,
+ 						"Failed to add the second interface");
++				fclose(f);
+ 				return -2;
+ 			}
+ 		} else {
+@@ -8913,6 +8914,7 @@ write_conf:
+ 			if (drv == DRIVER_MAC80211) {
+ 				send_resp(dut, conn, SIGMA_ERROR,
+ 					  "errorCode,Not Supported");
++				fclose(f);
+ 				return -2;
+ 			} else {
+ 				fprintf(f, "wep_key0=%s\n", dut->ap_wepkey);
+@@ -9601,7 +9603,8 @@ skip_key_mgmt:
+ 			sigma_dut_print(dut, DUT_MSG_ERROR,
+ 					"%s: File pointer is invalid",
+ 					__func__);
+-                	return -2;
++			fclose(f);
++			return -2;
+ 		}
+ 
+ 		if (dut->ap_he_rtsthrshld == VALUE_ENABLED)
+-- 
+2.7.4
+

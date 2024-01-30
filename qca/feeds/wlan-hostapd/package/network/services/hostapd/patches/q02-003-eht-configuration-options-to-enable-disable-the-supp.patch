@@ -1,0 +1,248 @@
+From 1194cfc2d5835f2cb64b94eaae4431f3995fdc60 Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Thu, 28 Apr 2022 02:09:05 -0700
+Subject: [PATCH] tests: Clean up EHT test script
+
+Remove test cases that are no longer valid and add functionality to
+enable compiler flag for disabling EHT mode. Also adds missing
+functionality in Hostapd and WPA Supplicant for disabling EHT mode.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ src/drivers/driver.h              |  7 +++++++
+ src/drivers/driver_nl80211.c      | 14 ++++++++++++--
+ wpa_supplicant/Makefile           | 11 +++++++++++
+ wpa_supplicant/ap.c               |  5 +++++
+ wpa_supplicant/config.c           |  4 ++++
+ wpa_supplicant/config_file.c      |  3 +++
+ wpa_supplicant/config_ssid.h      | 12 ++++++++++++
+ wpa_supplicant/ctrl_iface.c       |  7 ++++---
+ wpa_supplicant/events.c           |  2 ++
+ wpa_supplicant/sme.c              |  3 +++
+ wpa_supplicant/wpa_cli.c          |  3 +++
+ wpa_supplicant/wpa_supplicant.c   | 39 +++++++++++++++++++++++++++++++++++++--
+ wpa_supplicant/wpa_supplicant_i.h |  4 ++++
+ 22 files changed, 157 insertions(+), 12 deletions(-)
+
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -1181,6 +1181,13 @@ struct wpa_driver_associate_params {
+ 	int disable_he;
+ #endif /* CONFIG_HE_OVERRIDES */
+ 
++#ifdef CONFIG_EHT_OVERRIDES
++	/**
++	 * disable_eht - Disable EHT for this connection
++	 */
++	int disable_eht;
++#endif /* CONFIG_EHT_OVERRIDES */
++
+ 	/**
+ 	 * req_key_mgmt_offload - Request key management offload for connection
+ 	 *
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -6145,6 +6145,14 @@ static int nl80211_ht_vht_overrides(stru
+ 	}
+ #endif /* CONFIG_HE_OVERRIDES */
+ 
++#ifdef CONFIG_EHT_OVERRIDES
++	if (params->disable_eht) {
++		wpa_printf(MSG_DEBUG, "  * EHT disabled");
++		if (nla_put_flag(msg, NL80211_ATTR_DISABLE_EHT))
++			return -1;
++	}
++#endif /* CONFIG_EHT_OVERRIDES */
++
+ 	return 0;
+ }
+ 
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -200,6 +200,10 @@ ifdef CONFIG_HE_OVERRIDES
+ CFLAGS += -DCONFIG_HE_OVERRIDES
+ endif
+ 
++ifdef CONFIG_EHT_OVERRIDES
++CFLAGS += -DCONFIG_EHT_OVERRIDES
++endif
++
+ ifndef CONFIG_BACKEND
+ CONFIG_BACKEND=file
+ endif
+--- a/wpa_supplicant/ap.c
++++ b/wpa_supplicant/ap.c
+@@ -394,6 +394,11 @@ int wpa_supplicant_conf_ap_ht(struct wpa
+ 				 HT_CAP_INFO_TX_STBC |
+ 				 HT_CAP_INFO_MAX_AMSDU_SIZE);
+ 
++			if (mode->eht_capab[wpas_mode_to_ieee80211_mode(
++					    ssid->mode)].eht_supported &&
++			    ssid->eht)
++				conf->ieee80211be = 1;
++
+ 			/* check this before VHT, because setting oper chan
+ 			 * width and friends is the same call for HE and VHT
+ 			 * and checks if conf->ieee8021ax == 1 */
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2787,6 +2787,9 @@ static const struct parse_data ssid_fiel
+ #ifdef CONFIG_HE_OVERRIDES
+ 	{ INT_RANGE(disable_he, 0, 1)},
+ #endif /* CONFIG_HE_OVERRIDES */
++#ifdef CONFIG_EHT_OVERRIDES
++	{ INT_RANGE(disable_eht, 0, 1)},
++#endif /* CONFIG_EHT_OVERRIDES */
+ 	{ INT(ap_max_inactivity) },
+ 	{ INT(dtim_period) },
+ 	{ INT(beacon_int) },
+@@ -3302,6 +3305,7 @@ void wpa_config_set_network_defaults(str
+ 	ssid->ht = 1;
+ 	ssid->vht = 1;
+ 	ssid->he = 1;
++	ssid->eht = 1;
+ #ifdef IEEE8021X_EAPOL
+ 	ssid->eapol_flags = DEFAULT_EAPOL_FLAGS;
+ 	ssid->eap_workaround = DEFAULT_EAP_WORKAROUND;
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -886,6 +886,9 @@ static void wpa_config_write_network(FIL
+ #ifdef CONFIG_HE_OVERRIDES
+ 	INT(disable_he);
+ #endif /* CONFIG_HE_OVERRIDES */
++#ifdef CONFIG_EHT_OVERRIDES
++	INT(disable_eht);
++#endif /* CONFIG_EHT_OVERRIDES */
+ 	INT(disable_40mhz_scan);
+ 	INT(beacon_tx_mode);
+ 	INT(enable_160mhz_bw);
+--- a/wpa_supplicant/config_ssid.h
++++ b/wpa_supplicant/config_ssid.h
+@@ -567,6 +567,8 @@ struct wpa_ssid {
+ 
+ 	int he;
+ 
++	int eht;
++
+ 	enum oper_chan_width max_oper_chwidth;
+ 
+ 	unsigned int vht_center_freq1;
+@@ -814,6 +816,16 @@ struct wpa_ssid {
+ 	int disable_he;
+ #endif /* CONFIG_HE_OVERRIDES */
+ 
++#ifdef CONFIG_EHT_OVERRIDES
++	/**
++	 * disable_eht - Disable EHT (IEEE 802.11be) for this network
++	 *
++	 * By default, use it if it is available, but this can be configured
++	 * to 1 to have it disabled.
++	 */
++	int disable_eht;
++#endif /* CONFIG_EHT_OVERRIDES */
++
+ 	/**
+ 	 * ap_max_inactivity - Timeout in seconds to detect STA's inactivity
+ 	 *
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -2010,6 +2010,9 @@ mscs_fail:
+ #ifdef CONFIG_HE_OVERRIDES
+ 	wpa_supplicant_apply_he_overrides(wpa_s, ssid, &params);
+ #endif /* CONFIG_HE_OVERRIDES */
++#ifdef CONFIG_EHT_OVERRIDES
++	wpa_supplicant_apply_eht_overrides(wpa_s, ssid, &params);
++#endif /* CONFIG_EHT_OVERRIDES */
+ #ifdef CONFIG_IEEE80211R
+ 	if (auth_type == WLAN_AUTH_FT && wpa_s->sme.ft_ies &&
+ 	    get_ie(wpa_s->sme.ft_ies, wpa_s->sme.ft_ies_len,
+--- a/wpa_supplicant/wpa_cli.c
++++ b/wpa_supplicant/wpa_cli.c
+@@ -1483,6 +1483,9 @@ static const char *network_fields[] = {
+ #ifdef CONFIG_HE_OVERRIDES
+ 	"disable_he",
+ #endif /* CONFIG_HE_OVERRIDES */
++#ifdef CONFIG_EHT_OVERRIDES
++	"disable_eht",
++#endif /* CONFIG_EHT_OVERRIDES */
+ 	"ap_max_inactivity", "dtim_period", "beacon_int",
+ #ifdef CONFIG_MACSEC
+ 	"macsec_policy",
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2729,10 +2729,18 @@ void ibss_mesh_setup_freq(struct wpa_sup
+ 
+ 	/* Allow HE on 2.4 GHz without VHT: see nl80211_put_freq_params() */
+ 	if (is_24ghz) {
++#ifdef CONFIG_EHT_OVERRIDES
++		if (is_24ghz && ssid->disable_eht)
++			freq->eht_enabled = 0;
++		else
++#endif /* CONFIG_EHT_OVERRIDES */
++			freq->eht_enabled = mode->eht_capab[ieee80211_mode].eht_supported;
++
+ #ifdef CONFIG_HE_OVERRIDES
+-		if (ssid->disable_he)
++		if (ssid->disable_he) {
+ 			freq->he_enabled = 0;
+-		else
++			freq->eht_enabled = 0;
++		} else
+ #endif /* CONFIG_HE_OVERRIDES */
+ 			freq->he_enabled = mode->he_capab[ieee80211_mode].he_supported;
+ 
+@@ -2836,6 +2844,13 @@ skip_vht80:
+ 		vht_freq.he_enabled = 0;
+ #endif /* CONFIG_HE_OVERRIDES */
+ 
++#ifdef CONFIG_EHT_OVERRIDES
++skip_vht80:
++	if (ssid->disable_eht)
++		vht_freq.eht_enabled = 0;
++#endif /* CONFIG_EHT_OVERRIDES */
++
++
+ #ifdef CONFIG_HT_OVERRIDES
+ skip_ht40:
+ #endif /* CONFIG_HT_OVERRIDES */
+@@ -2990,6 +3005,12 @@ skip_to_6ghz:
+ 		freq->he_enabled = 0;
+ 	}
+ #endif /* CONFIG_HE_OVERRIDES */
++#ifdef CONFIG_EHT_OVERRIDES
++	if (ssid->disable_eht) {
++		vht_freq.eht_enabled = 0;
++		freq->eht_enabled = 0;
++	}
++#endif /* CONFIG_EHT_OVERRIDES */
+ 	if (hostapd_set_freq_params(&vht_freq, mode->mode, freq->freq,
+ 				    freq->channel, ssid->enable_edmg,
+ 				    ssid->edmg_channel, freq->ht_enabled,
+@@ -4220,6 +4241,9 @@ static void wpas_start_assoc_cb(struct w
+ #ifdef CONFIG_HE_OVERRIDES
+ 	wpa_supplicant_apply_he_overrides(wpa_s, ssid, &params);
+ #endif /* CONFIG_HE_OVERRIDES */
++#ifdef CONFIG_EHT_OVERRIDES
++	wpa_supplicant_apply_eht_overrides(wpa_s, ssid, &params);
++#endif /* CONFIG_EHT_OVERRIDES */
+ 
+ #ifdef CONFIG_P2P
+ 	/*
+@@ -6024,6 +6048,17 @@ void wpa_supplicant_apply_he_overrides(
+ }
+ #endif /* CONFIG_HE_OVERRIDES */
+ 
++#ifdef CONFIG_EHT_OVERRIDES
++void wpa_supplicant_apply_eht_overrides(
++	struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
++	struct wpa_driver_associate_params *params)
++{
++	if (!ssid)
++		return;
++
++	params->disable_eht = ssid->disable_eht;
++}
++#endif /* CONFIG_EHT_OVERRIDES */
+ 
+ static int pcsc_reader_init(struct wpa_supplicant *wpa_s)
+ {

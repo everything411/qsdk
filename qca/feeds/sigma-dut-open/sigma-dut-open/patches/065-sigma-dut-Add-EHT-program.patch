@@ -1,0 +1,335 @@
+From 28cec09ea8165e2a9dfa38fbf827b66587d95c3f Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <quic_pgowtham@quicinc.com>
+Date: Tue, 10 Jan 2023 12:47:40 -0800
+Subject: [PATCH 4/6] sigma-dut: Add EHT program
+
+Add EHT program with 11be changes.
+
+Signed-off-by: Priyadharshini Gowthaman <quic_pgowtham@quicinc.com>
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c        | 100 +++++++++++++++++++++++++++++++++++++++++++++++++++---------
+ sigma_dut.h |   4 +++
+ utils.c     |   2 ++
+ 3 files changed, 91 insertions(+), 15 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -485,6 +485,8 @@ static enum ap_mode get_mode(const char
+ 		return AP_11ad;
+ 	else if (strcasecmp(str, "11ax") == 0)
+ 		return AP_11ax;
++	else if (strcasecmp(str, "11be") == 0)
++		return AP_11be;
+ 	else
+ 		return AP_inval;
+ }
+@@ -818,6 +820,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	/* const char *ifname = get_param(cmd, "INTERFACE"); */
+ 	const char *val;
+ 	unsigned int wlan_tag = 1;
++	int chwidth_check = 0;
+ 	const char *ifname = get_main_ifname(dut);
+ 	char buf[128];
+ 	int is_6g = 0;
+@@ -878,9 +881,45 @@ static enum sigma_cmd_result cmd_ap_set_
+ 
+ 	val = get_param(cmd, "Interface");
+ 	if (val) {
+-		if (strcasecmp(val, "5G") == 0)
++		if (strcasecmp(val, "5G") == 0) {
+ 			dut->ap_interface_5g = 1;
+-		else
++			if (dut->ap_interface_2g) {
++				dut->ap_chwidth_1 = dut->ap_chwidth;
++				val = get_param(cmd, "WIDTH");
++				if (val) {
++				chwidth_check = 1;
++				if (strcasecmp(val, "20") == 0)
++					dut->ap_chwidth = AP_20;
++				else if (strcasecmp(val, "40") == 0)
++					dut->ap_chwidth = AP_40;
++				else if (strcasecmp(val, "80") == 0)
++					dut->ap_chwidth = AP_80;
++				else if (strcasecmp(val, "160") == 0)
++					dut->ap_chwidth = AP_160;
++				else if (strcasecmp(val, "320") == 0)
++					dut->ap_chwidth = AP_320;
++				}
++			}
++		} else if (strcasecmp(val, "6G") == 0) {
++			dut->ap_interface_6g = 1;
++			if (dut->ap_interface_2g || dut->ap_interface_5g) {
++				dut->ap_chwidth_1 = dut->ap_chwidth;
++				val = get_param(cmd, "WIDTH");
++				if (val) {
++				chwidth_check = 1;
++				if (strcasecmp(val, "20") == 0)
++					dut->ap_chwidth = AP_20;
++				else if (strcasecmp(val, "40") == 0)
++					dut->ap_chwidth = AP_40;
++				else if (strcasecmp(val, "80") == 0)
++					dut->ap_chwidth = AP_80;
++				else if (strcasecmp(val, "160") == 0)
++					dut->ap_chwidth = AP_160;
++				else if (strcasecmp(val, "320") == 0)
++					dut->ap_chwidth = AP_320;
++				}
++			}
++		} else
+ 			dut->ap_interface_2g = 1;
+ 	}
+ 
+@@ -893,6 +932,13 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	if (dut->ap_interface_5g && dut->ap_interface_2g)
+ 		dut->ap_is_dual = 1;
+ 
++	if (dut->program == PROGRAM_EHT) {
++		if (dut->ap_interface_5g && dut->ap_interface_6g)
++			dut->ap_is_dual = 1;
++		if (dut->ap_interface_2g && dut->ap_interface_6g)
++			dut->ap_is_dual = 1;
++	}
++
+ 	val = get_param(cmd, "CountryCode");
+ 	if (val) {
+ 		if (strlen(val) > sizeof(dut->ap_countrycode) - 1)
+@@ -1023,7 +1069,9 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_mode_1 = mode;
+ 		} else {
+ 			dut->ap_mode = mode;
+-			if ((dut->ap_mode == AP_11ac || (dut->ap_mode == AP_11ax && dut->use_5g))
++			if ((dut->ap_mode == AP_11ac ||
++			     (dut->ap_mode == AP_11ax && dut->use_5g) ||
++			     (dut->ap_mode == AP_11be && dut->use_5g))
+ 			     && dut->ap_80plus80 != 1)
+ 				dut->ap_chwidth = AP_80;
+ 
+@@ -1071,6 +1119,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		dut->use_5g = 1;
+ 		break;
+ 	case AP_11ax:
++	case AP_11be:
+ 		if (dut->ap_band_6g)
+ 			dut->use_5g = 1;
+ 		else if (dut->ap_channel >= 1 && dut->ap_channel <= 14)
+@@ -1095,7 +1144,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_band_1 = BAND_5G;
+ 
+ 		if (dut->ap_band_1 != BAND_2G && (dut->ap_mode_1 == AP_11ac ||
+-		    dut->ap_mode_1 == AP_11ax))
++		    dut->ap_mode_1 == AP_11ax || dut->ap_mode == AP_11be))
+ 			dut->ap_chwidth_1 = AP_80;
+ 	} else if (dut->ap_band == BAND_UNKNOWN) {
+ 		if (is_6g)
+@@ -1106,7 +1155,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_band = BAND_5G;
+ 
+ 		if (dut->ap_band != BAND_2G && (dut->ap_mode == AP_11ac ||
+-		    dut->ap_mode == AP_11ax) && dut->ap_80plus80 != 1)
++		    dut->ap_mode == AP_11ax || dut->ap_mode == AP_11be) &&
++		    dut->ap_80plus80 != 1)
+ 			dut->ap_chwidth = AP_80;
+ 	}
+ 
+@@ -1347,6 +1397,11 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			return STATUS_SENT;
+ 		}
+ 		nss = atoi(result);
++		if (dut->program == PROGRAM_EHT) {
++			dut->ap_tx_streams = nss;
++			dut->ap_rx_streams = nss;
++		}
++
+ 		result = strtok_r(NULL, ";", &saveptr);
+ 		if (result == NULL) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+@@ -1371,7 +1426,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->he_mcsnssmap = (mcsnssmap << 16) | mcsnssmap;
+ 			/* To set mcsnssmap for EHT program */
+ 			if (dut->ap_mode == AP_11be)
+-				set_eht_mcsmap_nss(dut, nss, mcs, width);
++				set_eht_mcsmap_nss(dut, nss, mcs);
+ 		} else {
+ 			set_vht_mcsmap_nss(dut, nss, mcs);
+ 		}
+@@ -1389,6 +1444,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_tx_stbc = VALUE_DISABLED;
+ 	}
+ 
++	if (!chwidth_check) {
+ 	val = get_param(cmd, "WIDTH");
+ 	if (val) {
+ 		if (strcasecmp(val, "20") == 0)
+@@ -1399,6 +1455,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			chwidth = AP_80;
+ 		else if (strcasecmp(val, "160") == 0)
+ 			chwidth = AP_160;
++		else if (strcasecmp(val, "320") == 0)
++			chwidth = AP_320;
+ 		else if (strcasecmp(val, "80plus80") == 0) {
+ 			dut->ap_80plus80 = 1;
+ 			chwidth = AP_80_80;
+@@ -1415,7 +1473,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_chwidth = chwidth;
+ 
+ 	}
+-
++	}
+ 	/* TODO: WIDTH_SCAN */
+ 
+ 	val = get_param(cmd, "TDLSProhibit");
+@@ -1569,7 +1627,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	if (val) {
+ 		dut->ap_txBF = strcasecmp(val, "enable") == 0;
+ 		dut->he_sounding = VALUE_DISABLED;
+-		dut->he_set_sta_1x1 = VALUE_ENABLED;
++		if (dut->program == PROGRAM_HE)
++			dut->he_set_sta_1x1 = VALUE_ENABLED;
+ #ifdef NL80211_SUPPORT
+ 		if (dut->ap_txBF && get_driver_type(dut) == DRIVER_LINUX_WCN &&
+ 		    wcn_set_txbf_periodic_ndp(dut, get_main_ifname(dut), 1)) {
+@@ -2139,6 +2198,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	if (val) {
+ 		if (strcasecmp(val, "gt64") == 0) {
+ 			dut->ap_ba_bufsize = BA_BUFSIZE_256;
++		} else if (strcasecmp(val, "le64") == 0) {
++			dut->ap_ba_bufsize = BA_BUFSIZE_64;
+ 		} else {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+ 				  "errorCode,Unsupported ADDBAResp Buffer Size");
+@@ -2259,8 +2320,10 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	}
+ 
+ 	val = get_param(cmd, "ForceEHTTXMCS");
+-	if (val)
++	if (val) {
++		dut->ap_fixed_rate = 1;
+ 		dut->eht_txmcs = atoi(val);
++	}
+ 
+ 	return SUCCESS_SEND_STATUS;
+ }
+@@ -2665,7 +2728,10 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		} else if (strcasecmp(val, "WPA2-SAE") == 0 ||
+ 			   strcasecmp(val, "SAE") == 0) {
+ 			dut->ap_key_mgmt = AP_WPA2_SAE;
+-			dut->ap_cipher = AP_CCMP;
++			if (dut->ap_mode == AP_11be)
++				dut->ap_cipher = AP_GCMP_256;
++			else
++				dut->ap_cipher = AP_CCMP;
+ 			dut->ap_pmf = AP_PMF_REQUIRED;
+ 			if (dut->program == PROGRAM_HE)
+ 				dut->sae_pwe = SAE_PWE_H2E;
+@@ -10824,7 +10890,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->wps_forced_version = 0;
+ 
+ 	if (dut->program == PROGRAM_HT || dut->program == PROGRAM_VHT ||
+-	    dut->program == PROGRAM_HE) {
++	    dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+ 		dut->ap_wme = AP_WME_ON;
+ 		dut->ap_wmmps = AP_WMMPS_ON;
+ 	} else {
+@@ -11070,6 +11136,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_he_rtsthrshld = VALUE_NOT_SET;
+ 	dut->ap_mbssid = VALUE_DISABLED;
+ 	dut->ap_ampdu = VALUE_NOT_SET;
++	dut->ap_amsdu = VALUE_NOT_SET;
+ 	dut->he_mcsnssmap = 0;
+ 	dut->ap_fixed_rate = 0;
+ 	dut->he_mmss = 0;
+@@ -11080,6 +11147,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 
+ 	dut->eht_txmcs = 0;
+ 	dut->ap_ehtmcs_map = 0;
++	dut->run_set_param = 0;
+ 
+ 	if (dut->device_type == AP_testbed) {
+ 		dut->ap_he_dlofdma = VALUE_DISABLED;
+@@ -11094,23 +11162,25 @@ static enum sigma_cmd_result cmd_ap_rese
+ 		dut->he_ul_mcs = 0;
+ 	}
+ 
+-	if (dut->program == PROGRAM_HE) {
++	if (dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+ 		if (dut->device_type == AP_testbed) {
+-			dut->ap_ldpc = VALUE_DISABLED;
+ 			dut->ap_ba_bufsize = BA_BUFSIZE_64;
+ 			dut->ap_amsdu = VALUE_DISABLED;
+ 			dut->ap_txBF = 0;
+ 			dut->ap_mu_txBF = 0;
+-			dut->he_sounding = VALUE_DISABLED;
++			if (dut->program == PROGRAM_HE)
++				dut->he_sounding = VALUE_DISABLED;
+ 		} else {
+ 			if (drv == DRIVER_WCN || drv == DRIVER_LINUX_WCN) {
+ 				dut->ap_txBF = 0;
+ 				dut->ap_mu_txBF = 0;
+-			} else {
++			}
++			if (dut->program == PROGRAM_HE) {
+ 				dut->ap_txBF = 1;
+ 				/* Don't update ap_mu_txBF since for MAC80211 drivers we get from phy caps*/
++				dut->he_sounding = VALUE_ENABLED;
++				dut->ap_ldpc = VALUE_DISABLED;
+ 			}
+-			dut->he_sounding = VALUE_ENABLED;
+ 			if (drv == DRIVER_LINUX_WCN) {
+ 				dut->ap_ldpc = VALUE_ENABLED;
+ 				wcn_config_ap_ldpc(dut, get_main_ifname(dut));
+@@ -11178,6 +11248,9 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_beacon_prot = dut->user_config_ap_beacon_prot;
+ 	dut->ap_transition_disable = 0;
+ 
++	if (dut->program == PROGRAM_EHT)
++		dut->ap_group_mgmt_cipher = AP_BIP_GMAC_256;
++
+ 	dut->dpp_conf_id = -1;
+ 	free(dut->ap_dpp_conf_addr);
+ 	dut->ap_dpp_conf_addr = NULL;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -566,6 +566,7 @@ struct sigma_dut {
+ 		AP_11ac,
+ 		AP_11ad,
+ 		AP_11ax,
++		AP_11be,
+ 		AP_inval
+ 	} ap_mode;
+ 	int ap_channel;
+@@ -601,6 +602,7 @@ struct sigma_dut {
+ 		AP_40,
+ 		AP_80,
+ 		AP_160,
++		AP_320,
+ 		AP_80_80,
+ 		AP_AUTO
+ 	} ap_chwidth;
+@@ -812,6 +814,7 @@ struct sigma_dut {
+ 
+ 	int eht_txmcs;
+ 	unsigned int ap_ehtmcs_map;
++	int run_set_param;
+ 
+ 	int ap_ocvc;
+ 
+@@ -943,6 +946,7 @@ struct sigma_dut {
+ 		PROGRAM_QM,
+ 		PROGRAM_HS2_R4,
+ 		PROGRAM_HS2_2022,
++		PROGRAM_EHT,
+ 	} program;
+ 
+ 	enum device_type {
+--- a/utils.c
++++ b/utils.c
+@@ -177,6 +177,8 @@ enum sigma_program sigma_program_to_enum
+ 		return PROGRAM_HE;
+ 	if (strcasecmp(prog, "QM") == 0)
+ 		return PROGRAM_QM;
++	if (strcasecmp(prog, "EHT") == 0)
++		return PROGRAM_EHT;
+ 
+ 	return PROGRAM_UNKNOWN;
+ }

@@ -1,0 +1,223 @@
+From fa6402baba4ef824a9dc42dd6f9d4ca3224c3b33 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 12 Apr 2023 12:13:15 +0530
+Subject: [PATCH] hostapd: add support for interface down/up in DFS channel
+
+Currently, when interface goes down in DFS channel and the channels
+got marked as usable, during interface bring up, hostapd is not
+checking whether CAC is required or not and directly tries to set
+the beacon. Since channels are not in available state, kernel rejects
+the request and hence interface can not come up again.
+
+Add support to check whether CAC is required during bring up again and
+if so then perform CAC first and based on the result enable beaconing post
+CAC.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_list.c       | 40 ++++++++++++++++++++++++--
+ src/ap/drv_callbacks.c | 64 ++++++++++++++++++++++++++++++++++++++++--
+ src/ap/hostapd.c       | 30 ++++++++++++++++++--
+ 3 files changed, 127 insertions(+), 7 deletions(-)
+
+--- a/src/ap/ap_list.c
++++ b/src/ap/ap_list.c
+@@ -303,8 +303,44 @@ void ap_list_timer(struct hostapd_iface
+ 		}
+ 	}
+ 
+-	if (set_beacon)
+-		ieee802_11_update_beacons(iface);
++	if (set_beacon) {
++		size_t i;
++		struct hostapd_mld *mld;
++		struct hostapd_data *link_bss;
++		bool partner_wait;
++
++		for (i = 0; i < iface->num_bss; i++) {
++			if (!iface->bss[i]->mld) {
++				if (iface->bss[i]->beacon_set_done &&
++				    iface->bss[i]->started)
++					ieee802_11_set_beacon(iface->bss[i]);
++			} else {
++				mld = iface->bss[i]->mld;
++				if (!mld->bss)
++					continue;
++
++				link_bss = mld->bss;
++				partner_wait = false;
++
++				while (link_bss) {
++					if (link_bss->iface->state == HAPD_IFACE_DFS) {
++						partner_wait = true;
++						break;
++					}
++					link_bss = link_bss->nbss;
++				}
++
++				if (partner_wait)
++					continue;
++
++				link_bss = mld->bss;
++				while (link_bss) {
++					ieee802_11_set_beacon(link_bss);
++					link_bss = link_bss->nbss;
++				}
++			}
++		}
++	}
+ }
+ 
+ u64 ap_list_get_color(struct hostapd_iface *iface)
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1975,8 +1975,31 @@ static void hostpad_if_disable(struct ho
+ }
+ 
+ 
++static int hostapd_if_enable_dfs(struct hostapd_data *hapd)
++{
++#ifdef NEED_AP_MLME
++	if (!hostapd_is_dfs_required(hapd->iface))
++		return 0;
++
++	wpa_printf(MSG_DEBUG, "DFS: CAC is required again");
++
++	if (hapd->mld) {
++		hapd->iface->need_to_start_in_sync = 1;
++		return 1;
++	}
++
++	hostapd_setup_interface_complete(hapd->iface, 0);
++
++	return 1;
++#else
++	return 0;
++#endif /* NEED_AP_MLME */
++}
++
+ static void hostpad_if_enable(struct hostapd_data *hapd)
+ {
++	int ret;
++
+ 	wpa_msg(hapd->msg_ctx, MSG_INFO, INTERFACE_ENABLED);
+ 	if (hapd->disabled && hapd->started) {
+ 		hapd->disabled = 0;
+@@ -1989,8 +2010,12 @@ static void hostpad_if_enable(struct hos
+ 			wpa_auth_reconfig_group_keys(hapd->wpa_auth);
+ 		else
+ 			hostapd_reconfig_encryption(hapd);
++
+ 		hapd->reenable_beacon = 1;
+-		ieee802_11_set_beacon(hapd);
++
++		ret = hostapd_if_enable_dfs(hapd);
++		if (!ret)
++			ieee802_11_set_beacon(hapd);
+ #ifdef NEED_AP_MLME
+ 	} else if (hapd->disabled && hapd->iface->cac_started) {
+ 		wpa_printf(MSG_DEBUG, "DFS: restarting pending CAC");
+@@ -2013,7 +2038,7 @@ static void hostapd_mld_if_enable(struct
+ {
+ 	struct wpa_driver_link_params params;
+ 	struct hostapd_data *hapd;
+-	bool cac_enabled_hapd_found = false;
++	bool cac_enabled_hapd_found = false, cac_required_iface_found = false;
+ 
+ 	/* Re add all the links corresponding to the link bss
+ 	 * before starting each, so that drivers can sync and wait
+@@ -2037,6 +2062,39 @@ static void hostapd_mld_if_enable(struct
+ 	if (cac_enabled_hapd_found)
+ 		return;
+ 
++	/* Check if any iface needs CAC again */
++	for (hapd = mld->bss; hapd != NULL; hapd = hapd->nbss) {
++		if (hostapd_is_dfs_required(hapd->iface)) {
++			hostpad_if_enable(hapd);
++			cac_required_iface_found = true;
++		}
++	}
++
++	if (cac_required_iface_found) {
++		/* If any link in MLD went for CAC, other non-DFS partners will
++		 * be started from CAC finish callback. We update the
++		 * partner link BSS state here and keep them ready
++		 */
++		for (hapd = mld->bss; hapd != NULL; hapd = hapd->nbss) {
++			if (!hapd->disabled) {
++				hostapd_setup_interface_complete(hapd->iface, 0);
++				continue;
++			}
++
++			hapd->disabled = 0;
++
++			hostapd_reconfig_wpa(hapd);
++			if (hapd->wpa_auth)
++				wpa_auth_reconfig_group_keys(hapd->wpa_auth);
++			else
++				hostapd_reconfig_encryption(hapd);
++
++			hapd->reenable_beacon = 1;
++		}
++
++		return;
++	}
++
+ 	for (hapd = mld->bss; hapd != NULL; hapd = hapd->nbss)
+ 		hostpad_if_enable(hapd);
+ }
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2379,6 +2379,15 @@ static int hostapd_setup_interface_compl
+ 		}
+ #endif /* CONFIG_MESH */
+ 
++		/* if reenable_beacon is set, we meant only to redo the CAC. No
++		 * need of further processing
++		 */
++		if (hapd->reenable_beacon) {
++			hostapd_set_state(iface, HAPD_IFACE_ENABLED);
++			wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, AP_EVENT_ENABLED);
++			return 0;
++		}
++
+ 		if (!delay_apply_cfg &&
+ 		    hostapd_set_freq(hapd, hapd->iconf->hw_mode, iface->freq,
+ 				     hapd->iconf->channel,
+@@ -2588,11 +2597,19 @@ int hostapd_setup_interface_complete(str
+ {
+ 	struct hapd_interfaces *interfaces = iface->interfaces;
+ 	struct hostapd_data *hapd = iface->bss[0];
+-	unsigned int i;
++	unsigned int i, ret;
+ 	int not_ready_in_sync_ifaces = 0;
+ 
+-	if (!iface->need_to_start_in_sync)
+-		return hostapd_setup_interface_complete_sync(iface, err);
++	if (!iface->need_to_start_in_sync) {
++		ret = hostapd_setup_interface_complete_sync(iface, err);
++		if (ret)
++			return ret;
++
++		if (hapd->reenable_beacon && iface->state != HAPD_IFACE_DFS)
++			ieee802_11_set_beacon(hapd);
++
++		return 0;
++	}
+ 
+ 	if (err) {
+ 		wpa_printf(MSG_ERROR, "Interface initialization failed");
+@@ -2697,6 +2714,13 @@ int hostapd_setup_interface_complete(str
+ 
+ 		mld = interfaces->mld[i];
+ 		if (mld && mld->bss) {
++			/* if we come here with reenable_beacon set, then interface
++			 * went down/up in DFS channel, therefore we need not check
++			 * other MLDs here
++			 */
++			if (hapd->reenable_beacon && hapd->mld != mld)
++				continue;
++
+ 			link_bss = mld->bss;
+ 			mld->mld_start_blocked = false;
+ 

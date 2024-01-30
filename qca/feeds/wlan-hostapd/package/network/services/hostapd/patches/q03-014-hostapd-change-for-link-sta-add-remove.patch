@@ -1,0 +1,949 @@
+From 58bc6394b1c4eafd0f62c3cc81f24ba4558db0af Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Tue, 15 Nov 2022 08:25:22 +0530
+Subject: [PATCH] hostapd: change for link sta add and remove
+
+Add link sta to the kernel before sending assoc response.
+Apply similar flags and values for all link stations
+once the assoc response is sent succesfully.
+Also pass link id and mld address for all change station
+command scenarios.
+
+Remove all the link sta whenever one of the link sta
+belonging to the ML station is removed, ex. during disassoc.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/ap_drv_ops.c            |  25 ++++-
+ src/ap/ap_mlme.c               |   1 +
+ src/ap/ieee802_11.c            | 183 ++++++++++++++++++++++++---------
+ src/ap/sta_info.c              |  99 +++++++++++++++++-
+ src/ap/sta_info.h              |   2 +
+ src/common/ieee802_11_common.h |   2 +
+ 6 files changed, 255 insertions(+), 57 deletions(-)
+
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -268,22 +268,39 @@ int hostapd_set_ap_wps_ie(struct hostapd
+ int hostapd_set_authorized(struct hostapd_data *hapd,
+ 			   struct sta_info *sta, int authorized)
+ {
++	int link_id = -1;
++
++	if (hapd->mld)
++		link_id = hapd->iface->mlo_link_id;
++
+ 	if (authorized) {
+ 		return hostapd_sta_set_flags(hapd, sta->addr,
+ 					     hostapd_sta_flags_to_drv(
+ 						     sta->flags),
+-					     WPA_STA_AUTHORIZED, ~0, NULL, -1);
++					     WPA_STA_AUTHORIZED, ~0, NULL, link_id);
+ 	}
+ 
+ 	return hostapd_sta_set_flags(hapd, sta->addr,
+ 				     hostapd_sta_flags_to_drv(sta->flags),
+-				     0, ~WPA_STA_AUTHORIZED, NULL, -1);
++				     0, ~WPA_STA_AUTHORIZED, NULL, link_id);
+ }
+ 
+ 
+ int hostapd_set_sta_flags(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	int set_flags, total_flags, flags_and, flags_or;
++	const u8 *mld_addr = NULL;
++	u8 *link_addr = sta->addr;
++	int link_id = -1;
++	
++	if (sta->ml_sta) {
++		mld_addr = sta->addr;
++		link_addr = sta->link_addr;
++	}
++
++	if (hapd->mld)
++		link_id = hapd->iface->mlo_link_id;
++
+ 	total_flags = hostapd_sta_flags_to_drv(sta->flags);
+ 	set_flags = WPA_STA_SHORT_PREAMBLE | WPA_STA_WMM | WPA_STA_MFP;
+ 	if (((!hapd->conf->ieee802_1x && !hapd->conf->wpa) ||
+@@ -292,8 +309,8 @@ int hostapd_set_sta_flags(struct hostapd
+ 		set_flags |= WPA_STA_AUTHORIZED;
+ 	flags_or = total_flags & set_flags;
+ 	flags_and = total_flags | ~set_flags;
+-	return hostapd_sta_set_flags(hapd, sta->addr, total_flags,
+-				     flags_or, flags_and, NULL, -1);
++	return hostapd_sta_set_flags(hapd, link_addr, total_flags,
++				     flags_or, flags_and, mld_addr, link_id);
+ }
+ 
+ 
+--- a/src/ap/ap_mlme.c
++++ b/src/ap/ap_mlme.c
+@@ -12,6 +12,7 @@
+ 
+ #include "utils/common.h"
+ #include "common/ieee802_11_defs.h"
++#include "common/ieee802_11_common.h"
+ #include "ieee802_11.h"
+ #include "wpa_auth.h"
+ #include "sta_info.h"
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4119,6 +4119,62 @@ u8 hostapd_max_bssid_indicator(struct ho
+ }
+ 
+ 
++static bool hostapd_is_ml_aid_available(struct sta_info *psta, int aid_array,
++					int aid_index)
++{
++	struct hostapd_data *phapd, *hapd;
++	struct sta_info *sta;
++
++	phapd = psta->hapd;
++
++	/* some assumption of the caller is wrong */
++	if (!psta->ml_sta || !phapd->mld)
++		return true;
++
++	/* aid set by the primary sta/bss and no further validation required */
++	if (psta->ml_sta->num_links == 1)
++		return true;
++
++	for (sta = psta->ml_sta->linksta; sta != NULL; sta = sta->lnext) {
++		if (sta == psta)
++			continue;
++
++		hapd = sta->hapd;
++
++		/* the aid is already occupied in the partner bss */
++		if ((hapd->sta_aid[aid_array] & BIT(aid_index)))
++			return false;
++	}
++
++	return true;
++}
++
++
++static void hostapd_clone_ml_aid(struct sta_info *psta, int aid, int aid_array,
++				 int aid_index)
++{
++	struct hostapd_data *hapd;
++	struct sta_info *sta;
++
++	if (!psta->ml_sta || !psta->hapd->mld)
++		return;
++
++	/* aid set already at the caller */
++	if (psta->ml_sta->num_links == 1)
++		return;
++
++	for (sta = psta->ml_sta->linksta; sta != NULL; sta = sta->lnext) {
++		if (sta == psta)
++			continue;
++
++		hapd = sta->hapd;
++
++		sta->aid = aid;
++		hapd->sta_aid[aid_array] |= BIT(aid_index);
++	}
++}
++
++
+ int hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	int i, j = 32, aid;
+@@ -4136,9 +4192,15 @@ int hostapd_get_aid(struct hostapd_data
+ 		if (hapd->sta_aid[i] == (u32) -1)
+ 			continue;
+ 		for (j = 0; j < 32; j++) {
+-			if (!(hapd->sta_aid[i] & BIT(j)))
++			if (!(hapd->sta_aid[i] & BIT(j))) {
++				/* Check if the aid is free in all the link hapd */
++				if (hapd->mld && sta->ml_sta &&
++						!hostapd_is_ml_aid_available(sta, i, j))
++					continue;
+ 				break;
++			}
+ 		}
++
+ 		if (j < 32)
+ 			break;
+ 	}
+@@ -4146,6 +4208,9 @@ int hostapd_get_aid(struct hostapd_data
+ 		return -1;
+ 	aid = i * 32 + j;
+ 
++	/* TODO MLO MBSSID needs to consider this aid at MLD level
++	 * across all link max MBSSID
++	 */
+ 	aid += (1 << hostapd_max_bssid_indicator(hapd));
+ 
+ 	if (aid > 2007)
+@@ -4153,6 +4218,11 @@ int hostapd_get_aid(struct hostapd_data
+ 
+ 	sta->aid = aid;
+ 	hapd->sta_aid[i] |= BIT(j);
++
++	/* reserve this aid in all the link bss to which the ml sta is associated */
++	if (sta->ml_sta)
++		hostapd_clone_ml_aid(sta, aid, i, j);
++
+ 	wpa_printf(MSG_DEBUG, "  new AID %d", sta->aid);
+ 	return 0;
+ }
+@@ -5208,6 +5278,22 @@ static int add_associated_sta(struct hos
+ 	struct ieee80211_he_capabilities he_cap;
+ 	struct ieee80211_eht_capabilities eht_cap;
+ 	int set = 1;
++	u8 *mld_addr = NULL;
++	int link_id = -1;
++	bool ml_sta = false;
++	u8 *link_addr = sta->addr;
++ 
++	if (sta->ml_sta) {
++		mld_addr = sta->addr;
++		link_addr = sta->link_addr;
++		if (sta->ml_sta->linksta != sta) {
++			ml_sta = true;
++			set = 0;
++		}
++	}
++
++	if (hapd->mld)
++		link_id = hapd->iface->mlo_link_id;
+ 
+ 	/*
+ 	 * Remove the STA entry to ensure the STA PS state gets cleared and
+@@ -5236,7 +5322,7 @@ static int add_associated_sta(struct hos
+ 		   wpa_auth_sta_ft_tk_already_set(sta->wpa_sm),
+ 		   wpa_auth_sta_fils_tk_already_set(sta->wpa_sm));
+ 
+-	if (!sta->added_unassoc &&
++	if (!sta->ml_sta && !sta->added_unassoc &&
+ 	    (!(sta->flags & WLAN_STA_AUTHORIZED) ||
+ 	     (reassoc && sta->ft_over_ds && sta->auth_alg == WLAN_AUTH_FT) ||
+ 	     (!wpa_auth_sta_ft_tk_already_set(sta->wpa_sm) &&
+@@ -5274,7 +5360,7 @@ static int add_associated_sta(struct hos
+ 	 * will be set when the ACK frame for the (Re)Association Response frame
+ 	 * is processed (TX status driver event).
+ 	 */
+-	if (hostapd_sta_add(hapd, sta->addr, sta->aid, sta->capability,
++	if (hostapd_sta_add(hapd, link_addr, sta->aid, sta->capability,
+ 			    sta->supported_rates, sta->supported_rates_len,
+ 			    sta->listen_interval,
+ 			    sta->flags & WLAN_STA_HT ? &ht_cap : NULL,
+@@ -5286,13 +5372,13 @@ static int add_associated_sta(struct hos
+ 			    sta->he_6ghz_capab,
+ 			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
+ 			    sta->vht_opmode, sta->p2p_ie ? 1 : 0,
+-			    set, false, -1, NULL)) {
+-		hostapd_logger(hapd, sta->addr,
++			    set, ml_sta, link_id, mld_addr)) {
++		hostapd_logger(hapd, link_addr,
+ 			       HOSTAPD_MODULE_IEEE80211, HOSTAPD_LEVEL_NOTICE,
+-			       "Could not %s STA to kernel driver",
+-			       set ? "set" : "add");
++			       "Could not %s %s STA to kernel ",
++			       set ? "set" : "add", ml_sta ? "ML" :  "");
+ 
+-		if (sta->added_unassoc) {
++		if (!ml_sta && sta->added_unassoc) {
+ 			hostapd_drv_sta_remove(hapd, sta->addr);
+ 			sta->added_unassoc = 0;
+ 		}
+@@ -5664,22 +5750,18 @@ static void ap_link_sta_add(struct hosta
+ 	int lassoc_len;
+ 	struct ieee80211_mgmt *lassoc;
+ 	u16 res;
++	u8 link_addr[6];
+ 
+ 	if (!hapd->mld || !psta->ml_sta || !ml_data || !ml_data->present)
+ 		return;
+ 
+ 	ml_sta = psta->ml_sta;
+ 
+-	/* should have added the first sta during ml sta creation */
+-	if (ml_sta->linksta == NULL)
+-		return;
++	ml_sta->state = ML_STA_READY;
+ 
+ 	tail_sta = ml_sta->linksta;
+ 
+-	if (tail_sta->lnext) {
+-		wpa_printf(MSG_DEBUG, "Link STA creation failed. some already added?)");
+-		return;
+-	}
++	ml_sta->num_links = 1;
+ 
+ 	for (link_hapd = hapd->mld->bss; link_hapd != NULL; link_hapd = link_hapd->nbss) {
+ 		if (hapd == link_hapd)
+@@ -5695,8 +5777,8 @@ static void ap_link_sta_add(struct hosta
+ 		if (!(BIT(link_id) & ml_data->u.basic.link_bmap))
+ 			continue;
+ 
+-		sta = ap_sta_add(link_hapd,
+-				 ml_data->u.basic.link_info[link_id].addr);
++		memcpy(link_addr, ml_data->u.basic.link_info[link_id].addr, 6);
++		sta = ap_sta_add(link_hapd, ml_sta->addr);
+ 
+ 		if (sta == NULL) {
+ 			wpa_printf(MSG_DEBUG, "Link STA creation failed)");
+@@ -5723,17 +5805,24 @@ static void ap_link_sta_add(struct hosta
+ 				link_sta_ies_len,
+ 				ies, ies_len, NULL, reassoc);
+ 
++		if (sta->capability & WLAN_CAPABILITY_SHORT_PREAMBLE)
++			sta->flags |= WLAN_STA_SHORT_PREAMBLE;
++		else
++			sta->flags &= ~WLAN_STA_SHORT_PREAMBLE;
++
++		update_ht_state(link_hapd, sta);
++
+ 		/* prepare per sta assoc resp template */
+ 		/* TODO might need to send link_sta_ies + inherited ies for some FILS use case */
+ 		buf = hostapd_gen_assoc_resp(link_hapd, sta,
+-					     ml_data->u.basic.link_info[link_id].addr,
++					     sta->addr,
+ 					     WLAN_STATUS_SUCCESS, reassoc,
+ 					     link_sta_ies, link_sta_ies_len, 0, 0, NULL,
+ 					     &lassoc_len, &res);
+ 
+ 		/* If success buf and send_len is expected to be valid */
+ 		if (res != WLAN_STATUS_SUCCESS || !buf) {
+-			os_free(sta);
++			ap_free_sta(link_hapd, sta);
+ 			continue;
+ 		}
+ 
+@@ -5746,7 +5835,7 @@ static void ap_link_sta_add(struct hosta
+ 						      WLAN_FC_STYPE_ASSOC_RESP);
+ 
+ 		if (sta_profile == NULL) {
+-			os_free(sta);
++			ap_free_sta(link_hapd, sta);
+ 			os_free(buf);
+ 			continue;
+ 		}
+@@ -5756,67 +5845,128 @@ static void ap_link_sta_add(struct hosta
+ 
+ 		tail_sta->lnext = sta;
+ 		sta->ml_sta = ml_sta;
+-		tail_sta = sta;
+ 		sta->lnext = NULL;
++		memcpy(sta->link_addr, link_addr, ETH_ALEN);
+ 
+ 		os_free(buf);
++
++		/* If we are unable to add link sta, the assoc response wont carry this
++		 * profile. Sending failure status in assoc response for this profile
++		 * may not be necessary in this case
++		 */
++		if (add_associated_sta(link_hapd, sta, reassoc)) {
++			wpa_printf(MSG_DEBUG, "Could not add link station " MACSTR,
++				   MAC2STR(link_addr));
++
++			/* clear this, so that we dont remove all link stations */
++			sta->ml_sta = NULL;
++			sta->wpa_sm = NULL;
++			tail_sta->lnext = NULL;
++			ap_free_sta(link_hapd, sta);
++			os_free(ml_data->u.basic.link_info[link_id].resp_sta_profile);
++			ml_data->u.basic.link_info[link_id].resp_sta_profile = NULL;
++			ml_data->u.basic.link_info[link_id].resp_sta_profile_len = 0;
++			continue;
++		}
++		ml_sta->num_links++;
++		tail_sta = sta;
+ 	}
+ }
+ 
+-static u16 send_ml_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+-			     const u8 *addr, u16 status_code, int reassoc,
+-			     const u8 *ies, size_t ies_len, int rssi,
+-			     int omit_rsnxe, struct multi_link_data *ml_data)
++static u16 prepare_link_sta_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
++			     	       const u8 *addr, u16 status_code, int reassoc,
++				       const u8 *ies, size_t ies_len, int rssi,
++				       int omit_rsnxe, struct multi_link_data *ml_data)
+ {
+ 
+ 	int send_len = 0;
+ 	u8 *buf = NULL;
+ 	struct ieee80211_mgmt *reply;
+ 	u16 res = WLAN_STATUS_SUCCESS;
+-	int i;
++	struct ml_sta_info *ml_sta;
++	struct sta_info *lsta;
+ 
+-	/* prepare assoc resp template to use for per sta profile generation */
+-	buf = hostapd_gen_assoc_resp(hapd, sta, addr, status_code, reassoc,
+-			       ies, ies_len, rssi, omit_rsnxe, NULL,
+-			       &send_len, &res);
++	if (!ml_data)
++		return res;
+ 
+-	/* If success buf and send_len is expected to be valid */
+-	if (res != WLAN_STATUS_SUCCESS)
++	if (!sta->ml_sta)
+ 		return res;
+ 
+-	reply = (struct ieee80211_mgmt *) buf;
++	ml_sta = sta->ml_sta;
+ 
+-	ap_link_sta_add(hapd, sta, ml_data,ies, ies_len, reassoc,
+-			reply, send_len);
++	/* should have added the first sta during ml sta creation */
++	if (ml_sta->linksta == NULL)
++		return WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+ 
+-	os_free(buf);
++	/* If link station are added already, we cleanup the link states and re
++	 * add them as we process this assoc resp
++	 */
++	if (ml_sta->linksta) {
++		wpa_printf(MSG_DEBUG, "Add associated ML STA " MACSTR
++			   " (added_unassoc=%d auth_alg=%u ft_over_ds=%u reassoc=%d authorized=%d ft_tk=%d fils_tk=%d)",
++			   MAC2STR(sta->addr), sta->added_unassoc, sta->auth_alg,
++			   sta->ft_over_ds, reassoc,
++			   !!(sta->flags & WLAN_STA_AUTHORIZED),
++			   wpa_auth_sta_ft_tk_already_set(sta->wpa_sm),
++			   wpa_auth_sta_fils_tk_already_set(sta->wpa_sm));
++
++		if (!sta->added_unassoc && (!(sta->flags & WLAN_STA_AUTHORIZED) ||
++		    (reassoc && sta->ft_over_ds && sta->auth_alg == WLAN_AUTH_FT) ||
++		    (!wpa_auth_sta_ft_tk_already_set(sta->wpa_sm) &&
++		    !wpa_auth_sta_fils_tk_already_set(sta->wpa_sm)))) {
++			wpa_printf(MSG_DEBUG,
++				   "Link STA was already created and we received assoc resp again (reassoc: %d)",
++				   reassoc);
++			/* cleanup all link sta in kernel and add later */
++			hostapd_drv_sta_remove(hapd, sta->addr);
++			sta->flags &= ~(WLAN_STA_ASSOC | WLAN_STA_AUTHORIZED);
++			if (hostapd_sta_add(hapd, sta->link_addr, 0, 0,
++				    sta->supported_rates,
++				    sta->supported_rates_len,
++				    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
++				    sta->flags, 0, 0, 0, 0, false,
++				    hapd->iface->mlo_link_id,
++				    sta->addr))
++				return WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
++		}
+ 
+-	buf = NULL;
+-	send_len = 0;
++		/* unchain the old link stations, eventually this might get
++		 * regrouped or isolated and freed as this assoc resp is processed
++		 */
++		for (lsta = ml_sta->linksta; lsta != NULL; lsta = lsta->lnext) {
++			lsta->ml_sta = NULL;
++			lsta->lnext = NULL;
++			lsta->primary_link_sta = false;
++		}
++
++		/* reset the ml sta and prepare for adding link station */
++		sta->primary_link_sta = true;
++		sta->ml_sta = ml_sta;
++		ml_sta->linksta = sta;
++	}
++
++	/* Single link station, no need to proceed further and try adding link sta */
++	if (ml_data->num_links == 1) {
++		sta->ml_sta->state = ML_STA_READY;
++		sta->ml_sta->num_links = 1;
++		return res;
++	}
+ 
++	/* prepare own assoc resp template to use for per sta resp generation */
+ 	buf = hostapd_gen_assoc_resp(hapd, sta, addr, status_code, reassoc,
+-			       ies, ies_len, rssi, omit_rsnxe, ml_data,
++			       ies, ies_len, rssi, omit_rsnxe, NULL,
+ 			       &send_len, &res);
+ 
++	/* If success buf and send_len is expected to be valid */
+ 	if (res != WLAN_STATUS_SUCCESS)
+ 		return res;
+ 
+ 	reply = (struct ieee80211_mgmt *) buf;
+ 
+-	if (hostapd_drv_send_mlme(hapd, reply, send_len, 0, NULL, 0, 0) < 0) {
+-		wpa_printf(MSG_INFO, "Failed to send assoc resp: %s",
+-			   strerror(errno));
+-		res = WLAN_STATUS_UNSPECIFIED_FAILURE;
+-	}
++	ap_link_sta_add(hapd, sta, ml_data,ies, ies_len, reassoc,
++			reply, send_len);
+ 
+ 	os_free(buf);
+-
+-	for (i = 0; i < MAX_SUPPORTED_LINKS; i++) {
+-		if (!(BIT(i) & ml_data->u.basic.link_bmap))
+-			continue;
+-		os_free(ml_data->u.basic.link_info[i].resp_sta_profile);
+-	}
+-
+ 	return res;
+ }
+ 
+@@ -5830,11 +5980,7 @@ static u16 send_assoc_resp(struct hostap
+ 	u8 *buf = NULL;
+ 	struct ieee80211_mgmt *reply;
+ 	u16 res = WLAN_STATUS_SUCCESS;
+-
+-	if (ml_data && ml_data->present)
+-		return send_ml_assoc_resp(hapd, sta, addr, status_code,
+-					  reassoc, ies, ies_len, rssi,
+-					  omit_rsnxe, ml_data);
++	int i;
+ 
+ 	buf = hostapd_gen_assoc_resp(hapd, sta, addr, status_code, reassoc,
+ 			       ies, ies_len, rssi, omit_rsnxe, ml_data,
+@@ -5853,6 +5999,19 @@ static u16 send_assoc_resp(struct hostap
+ 	}
+ 
+ 	os_free(buf);
++	
++	if (!(ml_data && ml_data->present))
++		goto out;
++
++	for (i = 0; i < MAX_SUPPORTED_LINKS; i++) {
++		if (!(BIT(i) & ml_data->u.basic.link_bmap))
++			continue;
++		os_free(ml_data->u.basic.link_info[i].resp_sta_profile);
++		ml_data->u.basic.link_info[i].resp_sta_profile = NULL;
++		ml_data->u.basic.link_info[i].resp_sta_profile_len = 0;
++	}
++
++out:
+ 	return res;
+ }
+ 
+@@ -6201,6 +6360,16 @@ static void handle_assoc(struct hostapd_
+ 		goto fail;
+ 	omit_rsnxe = !get_ie(pos, left, WLAN_EID_RSNX);
+ 
++	sta->listen_interval = listen_interval;
++
++	/* prepare link sta assoc resp and add link stations */
++	if (ml_data.present && ml_data.num_links) {
++		resp = prepare_link_sta_assoc_resp(hapd, sta, mgmt->sa, resp, reassoc,
++						   pos, left, rssi, omit_rsnxe, &ml_data);
++		if (resp != WLAN_STATUS_SUCCESS)
++			goto fail;
++	}
++
+ 	if (hostapd_get_aid(hapd, sta) < 0) {
+ 		hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_INFO, "No room for more AIDs");
+@@ -6208,8 +6377,6 @@ static void handle_assoc(struct hostapd_
+ 		goto fail;
+ 	}
+ 
+-	sta->listen_interval = listen_interval;
+-
+ 	if (hapd->iface->current_mode &&
+ 	    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211G)
+ 		sta->flags |= WLAN_STA_NONERP;
+@@ -6219,6 +6386,7 @@ static void handle_assoc(struct hostapd_
+ 			break;
+ 		}
+ 	}
++
+ 	if (sta->flags & WLAN_STA_NONERP && !sta->nonerp_set) {
+ 		sta->nonerp_set = 1;
+ 		hapd->iface->num_sta_non_erp++;
+@@ -6379,6 +6547,7 @@ static void handle_assoc(struct hostapd_
+ 	 */
+ 	if (sta && ((reply_res != WLAN_STATUS_SUCCESS &&
+ 		     resp == WLAN_STATUS_SUCCESS) || sta->added_unassoc)) {
++		ap_link_sta_remove(hapd, sta);
+ 		hostapd_drv_sta_remove(hapd, sta->addr);
+ 		sta->added_unassoc = 0;
+ 	}
+@@ -6407,6 +6576,14 @@ static void handle_disassoc(struct hosta
+ 		return;
+ 	}
+ 
++	if (hapd->mld && sta->ml_sta) {
++		if (sta->ml_sta->state == ML_STA_REMOVE ||
++		    sta->ml_sta->state == ML_STA_FREE) {
++			wpa_printf(MSG_INFO, "ML Station " MACSTR " already being disassociated",
++				   MAC2STR(mgmt->sa));
++			return;
++		}
++	}
+ 	ap_sta_set_authorized(hapd, sta, 0);
+ 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+ 	sta->flags &= ~(WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK);
+@@ -6423,6 +6600,7 @@ static void handle_disassoc(struct hosta
+ 	if (sta->ipaddr)
+ 		hostapd_drv_br_delete_ip_neigh(hapd, 4, (u8 *) &sta->ipaddr);
+ 	ap_sta_ip6addr_del(hapd, sta);
++	ap_link_sta_remove(hapd, sta);
+ 	hostapd_drv_sta_remove(hapd, sta->addr);
+ 	sta->added_unassoc = 0;
+ 
+@@ -6476,6 +6654,15 @@ static void handle_deauth(struct hostapd
+ 		return;
+ 	}
+ 
++	if (hapd->mld && sta->ml_sta) {
++		if (sta->ml_sta->state == ML_STA_REMOVE ||
++		    sta->ml_sta->state == ML_STA_FREE) {
++			wpa_printf(MSG_INFO, "ML Station " MACSTR " already being removed",
++				   MAC2STR(mgmt->sa));
++			return;
++		}
++	}
++
+ 	ap_sta_set_authorized(hapd, sta, 0);
+ 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+ 	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC |
+@@ -6955,6 +7142,44 @@ static void hostapd_set_wds_encryption(s
+ #endif /* CONFIG_WEP */
+ }
+ 
++/* Apply assoc success and flags in link sta as well */
++static void handle_link_assoc(struct hostapd_data *phapd,
++			      struct sta_info *psta)
++{
++	struct ml_sta_info *ml_sta;
++	struct hostapd_data *hapd;
++	struct sta_info *sta;
++
++	if (!phapd->mld || !psta->ml_sta)
++		return;
++
++	ml_sta = psta->ml_sta;
++
++	for (sta = ml_sta->linksta; sta != NULL; sta = sta->lnext) {
++		if (sta == psta)
++			continue;
++
++		hapd = sta->hapd;
++
++		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
++			       HOSTAPD_LEVEL_INFO,
++			       "associated (aid %d) - link sta",
++			       sta->aid);
++
++		sta->flags = WLAN_STA_ASSOC;
++		sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
++
++		if ((!hapd->conf->ieee802_1x && !hapd->conf->wpa &&
++		     !hapd->conf->osen) ||
++		    psta->auth_alg == WLAN_AUTH_FILS_SK ||
++		    psta->auth_alg == WLAN_AUTH_FILS_SK_PFS ||
++		    psta->auth_alg == WLAN_AUTH_FILS_PK ||
++		    psta->auth_alg == WLAN_AUTH_FT)
++			sta->flags |= WLAN_STA_AUTHORIZED;
++
++		ap_sta_clear_disconnect_timeouts(hapd, sta);
++	}
++}
+ 
+ static void handle_assoc_cb(struct hostapd_data *hapd,
+ 			    const struct ieee80211_mgmt *mgmt,
+@@ -6976,6 +7201,7 @@ static void handle_assoc_cb(struct hosta
+ 		wpa_printf(MSG_INFO,
+ 			   "handle_assoc_cb(reassoc=%d) - too short payload (len=%lu)",
+ 			   reassoc, (unsigned long) len);
++		ap_link_sta_remove(hapd, sta);
+ 		hostapd_drv_sta_remove(hapd, sta->addr);
+ 		return;
+ 	}
+@@ -7108,6 +7334,9 @@ static void handle_assoc_cb(struct hosta
+ 		os_free(sta->pending_eapol_rx);
+ 		sta->pending_eapol_rx = NULL;
+ 	}
++
++	/* Apply assoc related info to the link STAs */
++	handle_link_assoc(hapd, sta);
+ }
+ 
+ 
+@@ -8823,6 +9052,9 @@ static void hostapd_parse_basic_mle(stru
+ 		len -= 2;
+ 	}
+ 
++	/* Initialize the num links to 1 and increment based on sta profile in IE */
++	ml_data->num_links = 1;
++
+ 	if (!len)
+ 		return;
+ 
+@@ -8880,6 +9112,7 @@ static void hostapd_parse_basic_mle(stru
+ 			}
+ 			ml_data->u.basic.link_info[link_id].sta_profile = sub_elem;
+ 			ml_data->u.basic.link_info[link_id].sta_profile_len = sub_elem_len - (sub_elem - mle_pos);
++			ml_data->num_links++;
+ 		}
+ 
+ 		mle_pos += sub_elem_len;
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -414,6 +414,34 @@ void ap_free_sta(struct hostapd_data *ha
+ 	forced_memzero(sta->last_tk, WPA_TK_MAX_LEN);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
++	if (sta->ml_sta) {
++		struct ml_sta_info *ml_sta;
++		struct sta_info *lsta;
++		struct hostapd_data *lhapd;
++
++		ml_sta = sta->ml_sta;
++
++		ml_sta->state = ML_STA_FREE;
++		wpa_printf(MSG_DEBUG, "Free ML station " MACSTR " on bss " MACSTR,
++			   MAC2STR(sta->addr), MAC2STR(hapd->own_addr));
++
++		for (lsta = ml_sta->linksta; lsta != NULL; lsta = lsta->lnext) {
++			if (lsta == sta)
++				continue;
++
++			lhapd = lsta->hapd;
++
++			wpa_printf(MSG_DEBUG, "Free ML station " MACSTR " on bss " MACSTR,
++				   MAC2STR(lsta->addr), MAC2STR(lhapd->own_addr));
++			/* This will protect from further recursion when
++			 * ap_free_sta is called below
++			 */
++			lsta->ml_sta = NULL;
++			ap_free_sta(lhapd, lsta);
++		}
++		os_free(sta->ml_sta);
++		sta->ml_sta = NULL;
++	}
+ 	os_free(sta);
+ }
+ 
+@@ -453,6 +481,10 @@ void ap_handle_timer(void *eloop_ctx, vo
+ 	unsigned long next_time = 0;
+ 	int reason;
+ 
++	/* Handle probing only on the primary link sta */
++	if (!sta->primary_link_sta && sta->timeout_next == STA_NULLFUNC)
++		return;
++
+ 	wpa_printf(MSG_DEBUG, "%s: %s: " MACSTR " flags=0x%x timeout_next=%d",
+ 		   hapd->conf->iface, __func__, MAC2STR(sta->addr), sta->flags,
+ 		   sta->timeout_next);
+@@ -731,9 +763,12 @@ void ap_ml_sta_add(struct hostapd_data *
+ 	/* no other partners currently */
+ 	sta->lnext = NULL;
+ 
++	sta->primary_link_sta = true;
++
+ 	sta->ml_sta = ml_sta;
+ 
+ 	ml_sta->mld = hapd->mld;
++	ml_sta->state = ML_STA_INIT;
+ 
+ 	/* TODO add this ml sta to the list of ML sta in the MLD if required */
+ }
+@@ -790,9 +825,13 @@ struct sta_info * ap_sta_add(struct host
+ 	hapd->sta_list = sta;
+ 	hapd->num_sta++;
+ 	ap_sta_hash_add(hapd, sta);
+-	ap_sta_remove_in_other_bss(hapd, sta);
++
++	/* TODO Dont do this for now in MLO, handle properly */
++	if (!sta->ml_sta)
++		ap_sta_remove_in_other_bss(hapd, sta);
+ 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+ 	dl_list_init(&sta->ip6addr);
++	sta->hapd = hapd;
+ 
+ #ifdef CONFIG_TAXONOMY
+ 	sta_track_claim_taxonomy_info(hapd->iface, addr,
+@@ -802,6 +841,59 @@ struct sta_info * ap_sta_add(struct host
+ 	return sta;
+ }
+ 
++void ap_link_sta_remove(struct hostapd_data *phapd,
++		        struct sta_info *psta)
++{
++	struct ml_sta_info *ml_sta;
++	struct hostapd_data *hapd;
++	struct sta_info *sta;
++
++	if (!phapd->mld || !psta->ml_sta)
++		return;
++
++	ml_sta = psta->ml_sta;
++
++	if (ml_sta->state != ML_STA_READY) {
++		wpa_printf(MSG_DEBUG, "%s: Link STA not ready for ML STA" MACSTR,
++			   phapd->conf->iface, MAC2STR(ml_sta->addr));
++		return;
++	}
++
++	ml_sta->state = ML_STA_REMOVE;
++
++	/* Dont remove all links */
++	if (!psta->lnext)
++		return;
++
++	for (sta = ml_sta->linksta; sta != NULL; sta = sta->lnext) {
++		if (sta == psta)
++			continue;
++
++		if (!sta->added_unassoc)
++			continue;
++
++		hapd = sta->hapd;
++
++		sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
++		sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK |
++				WLAN_STA_AUTHORIZED);
++
++		accounting_sta_stop(hapd, sta);
++
++		wpa_printf(MSG_DEBUG, "%s: Removing Link STA " MACSTR " from kernel driver",
++			   hapd->conf->iface, MAC2STR(sta->link_addr));
++
++		if (hostapd_drv_link_sta_remove(hapd, sta->addr, sta->hapd->iface->mlo_link_id)) {
++			wpa_printf(MSG_DEBUG, "%s: Could not remove link station " MACSTR
++				   " from kernel driver",
++				   hapd->conf->iface, MAC2STR(sta->link_addr));
++			continue;
++		}
++
++		sta->added_unassoc = 0;
++	}
++}
++
+ static int ap_sta_remove(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	ieee802_1x_notify_port_enabled(sta->eapol_sm, 0);
+@@ -810,6 +902,9 @@ static int ap_sta_remove(struct hostapd_
+ 		hostapd_drv_br_delete_ip_neigh(hapd, 4, (u8 *) &sta->ipaddr);
+ 	ap_sta_ip6addr_del(hapd, sta);
+ 
++	/* Remove any link sta part of ML STA */
++	ap_link_sta_remove(hapd, sta);
++
+ 	wpa_printf(MSG_DEBUG, "%s: Removing STA " MACSTR " from kernel driver",
+ 		   hapd->conf->iface, MAC2STR(sta->addr));
+ 	if (hostapd_drv_sta_remove(hapd, sta->addr) &&
+@@ -820,6 +915,7 @@ static int ap_sta_remove(struct hostapd_
+ 		return -1;
+ 	}
+ 	sta->added_unassoc = 0;
++
+ 	return 0;
+ }
+ 
+@@ -1572,6 +1668,18 @@ int ap_sta_pending_delayed_1x_auth_fail_
+ 
+ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ {
++	u8 *mld_addr = NULL;
++	int link_id = -1;
++	u8 *link_addr = sta->addr;
++
++	if (sta->ml_sta) {
++		mld_addr = sta->addr;
++		link_addr = sta->link_addr;
++	}
++
++	if (hapd->mld)
++		link_id = hapd->iface->mlo_link_id;
++
+ 	/*
+ 	 * If a station that is already associated to the AP, is trying to
+ 	 * authenticate again, remove the STA entry, in order to make sure the
+@@ -1583,11 +1691,11 @@ int ap_sta_re_add(struct hostapd_data *h
+ 	hostapd_drv_sta_remove(hapd, sta->addr);
+ 	sta->flags &= ~(WLAN_STA_ASSOC | WLAN_STA_AUTH | WLAN_STA_AUTHORIZED);
+ 
+-	if (hostapd_sta_add(hapd, sta->addr, 0, 0,
++	if (hostapd_sta_add(hapd, link_addr, 0, 0,
+ 			    sta->supported_rates,
+ 			    sta->supported_rates_len,
+ 			    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
+-			    sta->flags, 0, 0, 0, 0, false, -1, NULL)) {
++			    sta->flags, 0, 0, 0, 0, false, link_id, mld_addr)) {
+ 		hostapd_logger(hapd, sta->addr,
+ 			       HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_NOTICE,
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -108,11 +108,20 @@ struct pasn_data {
+ #endif /* CONFIG_FILS */
+ };
+ 
++enum ml_sta_state {
++	ML_STA_INIT,
++	ML_STA_READY,
++	ML_STA_REMOVE,
++	ML_STA_FREE,
++};
++
+ struct ml_sta_info {
+ 	struct ml_sta_info *ml_next; /* next entry in ML sta list */
+ 	struct sta_info *linksta; /* Head of Link STA list */
+ 	struct hostapd_mld *mld; /* ML BSS to which this ML STA belongs */
+ 	u8 addr[6];
++	u8 num_links;
++	enum ml_sta_state state;
+ };
+ 
+ struct sta_info {
+@@ -125,6 +134,7 @@ struct sta_info {
+ 	  * link_addr and addr have same value
+ 	  */
+ 	u8 link_addr[6];
++	struct hostapd_data *hapd;
+ 	be32 ipaddr;
+ 	struct dl_list ip6addr; /* list head for struct ip6addr */
+ 	u16 aid; /* STA's unique AID (1 .. 2007) or 0 if not yet assigned */
+@@ -181,6 +191,7 @@ struct sta_info {
+ 	unsigned int ft_over_ds:1;
+ 	unsigned int external_dh_updated:1;
+ 	unsigned int post_csa_sa_query:1;
++	unsigned int primary_link_sta:1;
+ 
+ 	u16 auth_alg;
+ 
+@@ -431,4 +442,6 @@ void ap_free_sta_pasn(struct hostapd_dat
+ 
+ void ap_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta,
+ 		   const u8 *addr);
++void ap_link_sta_remove(struct hostapd_data *phapd,
++		        struct sta_info *psta);
+ #endif /* STA_INFO_H */
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -115,6 +115,8 @@ struct multi_link_data {
+ 		struct multi_link_preq_info preq;
+ 	}u;
+ 
++	u8 num_links;
++
+ 	/* TODO Common and type specific data */
+ };
+ 
+--- a/src/ap/utils.c
++++ b/src/ap/utils.c
+@@ -4,7 +4,7 @@
+  *
+  * This software may be distributed under the terms of the BSD license.
+  * See README for more details.
+- */
++  */
+ 
+ #include "includes.h"
+ 
+@@ -72,6 +72,12 @@ static int prune_associations(struct hos
+ 		if (!osta)
+ 			continue;
+ 
++		/* Don't prune link STAs belonging to same ML STA */
++		if (osta->ml_sta) {
++			if (osta->ml_sta->mld == data->hapd->mld)
++				continue;
++		}
++
+ 		wpa_printf(MSG_INFO, "%s: Prune association for " MACSTR,
+ 			   ohapd->conf->iface, MAC2STR(osta->addr));
+ 		ap_sta_disassociate(ohapd, osta, WLAN_REASON_UNSPECIFIED);

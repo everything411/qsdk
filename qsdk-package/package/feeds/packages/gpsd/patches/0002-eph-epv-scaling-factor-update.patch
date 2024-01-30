@@ -1,0 +1,34 @@
+From 4cc4220f019923eddb979154e5ae4aec7324826b Mon Sep 17 00:00:00 2001
+From: devi priya <quic_devipriy@quicinc.com>
+Date: Sat, 11 Jun 2022 19:05:30 +0530
+Subject: [PATCH 2/2] eph epv scaling factor update
+
+Considering 2 sigma as the scaling factor for eph and epv fields
+The sirf driver returns (eph/100)*2 and (epv/100)*2
+
+Signed-off-by: devi priya <quic_devipriy@quicinc.com>
+---
+ drivers/driver_sirf.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/driver_sirf.c b/drivers/driver_sirf.c
+index 3950ed5..ebcb354 100644
+--- a/drivers/driver_sirf.c
++++ b/drivers/driver_sirf.c
+@@ -724,10 +724,10 @@ static gps_mask_t sirf_msg_67_1(struct gps_device_t *session,
+     session->newdata.epd = getbeu16(buf, 82) / 100.0;
+     /* distance traveled error in m * 100 */
+     distance_travel_error = getbeu16(buf, 84) / 100.0;
+-
+-    session->newdata.eph = getbeu32(buf, 86) / 100.0;  /* Estimated horizontal position error * 100 */
++    /* Considering 2 sigma as the scaling factor for eph and epv fields */
++    session->newdata.eph = (getbeu32(buf, 86) / 100.0) * 2;  /* Estimated horizontal position error * 100 */
+     /* Estimated vertical position error * 100 */
+-    session->newdata.epv = getbeu32(buf, 90) / 100.0;
++    session->newdata.epv = (getbeu32(buf, 90) / 100.0) * 2;
+     /* Estimated horizontal velocity error * 100 */
+     session->newdata.eps = getbeu16(buf, 94) / 100.0;
+     mask |= SPEEDERR_SET;
+--
+2.17.1
+

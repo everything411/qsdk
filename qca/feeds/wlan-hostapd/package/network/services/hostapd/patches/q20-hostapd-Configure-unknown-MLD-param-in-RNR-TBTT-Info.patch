@@ -1,0 +1,64 @@
+From 1c887db8880e5d41febd7d339fa62fb149a339f9 Mon Sep 17 00:00:00 2001
+From: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+Date: Tue, 22 Aug 2023 11:49:49 +0530
+Subject: [PATCH] hostapd: Configure unknown MLD param in RNR TBTT Information
+
+To maintain AP side TBTT Information to be consistent,
+all three MLD parms fields should signal either AP knows
+the details or AP doesn’t know the details.
+
+Recommendation is to signal if atleast one of the field
+is set to “Unknown” then signal all other fields also
+“Unknown” then the fields will follow,
+AP MLD ID = 255, Link ID = 15, BPCC = 255
+
+Signed-off-by: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+Change-Id: I93346c3d7230fbc39af68e83f51452f85828a99f
+---
+ src/ap/ieee802_11.c | 26 ++++++++++++++++++--------
+ 1 file changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 37cbaa2..a8e4881 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -9092,18 +9092,28 @@ co_location_rnr:
+ 							   &match_idx))
+ 					match_idx = 255;
+ 			}
++			bss_param_change_count = bss->rx_cu_param.bpcc;
+ 
+-			/* MLD ID */
+-			*eid++ = match_idx;
++			/* If atleast one of the MLD params is Unknown, set Unknown for all
++			 * mld params.
++			 */
++			if ((match_idx == 0xff) || (bss->iface->mlo_link_id == 0xf) ||
++			    (bss_param_change_count == 0xff)) {
++				*eid++ = 0xff;
++				*eid++ = 0xff;
++				*eid++ = 0xf;
++			} else {
++				/* MLD ID */
++				*eid++ = match_idx;
+ 
+-			/* TODO colocated bss match + MBSSID + MLO case */
++				/* TODO colocated bss match + MBSSID + MLO case */
+ 
+-			/* bss param update info */
+-			bss_param_change_count = bss->rx_cu_param.bpcc;
+-			*eid++ = (bss->iface->mlo_link_id & 0xf) |
+-				 (bss_param_change_count & 0xf) << 4;
++				/* bss param update info */
++				*eid++ = (bss->iface->mlo_link_id & 0xf) |
++					(bss_param_change_count & 0xf) << 4;
+ 
+-			*eid++ = (bss_param_change_count & 0xf0) >> 4;
++				*eid++ = (bss_param_change_count & 0xf0) >> 4;
++			}
+ 			len += tbtt_info_len;
+ 			tbtt_count += 1;
+ 		}
+-- 
+2.17.1
+

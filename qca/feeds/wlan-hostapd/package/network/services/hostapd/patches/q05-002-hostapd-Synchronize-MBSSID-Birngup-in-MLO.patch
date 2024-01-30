@@ -1,0 +1,120 @@
+From d97a3ac7d0fa0fc8fc4fefc8756da64f0e842ecc Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Tue, 28 Feb 2023 20:57:54 +0530
+Subject: [PATCH 2/3] hostapd: Synchronize MBSSID Birngup in MLO
+
+Add changes to do START_AP/SET_BEACON to Non-TX vdev only after
+starting TX vdev in case of MLD.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ src/ap/hostapd.c | 28 ++++++++++++++++++++++++----
+ 1 file changed, 24 insertions(+), 4 deletions(-)
+
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2444,8 +2444,7 @@ static int hostapd_setup_interface_compl
+ 			prev_addr = hapd->own_addr;
+ 	}
+ 
+-	/* TODO handle MBSS MLO cases */
+-	if (hapd->iconf->mbssid) {
++	if (hapd->iconf->mbssid && !hapd->iface->bss[0]->mld) {
+ 		for (j = 0; j < iface->num_bss; j++) {
+ 			hapd = iface->bss[j];
+ 			if (hostapd_set_beacon(hapd)) {
+@@ -2686,13 +2685,13 @@ int hostapd_setup_interface_complete(str
+ 	/* Once all link bss of the ifaces are setup, now start each beacon */
+ #ifdef CONFIG_IEEE80211BE
+ 	for (i = 0; i < interfaces->mld_count; i++) {
+-		struct hostapd_data *link_bss;
++		struct hostapd_data *link_bss, *tx_hapd;
+ 		struct hostapd_mld *mld;
+-		bool mld_start = true;
+ 
+ 		mld = interfaces->mld[i];
+ 		if (mld && mld->bss) {
+ 			link_bss = mld->bss;
++			mld->mld_start_blocked = false;
+ 
+ 			/* If any iface belonging to this MLD's BSSes is
+ 			 * in DFS state, do not start beaconing on any of the
+@@ -2701,14 +2700,14 @@ int hostapd_setup_interface_complete(str
+ 			 */
+ 			while (link_bss) {
+ 				if (link_bss->iface->state == HAPD_IFACE_DFS) {
+-					mld_start = false;
++					mld->mld_start_blocked = true;
+ 					break;
+ 				}
+ 
+ 				link_bss = link_bss->nbss;
+ 			}
+ 
+-			if (!mld_start) {
++			if (mld->mld_start_blocked) {
+ 				wpa_printf(MSG_INFO, "DFS in progress for bss " MACSTR " mld %s\n",
+ 					   MAC2STR(link_bss->own_addr), mld->name);
+ 				continue;
+@@ -2717,13 +2716,49 @@ int hostapd_setup_interface_complete(str
+ 			link_bss = mld->bss;
+ 
+ 			while (link_bss) {
+-				hostapd_set_beacon(link_bss);
++				/* Allow TX BSS beacon set by default or non-tx BSS
++				 * beacon set only if TX BSS is already beaconing
++				 * in case of mbssid.
++				 */
++				tx_hapd = hostapd_mbssid_get_tx_bss(link_bss);
++				if (tx_hapd == link_bss || tx_hapd->beacon_set_done)
++					hostapd_set_beacon(link_bss);
++
+ 				link_bss = link_bss->nbss;
+ 			}
+ 		}
+ 	}
+-#endif
+ 
++	/* If MBSSID Tx BSS is beaconing, set beacon for all
++	 * non-tx BSSes which are ready.
++	 */
++	for (i = 0; i < interfaces->count; i++) {
++		struct hostapd_iface *iface;
++		struct hostapd_data *tx_hapd, *non_tx_hapd;
++		size_t j;
++
++		iface = interfaces->iface[i];
++		if (!iface)
++			continue;
++		/* First BSS is TX BSS if MBSSID is enabled. */
++		tx_hapd = iface->bss[0];
++
++		if (tx_hapd && tx_hapd->iconf->mbssid &&
++		    (tx_hapd->beacon_set_done))
++			for (j = 1; j < iface->num_bss; j++) {
++				non_tx_hapd = iface->bss[j];
++				/* Dont set beacon if current mld is in blocked state,
++				 * this will be called again once it moves to
++				 * unblocked state.
++				 */
++				if (non_tx_hapd->mld &&
++				    non_tx_hapd->mld->mld_start_blocked)
++					continue;
++				if (hostapd_set_beacon(non_tx_hapd))
++					return -1;
++			}
++	}
++#endif
+ 	return 0;
+ }
+ 
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -509,6 +509,7 @@ struct hostapd_mld {
+ 	struct hostapd_data *bss; /* List Head of Link BSS affiliated with this MLD */
+ 	u8 num_links;
+ 	bool if_setup_done;
++	bool mld_start_blocked;
+ };
+ #endif
+ 

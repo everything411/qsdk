@@ -1,0 +1,149 @@
+#!/bin/sh /etc/rc.common
+#
+# Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+
+configure_irq_affinity() {
+	echo configuring core mask $1 for PPE-DS node 1
+	echo configuring core mask $2 for PPE-DS node 2
+	echo configuring core mask $3 for PPE-DS node 3
+
+	[ -f /tmp/sysinfo/board_name ] && {
+		board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+	}
+	# For IRQ to core mapping
+	case "$board" in ap-al02-c4)
+		#For RDP 433
+		irq_num=`grep edma_ppeds_rxfill_0 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $1 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep edma_ppeds_rxfill_1 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $2 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep edma_ppeds_rxfill_2 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $3 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep edma_ppeds_txcmpl_0 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $1 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep edma_ppeds_txcmpl_1 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $2 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep edma_ppeds_txcmpl_2 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $3 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep pci1_ppe_wbm_rel /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $1 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep pci2_ppe_wbm_rel /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $2 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep pci3_ppe_wbm_rel /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $3 > /proc/irq/$irq_num/smp_affinity
+
+		irq_rps=`grep pci1_ppe2tcl /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci2_ppe2tcl /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci3_ppe2tcl /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $3 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci1_reo2ppe /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci2_reo2ppe /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci3_reo2ppe /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $3 > /proc/irq/$irq_rps/smp_affinity
+		;;
+	esac
+
+	case "$board" in ap-al02-c9)
+		#For split wifi (RDP 454)
+		irq_rps=`grep edma_ppeds_rxfill_0 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep edma_ppeds_rxfill_1 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep edma_ppeds_txcmpl_0 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep edma_ppeds_txcmpl_1 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_num=`grep pci0_ppe_wbm_rel /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $1 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep pci2_ppe_wbm_rel /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $2 > /proc/irq/$irq_num/smp_affinity
+
+		irq_rps=`grep pci0_ppe2tcl /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci2_ppe2tcl /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci0_reo2ppe /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci2_reo2ppe /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+		;;
+	esac
+
+	case "$board" in ap-mi01.2)
+		# For Miami Board (RDP 441)
+		irq_rps=`grep edma_ppeds_rxfill_0 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep edma_ppeds_rxfill_1 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep edma_ppeds_txcmpl_0 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep edma_ppeds_txcmpl_1 /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_num=`grep pci0_ppe_wbm_rel /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $1 > /proc/irq/$irq_num/smp_affinity
+
+		irq_num=`grep pci1_ppe_wbm_rel /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_num" ] && echo $2 > /proc/irq/$irq_num/smp_affinity
+
+		irq_rps=`grep pci0_ppe2tcl /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci1_ppe2tcl /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci0_reo2ppe /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $1 > /proc/irq/$irq_rps/smp_affinity
+
+		irq_rps=`grep pci1_reo2ppe /proc/interrupts | cut -d ':' -f 1 | tr -d ' '`
+		[ -n "$irq_rps" ] && echo $2 > /proc/irq/$irq_rps/smp_affinity
+		;;
+	esac
+
+	echo " Configured the IRQ affinity for DS mode in $board"
+}
+
+start() {
+	configure_irq_affinity 4 2 4
+}

@@ -1,0 +1,59 @@
+From 95e2a8aaa50aba071421c1d9b1ca93ba2c935be9 Mon Sep 17 00:00:00 2001
+From: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
+Date: Sat, 17 Jun 2023 19:54:53 +0530
+Subject: [PATCH] wifi: ath12k: Avoid the msdu done bit debug message
+
+MSDU done bit error message flood into the console which consume
+CPU cycle. It lead to slow processing the Rx reap which endup in
+FW crash due to Rx ring full.
+
+Signed-off-by: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/core.h    | 1 +
+ drivers/net/wireless/ath/ath12k/debugfs.c | 3 +++
+ drivers/net/wireless/ath/ath12k/dp_rx.c   | 3 ++-
+ 3 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/core.h b/drivers/net/wireless/ath/ath12k/core.h
+index 906cfa30d965..31eed233917e 100644
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -1121,6 +1121,7 @@ struct ath12k_soc_dp_tx_err_stats {
+ struct ath12k_soc_dp_stats {
+ 	u32 err_ring_pkts;
+ 	u32 invalid_rbm;
++	u32 msdu_done_fail;
+ 	u32 rxdma_error[HAL_REO_ENTR_RING_RXDMA_ECODE_MAX];
+ 	u32 rxdma_error_drop[HAL_REO_ENTR_RING_RXDMA_ECODE_MAX];
+ 	u32 reo_error[HAL_REO_DEST_RING_ERROR_CODE_MAX];
+diff --git a/drivers/net/wireless/ath/ath12k/debugfs.c b/drivers/net/wireless/ath/ath12k/debugfs.c
+index 91a93494e8d0..8d18f77a9b19 100644
+--- a/drivers/net/wireless/ath/ath12k/debugfs.c
++++ b/drivers/net/wireless/ath/ath12k/debugfs.c
+@@ -1764,6 +1764,9 @@ static ssize_t ath12k_debugfs_dump_soc_dp_stats(struct file *file,
+ 				soc_stats->rx_wbm_rel_source[i][1],
+ 				soc_stats->rx_wbm_rel_source[i][2]);
+ 
++	len += scnprintf(buf + len, size - len, "Rx msdu done fail: %u\n",
++			 soc_stats->msdu_done_fail);
++
+ 	len += ath12k_debugfs_dump_soc_ring_bp_stats(ab, buf + len, size - len);
+ 
+ 	if (len > size)
+diff --git a/drivers/net/wireless/ath/ath12k/dp_rx.c b/drivers/net/wireless/ath/ath12k/dp_rx.c
+index 92d2cdafa9e6..8ed14acf9aa9 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/dp_rx.c
+@@ -3153,7 +3153,8 @@ static int ath12k_dp_rx_process_msdu(struct ath12k *ar,
+ 	lrx_desc = (struct hal_rx_desc *)last_buf->data;
+ 	ab->hw_params->hal_ops->rx_get_desc_msdulen_l3pad(lrx_desc, rx_info);
+ 	if (!rx_info->msdu_done) {
+-		ath12k_warn(ab, "msdu_done bit in msdu_end is not set\n");
++		ath12k_dbg(ab, ATH12K_DBG_DATA, "msdu_done fail\n");
++		ab->soc_stats.msdu_done_fail++;
+ 		ret = -EIO;
+ 		goto free_out;
+ 	}
+-- 
+2.17.1
+

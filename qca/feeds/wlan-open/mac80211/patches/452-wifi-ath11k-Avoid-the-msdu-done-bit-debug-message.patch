@@ -1,0 +1,59 @@
+From dc312e4fa60363ce8a58b724c26cdc0d188a8560 Mon Sep 17 00:00:00 2001
+From: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
+Date: Sun, 18 Jun 2023 07:15:33 +0530
+Subject: [PATCH] wifi: ath11k: Avoid the msdu done bit debug message
+
+MSDU done bit error message flood into the console which consume
+CPU cycle. It lead to slow processing the Rx reap which endup in
+FW crash due to Rx ring full.
+
+Signed-off-by: Karthikeyan Periyasamy <quic_periyasa@quicinc.com>
+---
+ drivers/net/wireless/ath/ath11k/core.h    | 1 +
+ drivers/net/wireless/ath/ath11k/debugfs.c | 3 +++
+ drivers/net/wireless/ath/ath11k/dp_rx.c   | 3 ++-
+ 3 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/ath/ath11k/core.h b/drivers/net/wireless/ath/ath11k/core.h
+index 6b81ae9a6e32..726ad0d915e9 100644
+--- a/drivers/net/wireless/ath/ath11k/core.h
++++ b/drivers/net/wireless/ath/ath11k/core.h
+@@ -1168,6 +1168,7 @@ struct ath11k_soc_dp_tx_err_stats {
+ struct ath11k_soc_dp_stats {
+ 	u32 err_ring_pkts;
+ 	u32 invalid_rbm;
++	u32 msdu_done_fail;
+ 	u32 rxdma_error[HAL_REO_ENTR_RING_RXDMA_ECODE_MAX];
+ 	u32 rxdma_error_drop[HAL_REO_ENTR_RING_RXDMA_ECODE_MAX];
+ 	u32 reo_error[HAL_REO_DEST_RING_ERROR_CODE_MAX];
+diff --git a/drivers/net/wireless/ath/ath11k/debugfs.c b/drivers/net/wireless/ath/ath11k/debugfs.c
+index 4f73b2c145e8..f86f9fd0bd3b 100644
+--- a/drivers/net/wireless/ath/ath11k/debugfs.c
++++ b/drivers/net/wireless/ath/ath11k/debugfs.c
+@@ -1976,6 +1976,9 @@ static ssize_t ath11k_debugfs_dump_soc_dp_stats(struct file *file,
+ 			 "\nREO_CMD_UPDATE_RX_QUEUE Failure: %u\n",
+ 			 soc_stats->reo_cmd_update_rx_queue_error);
+ 
++	len += scnprintf(buf + len, size - len, "Rx msdu done fail: %u\n\n",
++			 soc_stats->msdu_done_fail);
++
+ 	len += ath11k_debugfs_dump_soc_ring_bp_stats(ab, buf + len, size - len);
+ 
+ 	if (len > size)
+diff --git a/drivers/net/wireless/ath/ath11k/dp_rx.c b/drivers/net/wireless/ath/ath11k/dp_rx.c
+index 44d2d22f0597..589a4aa495a5 100644
+--- a/drivers/net/wireless/ath/ath11k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
+@@ -3357,7 +3357,8 @@ static int ath11k_dp_rx_process_msdu(struct ath11k *ar,
+ 	lrx_desc = (struct hal_rx_desc *)last_buf->data;
+ 	rx_attention = ath11k_dp_rx_get_attention(ab, lrx_desc);
+ 	if (!ath11k_dp_rx_h_attn_msdu_done(rx_attention)) {
+-		ath11k_warn(ab, "msdu_done bit in attention is not set\n");
++		ab->soc_stats.msdu_done_fail++;
++		ath11k_dbg(ab, ATH11K_DBG_DATA, "msdu_done fail\n");
+ 		ret = -EIO;
+ 		goto free_out;
+ 	}
+-- 
+2.17.1
+

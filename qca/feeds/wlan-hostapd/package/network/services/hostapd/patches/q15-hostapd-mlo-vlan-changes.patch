@@ -1,0 +1,311 @@
+From 5673f44d393f23080b08b98242b5b7779d04dec4 Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Thu, 8 Jun 2023 15:26:37 -0700
+Subject: [PATCH] hostapd: mlo vlan changes
+
+- use MLD addr for new VLAN interface
+- for MLD, access VLAN list from list head of Link BSS for that MLD
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ src/ap/ap_drv_ops.c | 12 +++++++++---
+ src/ap/sta_info.c   | 26 ++++++++++++++++++++++----
+ src/ap/vlan_full.c  | 18 ++++++++++++++++--
+ src/ap/vlan_init.c  |  9 ++++++++-
+ 4 files changed, 55 insertions(+), 10 deletions(-)
+
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -345,9 +345,15 @@ int hostapd_vlan_if_add(struct hostapd_d
+ {
+ 	char force_ifname[IFNAMSIZ];
+ 	u8 if_addr[ETH_ALEN];
+-	return hostapd_if_add(hapd, WPA_IF_AP_VLAN, ifname, hapd->own_addr,
+-			      NULL, NULL, force_ifname, if_addr, NULL, 0, NULL,
+-			      true);
++	u8 *addr;
++
++	if (hapd->mld)
++		addr = hapd->mld->addr;
++	else
++		addr = hapd->own_addr;
++
++	return hostapd_if_add(hapd, WPA_IF_AP_VLAN, ifname, addr, NULL, NULL,
++			      force_ifname, if_addr, NULL, 0, NULL, true);
+ }
+ 
+ 
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -268,6 +268,7 @@ void set_partner_sta_flags(struct hostap
+ 
+ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ {
++	struct hostapd_data *vlan_bss;
+ 	int set_beacon = 0;
+ 
+ 	accounting_sta_stop(hapd, sta);
+@@ -388,13 +389,17 @@ void ap_free_sta(struct hostapd_data *ha
+ #endif /* CONFIG_NO_RADIUS */
+ 
+ #ifndef CONFIG_NO_VLAN
++	if (hapd->mld)
++		vlan_bss = hapd->mld->bss;
++	else
++		vlan_bss = hapd;
+ 	/*
+ 	 * sta->wpa_sm->group needs to be released before so that
+ 	 * vlan_remove_dynamic() can check that no stations are left on the
+ 	 * AP_VLAN netdev.
+ 	 */
+ 	if (sta->vlan_id)
+-		vlan_remove_dynamic(hapd, sta->vlan_id);
++		vlan_remove_dynamic(vlan_bss, sta->vlan_id);
+ 	if (sta->vlan_id_bound) {
+ 		/*
+ 		 * Need to remove the STA entry before potentially removing the
+@@ -405,7 +410,7 @@ void ap_free_sta(struct hostapd_data *ha
+ 			hostapd_drv_sta_remove(hapd, sta->addr);
+ 			sta->added_unassoc = 0;
+ 		}
+-		vlan_remove_dynamic(hapd, sta->vlan_id_bound);
++		vlan_remove_dynamic(vlan_bss, sta->vlan_id_bound);
+ 	}
+ #endif /* CONFIG_NO_VLAN */
+ 
+@@ -1159,10 +1164,16 @@ int ap_sta_wps_cancel(struct hostapd_dat
+ static int ap_sta_get_free_vlan_id(struct hostapd_data *hapd)
+ {
+ 	struct hostapd_vlan *vlan;
++	struct hostapd_data *vlan_bss;
+ 	int vlan_id = MAX_VLAN_ID + 2;
+ 
++	if(hapd->mld)
++		vlan_bss = hapd->mld->bss;
++	else
++		vlan_bss = hapd;
++
+ retry:
+-	for (vlan = hapd->conf->vlan; vlan; vlan = vlan->next) {
++	for (vlan = vlan_bss->conf->vlan; vlan; vlan = vlan->next) {
+ 		if (vlan->vlan_id == vlan_id) {
+ 			vlan_id++;
+ 			goto retry;
+@@ -1177,6 +1188,7 @@ static int ap_sta_set_vlan_helper(struct
+ 				  struct vlan_description *vlan_desc)
+ {
+ 	struct hostapd_vlan *vlan = NULL, *wildcard_vlan = NULL;
++	struct hostapd_data *vlan_bss;
+ 	int old_vlan_id, vlan_id = 0, ret = 0;
+ 
+ 	/* Check if there is something to do */
+@@ -1189,13 +1201,18 @@ static int ap_sta_set_vlan_helper(struct
+ 		return 0; /* nothing to change */
+ 	}
+ 
++	if (hapd->mld)
++		vlan_bss = hapd->mld->bss;
++	else
++		vlan_bss = hapd;
++
+ 	/* Now the real VLAN changed or the STA just needs its own vif */
+ 	if (hapd->conf->ssid.per_sta_vif) {
+ 		/* Assign a new vif, always */
+ 		/* find a free vlan_id sufficiently big */
+ 		vlan_id = ap_sta_get_free_vlan_id(hapd);
+ 		/* Get wildcard VLAN */
+-		for (vlan = hapd->conf->vlan; vlan; vlan = vlan->next) {
++		for (vlan = vlan_bss->conf->vlan; vlan; vlan = vlan->next) {
+ 			if (vlan->vlan_id == VLAN_ID_WILDCARD)
+ 				break;
+ 		}
+@@ -1209,7 +1226,7 @@ static int ap_sta_set_vlan_helper(struct
+ 			goto done;
+ 		}
+ 	} else if (vlan_desc && vlan_desc->notempty) {
+-		for (vlan = hapd->conf->vlan; vlan; vlan = vlan->next) {
++		for (vlan = vlan_bss->conf->vlan; vlan; vlan = vlan->next) {
+ 			if (!vlan_compare(&vlan->vlan_desc, vlan_desc))
+ 				break;
+ 			if (vlan->vlan_id == VLAN_ID_WILDCARD)
+@@ -1222,10 +1239,10 @@ static int ap_sta_set_vlan_helper(struct
+ 			vlan_id = vlan_desc->untagged;
+ 			if (vlan_desc->tagged[0]) {
+ 				/* Tagged VLAN configuration */
+-				vlan_id = ap_sta_get_free_vlan_id(hapd);
++				vlan_id = ap_sta_get_free_vlan_id(vlan_bss);
+ 			}
+ 		} else {
+-			hostapd_logger(hapd, sta->addr,
++			hostapd_logger(vlan_bss, sta->addr,
+ 				       HOSTAPD_MODULE_IEEE80211,
+ 				       HOSTAPD_LEVEL_DEBUG,
+ 				       "missing vlan and wildcard for vlan=%d%s",
+@@ -1238,9 +1255,9 @@ static int ap_sta_set_vlan_helper(struct
+ 	}
+ 
+ 	if (vlan && vlan->vlan_id == VLAN_ID_WILDCARD) {
+-		vlan = vlan_add_dynamic(hapd, vlan, vlan_id, vlan_desc);
++		vlan = vlan_add_dynamic(vlan_bss, vlan, vlan_id, vlan_desc);
+ 		if (vlan == NULL) {
+-			hostapd_logger(hapd, sta->addr,
++			hostapd_logger(vlan_bss, sta->addr,
+ 				       HOSTAPD_MODULE_IEEE80211,
+ 				       HOSTAPD_LEVEL_DEBUG,
+ 				       "could not add dynamic VLAN interface for vlan=%d%s",
+@@ -1252,13 +1269,13 @@ static int ap_sta_set_vlan_helper(struct
+ 			goto done;
+ 		}
+ 
+-		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
++		hostapd_logger(vlan_bss, sta->addr, HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_DEBUG,
+ 			       "added new dynamic VLAN interface '%s'",
+ 			       vlan->ifname);
+ 	} else if (vlan && vlan->dynamic_vlan > 0) {
+ 		vlan->dynamic_vlan++;
+-		hostapd_logger(hapd, sta->addr,
++		hostapd_logger(vlan_bss, sta->addr,
+ 			       HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_DEBUG,
+ 			       "updated existing dynamic VLAN interface '%s'",
+@@ -1270,7 +1287,7 @@ done:
+ 	sta->vlan_desc = vlan ? &vlan->vlan_desc : NULL;
+ 
+ 	if (vlan_id != old_vlan_id && old_vlan_id)
+-		vlan_remove_dynamic(hapd, old_vlan_id);
++		vlan_remove_dynamic(vlan_bss, old_vlan_id);
+ 
+ 	return ret;
+ }
+@@ -1301,6 +1318,7 @@ static int ap_sta_bind_vlan_helper(struc
+ #ifndef CONFIG_NO_VLAN
+ 	const char *iface;
+ 	struct hostapd_vlan *vlan = NULL;
++	struct hostapd_data *vlan_bss;
+ 	int ret;
+ 	int old_vlanid = sta->vlan_id_bound;
+ 	int link_id = -1;
+@@ -1312,12 +1330,17 @@ static int ap_sta_bind_vlan_helper(struc
+ 		return 0;
+ 	}
+ 
++	if (hapd->mld)
++		vlan_bss = hapd->mld->bss;
++	else
++		vlan_bss = hapd;
++
+ 	iface = hapd->conf->iface;
+ 	if (hapd->conf->ssid.vlan[0])
+ 		iface = hapd->conf->ssid.vlan;
+ 
+ 	if (sta->vlan_id > 0) {
+-		for (vlan = hapd->conf->vlan; vlan; vlan = vlan->next) {
++		for (vlan = vlan_bss->conf->vlan; vlan; vlan = vlan->next) {
+ 			if (vlan->vlan_id == sta->vlan_id)
+ 				break;
+ 		}
+@@ -1334,7 +1357,7 @@ static int ap_sta_bind_vlan_helper(struc
+ 		goto skip_counting;
+ 
+ 	if (sta->vlan_id > 0 && !vlan) {
+-		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
++		hostapd_logger(vlan_bss, sta->addr, HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_DEBUG, "could not find VLAN for "
+ 			       "binding station to (vlan_id=%d)",
+ 			       sta->vlan_id);
+@@ -1342,7 +1365,7 @@ static int ap_sta_bind_vlan_helper(struc
+ 		goto done;
+ 	} else if (vlan && vlan->dynamic_vlan > 0) {
+ 		vlan->dynamic_vlan++;
+-		hostapd_logger(hapd, sta->addr,
++		hostapd_logger(vlan_bss, sta->addr,
+ 			       HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_DEBUG,
+ 			       "updated existing dynamic VLAN interface '%s'",
+@@ -1353,7 +1376,7 @@ static int ap_sta_bind_vlan_helper(struc
+ 	sta->vlan_id_bound = sta->vlan_id;
+ 
+ skip_counting:
+-	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
++	hostapd_logger(vlan_bss, sta->addr, HOSTAPD_MODULE_IEEE80211,
+ 		       HOSTAPD_LEVEL_DEBUG, "binding station to interface "
+ 		       "'%s'", iface);
+ 
+@@ -1372,7 +1395,7 @@ skip_counting:
+ 
+ 	/* During 1x reauth, if the vlan id changes, then remove the old id. */
+ 	if (old_vlanid > 0 && old_vlanid != sta->vlan_id)
+-		vlan_remove_dynamic(hapd, old_vlanid);
++		vlan_remove_dynamic(vlan_bss, old_vlanid);
+ done:
+ 
+ 	return ret;
+--- a/src/ap/vlan_full.c
++++ b/src/ap/vlan_full.c
+@@ -462,11 +462,17 @@ void vlan_newlink(const char *ifname, st
+ {
+ 	char br_name[IFNAMSIZ];
+ 	struct hostapd_vlan *vlan;
++	struct hostapd_data *vlan_bss;
+ 	int untagged, *tagged, i, notempty;
+ 
+ 	wpa_printf(MSG_DEBUG, "VLAN: vlan_newlink(%s)", ifname);
+ 
+-	for (vlan = hapd->conf->vlan; vlan; vlan = vlan->next) {
++	if (hapd->mld)
++		vlan_bss = hapd->mld->bss;
++	else
++		vlan_bss = hapd;
++
++	for (vlan = vlan_bss->conf->vlan; vlan; vlan = vlan->next) {
+ 		if (vlan->configured ||
+ 		    os_strcmp(ifname, vlan->ifname) != 0)
+ 			continue;
+@@ -563,7 +569,15 @@ static void vlan_put_bridge(const char *
+ 
+ void vlan_dellink(const char *ifname, struct hostapd_data *hapd)
+ {
+-	struct hostapd_vlan *first, *prev, *vlan = hapd->conf->vlan;
++	struct hostapd_vlan *first, *prev, *vlan;
++	struct hostapd_data *vlan_bss;
++
++	if (hapd->mld)
++		vlan_bss = hapd->mld->bss;
++	else
++		vlan_bss = hapd;
++
++	vlan = vlan_bss->conf->vlan;
+ 
+ 	wpa_printf(MSG_DEBUG, "VLAN: vlan_dellink(%s)", ifname);
+ 
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -448,10 +448,16 @@ static int hostapd_wpa_auth_set_key_help
+ 				    size_t key_len, enum key_flag key_flag)
+ {
+ 	struct hostapd_data *hapd = ctx;
++	struct hostapd_data *link_bss;
+ 	const char *ifname = hapd->conf->iface;
+ 
++	if (hapd->mld)
++		link_bss = hapd->mld->bss;
++	else
++		link_bss = hapd;
++
+ 	if (vlan_id > 0) {
+-		ifname = hostapd_get_vlan_id_ifname(hapd->conf->vlan, vlan_id);
++		ifname = hostapd_get_vlan_id_ifname(link_bss->conf->vlan, vlan_id);
+ 		if (!ifname)
+ 			return -1;
+ 	}
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6008,6 +6008,7 @@ static void ap_link_sta_add(struct hosta
+ 		sta->wpa_sm = psta->wpa_sm;
+ 		wpa_mlo_partner_sta_iter(sta->wpa_sm, wpa_init_partner_link_group, NULL);
+ 		sta->auth_alg = psta->auth_alg;
++		sta->vlan_id = psta->vlan_id;
+ 
+ 		link_sta_ies = ml_data->u.basic.link_info[link_id].sta_profile;
+ 		link_sta_ies_len = ml_data->u.basic.link_info[link_id].sta_profile_len;

@@ -1,0 +1,201 @@
+From 5220d5cc59ea09973339dfe1a1aff2d2cad858ea Mon Sep 17 00:00:00 2001
+From: Saleemuddin Shaik <quic_saleemud@quicinc.com>
+Date: Tue, 19 Sep 2023 11:35:47 +0530
+Subject: [PATCH] ath12k: Update QMI sequence to download Rxgainlut
+
+Updated the QMI sequence in ath12k to download rxgainlut files
+if rxgainlut support is enabled in firmware.
+
+If rxgainlut.b<board_id> file is not present rxgainlut.bin is
+downloaded by default.
+
+Signed-off-by: Saleemuddin Shaik <quic_saleemud@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/core.c | 32 ++++++++++++++++++++++
+ drivers/net/wireless/ath/ath12k/core.h |  4 +++
+ drivers/net/wireless/ath/ath12k/hw.h   |  2 ++
+ drivers/net/wireless/ath/ath12k/qmi.c  | 37 ++++++++++++++++++++++++++
+ drivers/net/wireless/ath/ath12k/qmi.h  |  6 +++++
+ 5 files changed, 81 insertions(+)
+
+Index: backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/core.c
+===================================================================
+--- backports-20220822-5.4.213-ef7197996efe.orig/drivers/net/wireless/ath/ath12k/core.c
++++ backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/core.c
+@@ -776,6 +776,41 @@ success:
+ 	ath12k_dbg(ab, ATH12K_DBG_BOOT, "using board api %d\n", ab->bd_api);
+ 	return 0;
+ }
++
++int ath12k_core_fetch_rxgainlut(struct ath12k_base *ab,
++				struct ath12k_board_data *bd)
++{
++	int ret;
++	char rxgainlutname[RXGAINLUT_NAME_SIZE] = { 0 };
++
++	scnprintf(rxgainlutname, sizeof(rxgainlutname), "%s%04x",
++		 ATH12K_RXGAINLUT_FILE_PREFIX, ab->qmi.target.board_id);
++
++	ret = ath12k_core_fetch_board_data_api_1(ab, bd, rxgainlutname);
++	if (ret) {
++		ath12k_warn(ab, "failed to fetch  %s%04x from %s\n",
++			    ATH12K_RXGAINLUT_FILE_PREFIX,
++			    ab->qmi.target.board_id, ab->hw_params->fw.dir);
++
++		ret = ath12k_core_fetch_board_data_api_1(ab, bd,
++							 ATH12K_RXGAINLUT_FILE);
++		if (ret) {
++			ath12k_warn(ab, "failed to fetch %s from %s\n",
++				    ATH12K_RXGAINLUT_FILE ,ab->hw_params->fw.dir);
++			return -ENOENT;
++		} else {
++			ath12k_info(ab, "fetching %s from %s\n",
++				    ATH12K_RXGAINLUT_FILE,
++				    ab->hw_params->fw.dir);
++		}
++	}
++
++	ath12k_info(ab, "fetching %s from %s\n",rxgainlutname,
++		    ab->hw_params->fw.dir);
++
++	return 0;
++}
++
+ static void ath12k_core_stop(struct ath12k_base *ab)
+ {
+ 	lockdep_assert_held(&ab->ag->mutex_lock);
+Index: backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/core.h
+===================================================================
+--- backports-20220822-5.4.213-ef7197996efe.orig/drivers/net/wireless/ath/ath12k/core.h
++++ backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/core.h
+@@ -1090,6 +1090,7 @@ struct cmem_remap {
+ 
+ #define BOARD_NAME_SIZE 100
+ #define REGDB_NAME_SIZE 100
++#define RXGAINLUT_NAME_SIZE 100
+ 
+ struct ath12k_board_data {
+ 	const struct firmware *fw;
+@@ -1440,6 +1441,7 @@ struct ath12k_base {
+ 
+ 	u32 chwidth_num_peer_caps;
+ 	struct completion rddm_reset_done;
++	bool rxgainlut_support;
+ 
+ 	/* must be last */
+ 	u8 drv_priv[0] __aligned(sizeof(void *));
+@@ -1583,6 +1585,8 @@ int ath12k_core_fetch_bdf(struct ath12k_
+ 			  struct ath12k_board_data *bd);
+ int ath12k_core_fetch_regdb(struct ath12k_base *ath12k,
+                             struct ath12k_board_data *bd);
++int ath12k_core_fetch_rxgainlut(struct ath12k_base *ath12k,
++				struct ath12k_board_data *bd);
+ void ath12k_core_free_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd);
+ int ath12k_core_check_dt(struct ath12k_base *ath12k);
+ 
+Index: backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/hw.h
+===================================================================
+--- backports-20220822-5.4.213-ef7197996efe.orig/drivers/net/wireless/ath/ath12k/hw.h
++++ backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/hw.h
+@@ -90,6 +90,8 @@
+ #define ATH12K_REGDB_FILE_NAME		"regdb.bin"
+ #define ATH12K_REGDB_BINARY		"regdb"
+ #define ATH12K_DEFAULT_ID		255
++#define ATH12K_RXGAINLUT_FILE           "rxgainlut.bin"
++#define ATH12K_RXGAINLUT_FILE_PREFIX    "rxgainlut.b"
+ 
+ enum ath12k_hw_rate_cck {
+ 	ATH12K_HW_RATE_CCK_LP_11M = 0,
+Index: backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/qmi.c
+===================================================================
+--- backports-20220822-5.4.213-ef7197996efe.orig/drivers/net/wireless/ath/ath12k/qmi.c
++++ backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/qmi.c
+@@ -1645,6 +1645,24 @@ static struct qmi_elem_info qmi_wlanfw_c
+ 		.ei_array	= qmi_wlanfw_dev_mem_info_s_v01_ei,
+ 	},
+ 	{
++		.data_type      = QMI_OPT_FLAG,
++		.elem_len       = 1,
++		.elem_size      = sizeof(u8),
++		.array_type     = NO_ARRAY,
++		.tlv_type       = 0x25,
++		.offset         = offsetof(struct qmi_wlanfw_cap_resp_msg_v01,
++					 rxgainlut_support_valid),
++	},
++	{
++		.data_type      = QMI_UNSIGNED_8_BYTE,
++		.elem_len       = 1,
++		.elem_size      = sizeof(u8),
++		.array_type     = NO_ARRAY,
++		.tlv_type       = 0x25,
++		.offset         = offsetof(struct qmi_wlanfw_cap_resp_msg_v01,
++					 rxgainlut_support),
++	},
++	{
+ 		.data_type	= QMI_EOTI,
+ 		.array_type	= NO_ARRAY,
+ 		.tlv_type	= QMI_COMMON_TLV_TYPE,
+@@ -4278,6 +4296,11 @@ static int ath12k_qmi_request_target_cap
+ 		}
+ 	}
+ 
++	if (resp.rxgainlut_support_valid)
++		ab->rxgainlut_support = !!resp.rxgainlut_support;
++
++	ath12k_info(ab, "rxgainlut_support %u\n", ab->rxgainlut_support);
++
+ 	if (resp.eeprom_caldata_read_timeout_valid) {
+ 		ab->qmi.target.eeprom_caldata = resp.eeprom_caldata_read_timeout;
+ 		ath12k_dbg(ab, ATH12K_DBG_QMI, "qmi cal data supported from eeprom\n");
+@@ -4445,6 +4468,14 @@ static int ath12k_qmi_load_bdf_qmi(struc
+ 		}
+ 		type = ATH12K_QMI_BDF_TYPE_REGDB;
+ 		break;
++	case ATH12K_QMI_BDF_TYPE_RXGAINLUT:
++		ret = ath12k_core_fetch_rxgainlut(ab, &bd);
++		if (ret < 0) {
++			ath12k_warn(ab, "qmi failed to load rxgainlut\n");
++			goto out;
++		}
++		type =	ATH12K_QMI_BDF_TYPE_RXGAINLUT;
++		break;
+ 	case ATH12K_QMI_BDF_TYPE_CALIBRATION:
+ 		if (ab->qmi.target.eeprom_caldata) {
+ 			file_type = ATH12K_QMI_FILE_TYPE_EEPROM;
+@@ -5337,6 +5368,12 @@ static int ath12k_qmi_event_load_bdf(str
+ 		return ret;
+ 	}
+ 
++	if (ab->rxgainlut_support) {
++		ret = ath12k_qmi_load_bdf_qmi(ab, ATH12K_QMI_BDF_TYPE_RXGAINLUT);
++		if (ret < 0)
++			ath12k_warn(ab, "qmi failed to load rxgainlut data file:%d\n", ret);
++	}
++
+ 	if(ab->hw_params->download_calib) {
+ 		ret = ath12k_qmi_load_bdf_qmi(ab, ATH12K_QMI_BDF_TYPE_CALIBRATION);
+ 		if (ret < 0)
+Index: backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/qmi.h
+===================================================================
+--- backports-20220822-5.4.213-ef7197996efe.orig/drivers/net/wireless/ath/ath12k/qmi.h
++++ backports-20220822-5.4.213-ef7197996efe/drivers/net/wireless/ath/ath12k/qmi.h
+@@ -76,6 +76,7 @@ enum ath12k_qmi_bdf_type {
+ 	ATH12K_QMI_BDF_TYPE_ELF			= 1,
+ 	ATH12K_QMI_BDF_TYPE_REGDB		= 4,
+ 	ATH12K_QMI_BDF_TYPE_CALIBRATION		= 5,
++	ATH12K_QMI_BDF_TYPE_RXGAINLUT           = 7,
+ };
+ 
+ enum ath12k_qmi_event_type {
+@@ -591,6 +592,11 @@ struct qmi_wlanfw_cap_resp_msg_v01 {
+ 	enum qmi_wlanfw_rd_card_chain_cap_v01 rd_card_chain_cap;
+ 	u8 dev_mem_info_valid;
+ 	struct qmi_wlanfw_dev_mem_info_s_v01 dev_mem[ATH12K_QMI_WLFW_MAX_DEV_MEM_NUM_V01];
++	/* Reserved bytes for matching wlanfw msg struct offset */
++	u32 rsvd_1[20];
++	u8 rsvd_2;
++	u8 rxgainlut_support_valid;
++	u8 rxgainlut_support;
+ };
+ 
+ struct qmi_wlanfw_cap_req_msg_v01 {

@@ -1,0 +1,65 @@
+From 0ad62332a89d4f11bb7a80efba8f914a147c5afb Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <quic_hprem@quicinc.com>
+Date: Fri, 23 Sep 2022 16:51:50 +0530
+Subject: [PATCH] hostapd: [single wiphy] avoid channel switch across radio
+
+In single wiphy scenario, the phy supports more than one band
+and when we try to change channel without specifying the wifi
+interface in hostapd_cli, it would lead to an exception.
+
+To handle this, if the given freq is not in the list of
+channels for that interface's current operating mode,
+then the cli would fail.
+
+Hence, in case of single wiphy, the below hostapd_cli should be
+used to change the channel
+hostapd_cli -i wlanX chan_switch <cs count> <freq> <caps> \
+center_freq1=<value> bandwidth=<bw>
+
+Signed-off-by: Harshitha Prem <quic_hprem@quicinc.com>
+---
+ hostapd/ctrl_iface.c | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2426,6 +2426,25 @@ static int hostapd_ctrl_register_frame(s
+ 
+ 
+ #ifdef NEED_AP_MLME
++
++static bool hostapd_ctrl_is_freq_in_cmode(struct hostapd_hw_modes *mode, int freq)
++{
++        struct hostapd_channel_data *chan;
++        int i;
++
++        for (i = 0; i < mode->num_channels; i++) {
++                chan = &mode->channels[i];
++
++                if (chan->flag & HOSTAPD_CHAN_DISABLED)
++                        continue;
++
++                if (chan->freq == freq)
++                        return true;
++        }
++
++        return false;
++}
++
+ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params)
+ {
+ 	int idx, bw, bw_idx[] = { 20, 40, 80, 160, 320 };
+@@ -2678,6 +2697,13 @@ static int hostapd_ctrl_iface_chan_switc
+ 	if (ret)
+ 		return ret;
+ 
++        if (iface->num_hw_features > 1 &&
++	    !hostapd_ctrl_is_freq_in_cmode(iface->current_mode, settings.freq_params.freq)) {
++		wpa_printf(MSG_INFO, "chanswitch: invalid frequency settings provided"
++			   " for multi band phy");
++                return -1;
++        }
++
+ 	ret = hostapd_ctrl_check_freq_params(&settings.freq_params);
+ 	if (ret) {
+ 		wpa_printf(MSG_INFO,

@@ -1,0 +1,70 @@
+From 2253f41b57e3a74b0cedfaa4b2f3fa7124a09a86 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 31 May 2023 20:48:47 +0530
+Subject: [PATCH] ath12k: use max sta bandwidth during peer assoc
+
+Currently, during peer assoc, host sets the bandwidth argument
+based on the sta's current operating bandwidth. During bandwidth
+upgrade, this leads to host sending peer phymode again along
+with the bandwidth. In multi client cases, this can lead to firmware
+buffer overflow.
+
+However, if host sets the bandwidth argument based on sta's max bandwidth
+then durong bandwidth upgrade, there is no need to send the phymode
+again. This will help in optimizing the number of commands sent to
+the firmware.
+
+Modify the logic to take sta's max bandwidth into consideration while
+forming the bandwodth argument.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/mac.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -2148,7 +2148,7 @@ static void ath12k_peer_assoc_h_ht(struc
+ 	if (ht_cap->cap & IEEE80211_HT_CAP_LDPC_CODING)
+ 		arg->ldpc_flag = true;
+ 
+-	if (link_sta->bandwidth >= IEEE80211_STA_RX_BW_40) {
++	if (link_sta->sta_max_bandwidth >= IEEE80211_STA_RX_BW_40) {
+ 		arg->bw_40 = true;
+ 		arg->peer_rate_caps |= WMI_HOST_RC_CW40_FLAG;
+ 	}
+@@ -2368,10 +2368,10 @@ static void ath12k_peer_assoc_h_vht(stru
+ 				 (1U << (IEEE80211_HT_MAX_AMPDU_FACTOR +
+ 					ampdu_factor)) - 1);
+ 
+-	if (link_sta->bandwidth == IEEE80211_STA_RX_BW_80)
++	if (link_sta->sta_max_bandwidth == IEEE80211_STA_RX_BW_80)
+ 		arg->bw_80 = true;
+ 
+-	if (link_sta->bandwidth == IEEE80211_STA_RX_BW_160)
++	if (link_sta->sta_max_bandwidth == IEEE80211_STA_RX_BW_160)
+ 		arg->bw_160 = true;
+ 
+ 	vht_nss =  ath12k_mac_max_vht_nss(vht_mcs_mask);
+@@ -2821,10 +2821,10 @@ static void ath12k_peer_assoc_h_he_6ghz(
+ 	if (!arg->he_flag || band != NL80211_BAND_6GHZ || !link_sta->he_6ghz_capa.capa)
+ 		return;
+ 
+-	if (link_sta->bandwidth == IEEE80211_STA_RX_BW_80)
++	if (link_sta->sta_max_bandwidth == IEEE80211_STA_RX_BW_80)
+ 		arg->bw_80 = true;
+ 
+-	if (link_sta->bandwidth == IEEE80211_STA_RX_BW_160)
++	if (link_sta->sta_max_bandwidth == IEEE80211_STA_RX_BW_160)
+ 		arg->bw_160 = true;
+ 
+ 	arg->peer_he_caps_6ghz = le16_to_cpu(link_sta->he_6ghz_capa.capa);
+@@ -3049,7 +3049,7 @@ static void ath12k_peer_assoc_h_eht(stru
+ 		return;
+ 
+ 	arg->eht_flag = true;
+-	if (link_sta->bandwidth == IEEE80211_STA_RX_BW_320) {
++	if (link_sta->sta_max_bandwidth == IEEE80211_STA_RX_BW_320) {
+ 		arg->bw_40 = true;
+ 		arg->bw_80 = true;
+ 		arg->bw_160 = true;

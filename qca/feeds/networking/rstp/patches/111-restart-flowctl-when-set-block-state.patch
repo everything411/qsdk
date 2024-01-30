@@ -1,0 +1,33 @@
+[networking feeds] Add support for rstp in Miami board.
+
+Miami uses Manhattan switch and therefore switch needs to be
+configured as eth1 and dev_id = 1.
+Change-Id: I4ac7dee3949e799ffe8d7b0806569289144a830d
+Signed-off-by: Tian Yang <quic_tiany@quicinc.com>
+
+diff -Nur rstp-copy/qca_switch.c rstp-2011-10-11/qca_switch.c
+--- rstp-copy/qca_switch.c	2023-06-12 10:20:19.351491638 -0700
++++ rstp-2011-10-11/qca_switch.c	2023-06-12 10:21:16.803322333 -0700
+@@ -245,6 +245,22 @@
+ 	if(sw_uk_exec(SW_API_STP_PT_STATE_SET, qca_switch_get_switch_id(), 0, sw_port->priv.port_num, (a_uintptr_t)qca_stp_state_map[state]))
+ 		return -1;
+ 
++        if(qca_stp_state_map[state] == QCA_STP_STATE_BLOCK) {
++                int fc_force_mode, fc_status;
++
++                sw_uk_exec(SW_API_PT_FLOWCTRL_MODE_GET, qca_switch_get_switch_id(), sw_port->priv.port_num, &fc_force_mode);
++                if (!fc_force_mode)
++                        sw_uk_exec(SW_API_PT_FLOWCTRL_MODE_SET, qca_switch_get_switch_id(), sw_port->priv.port_num, 1);
++                sw_uk_exec(SW_API_PT_FLOWCTRL_GET,qca_switch_get_switch_id(), sw_port->priv.port_num, &fc_status);
++                if (fc_status) {
++                        sw_uk_exec(SW_API_PT_FLOWCTRL_SET, qca_switch_get_switch_id(), sw_port->priv.port_num, 0);
++                        usleep(500);
++                        sw_uk_exec(SW_API_PT_FLOWCTRL_SET, qca_switch_get_switch_id(), sw_port->priv.port_num, 1);
++                }
++                if (!fc_force_mode)
++                        sw_uk_exec(SW_API_PT_FLOWCTRL_MODE_SET, qca_switch_get_switch_id(), sw_port->priv.port_num, 0);
++        }
++
+ 	if(qca_stp_state_map[state] == QCA_STP_STATE_DISABLE || qca_stp_state_map[state] == QCA_STP_STATE_BLOCK)
+ 		qca_switch_flush_data_channel_fdb(sw_port);
+ 

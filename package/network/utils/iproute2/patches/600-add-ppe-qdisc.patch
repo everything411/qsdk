@@ -1,0 +1,1171 @@
+Author: Amruth S <quic_amrus@quicinc.com>
+Date:   Fri Sep 30 05:04:49 2022 -0700
+
+    [iproute2] Add support for PPE Qdiscs
+
+    Change-Id: I5d0dd7e9eb61974b8e539aca301f575ad2d9d909
+    Signed-off-by: Amruth S <quic_amrus@quicinc.com>
+
+Index: iproute2-5.0.0/include/uapi/linux/pkt_sched.h
+===================================================================
+--- iproute2-5.0.0.orig/include/uapi/linux/pkt_sched.h
++++ iproute2-5.0.0/include/uapi/linux/pkt_sched.h
+@@ -140,6 +140,21 @@ struct tc_nssfifo_qopt {
+ 	__u8	accel_mode;	/* Dictates which data plane offloads the qdisc */
+ };
+ 
++/* PPEFIFO section */
++
++enum {
++        TCA_PPEFIFO_UNSPEC,
++        TCA_PPEFIFO_PARMS,
++        __TCA_PPEFIFO_MAX
++};
++
++#define TCA_PPEFIFO_MAX (__TCA_PPEFIFO_MAX - 1)
++
++struct tc_ppefifo_qopt {
++        __u32   limit;		/* Queue length: bytes for bfifo, packets for pfifo */
++        __u8    set_default;	/* Sets qdisc to be the default qdisc for enqueue */
++};
++
+ /* NSSWRED section */
+ 
+ enum {
+@@ -188,6 +203,24 @@ struct tc_nsswred_qopt {
+ 	__u8	accel_mode;		/* Dictates which data plane offloads the qdisc */
+ };
+ 
++/* PPERED section */
++
++enum {
++        TCA_PPERED_UNSPEC,
++        TCA_PPERED_PARMS,
++        __TCA_PPERED_MAX
++};
++
++#define TCA_PPERED_MAX (__TCA_PPERED_MAX - 1)
++
++struct tc_ppered_qopt {
++	__u32	limit;				/* Queue length */
++	struct	tc_red_alg_parameter rap;	/* RED algorithm parameters */
++	__u8	ecn;				/* Setting ECN bit or dropping */
++	__u8	set_default;			/* Sets qdisc to be the default for enqueue */
++};
++
++
+ /* NSSCODEL section */
+ 
+ enum {
+@@ -243,6 +276,22 @@ struct tc_nsstbl_qopt {
+ 	__u8	accel_mode;	/* Dictates which data plane offloads the qdisc */
+ };
+ 
++/* PPETBL section */
++
++enum {
++        TCA_PPETBL_UNSPEC,
++        TCA_PPETBL_PARMS,
++        __TCA_PPETBL_MAX
++};
++
++#define TCA_PPETBL_MAX  (__TCA_PPETBL_MAX - 1)
++
++struct tc_ppetbl_qopt {
++       __u32 rate;	/* Limiting rate of TBF */
++       __u32 burst;	/* Maximum burst size */
++       __u32 mtu;	/* Max size of packet, or minumim burst size */
++};
++
+ /* NSSPRIO section */
+ 
+ #define TCA_NSSPRIO_MAX_BANDS 256
+@@ -260,6 +309,22 @@ struct tc_nssprio_qopt {
+ 	__u8	accel_mode;	/* Dictates which data plane offloads the qdisc */
+ };
+ 
++/* PPEPRIO section */
++
++#define TCA_PPEPRIO_MAX_BANDS 4
++
++enum {
++        TCA_PPEPRIO_UNSPEC,
++        TCA_PPEPRIO_PARMS,
++        __TCA_PPEPRIO_MAX
++};
++
++#define TCA_PPEPRIO_MAX (__TCA_PPEPRIO_MAX - 1)
++
++struct tc_ppeprio_qopt {
++	int	bands;		/* Number of bands */
++};
++
+ /* NSSBF section */
+ 
+ enum {
+@@ -283,6 +348,7 @@ struct tc_nssbf_qopt {
+ 	__u8	accel_mode;	/* Dictates which data plane offloads the qdisc */
+ };
+ 
++
+ /* NSSWRR section */
+ 
+ enum {
+@@ -302,6 +368,25 @@ struct tc_nsswrr_qopt {
+ 	__u8	accel_mode;	/* Dictates which data plane offloads the qdisc */
+ };
+ 
++/* PPEWRR section */
++
++enum {
++        TCA_PPEWRR_UNSPEC,
++        TCA_PPEWRR_CLASS_PARMS,
++        TCA_PPEWRR_QDISC_PARMS,
++        __TCA_PPEWRR_MAX
++};
++
++#define TCA_PPEWRR_MAX  (__TCA_PPEWRR_MAX - 1)
++
++struct tc_ppewrr_class_qopt {
++        __u32   quantum;        /* Weight associated to this class */
++};
++
++struct tc_ppewrr_qopt {
++};
++
++
+ /* NSSWFQ section */
+ 
+ enum {
+@@ -321,6 +406,24 @@ struct tc_nsswfq_qopt {
+ 	__u8	accel_mode;	/* Dictates which data plane offloads the qdisc */
+ };
+ 
++/* PPEWFQ section*/
++
++enum {
++        TCA_PPEWFQ_UNSPEC,
++        TCA_PPEWFQ_CLASS_PARMS,
++        TCA_PPEWFQ_QDISC_PARMS,
++        __TCA_PPEWFQ_MAX
++};
++
++#define TCA_PPEWFQ_MAX  (__TCA_PPEWFQ_MAX - 1)
++
++struct tc_ppewfq_class_qopt {
++        __u32   quantum;        /* Weight associated to this class */
++};
++
++struct tc_ppewfq_qopt {
++};
++
+ /* NSSHTB section */
+ 
+ enum {
+@@ -347,6 +450,31 @@ struct tc_nsshtb_qopt {
+ 	__u8	accel_mode;	/* Dictates which data plane offloads the qdisc */
+ };
+ 
++/* PPEHTB section */
++
++enum {
++        TCA_PPEHTB_UNSPEC,
++        TCA_PPEHTB_CLASS_PARMS,
++        TCA_PPEHTB_QDISC_PARMS,
++        __TCA_PPEHTB_MAX
++};
++
++#define TCA_PPEHTB_MAX  (__TCA_PPEHTB_MAX - 1)
++
++struct tc_ppehtb_class_qopt {
++	__u32   burst;		/* Allowed burst size */
++	__u32   rate;		/* Allowed bandwidth for this class */
++	__u32   cburst;		/* Maximum burst size */
++	__u32   crate;		/* Maximum bandwidth for this class */
++	__u32   quantum;	/* Quantum allocation for DRR */
++	__u32   priority;	/* Priority value associated with this class */
++	__u32   overhead;	/* Overhead in bytes per packet */
++};
++
++struct tc_ppehtb_qopt {
++	__u32	r2q;		/* Rate to quantum ratio */
++};
++
+ /* NSSBLACKHOLE section */
+ 
+ enum {
+Index: iproute2-5.0.0/tc/Makefile
+===================================================================
+--- iproute2-5.0.0.orig/tc/Makefile
++++ iproute2-5.0.0/tc/Makefile
+@@ -78,6 +78,7 @@ TCMODULES += q_cbs.o
+ TCMODULES += q_etf.o
+ TCMODULES += q_taprio.o
+ TCMODULES += q_nss.o
++TCMODULES += q_ppe.o
+ 
+ TCSO :=
+ ifeq ($(TC_CONFIG_ATM),y)
+Index: iproute2-5.0.0/tc/q_ppe.c
+===================================================================
+--- /dev/null
++++ iproute2-5.0.0/tc/q_ppe.c
+@@ -0,0 +1,958 @@
++/*
++ **************************************************************************
++ * Copyright (c) 2015, 2018, 2020, The Linux Foundation. All rights reserved.
++ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
++ *
++ * Permission to use, copy, modify, and/or distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ **************************************************************************
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <syslog.h>
++#include <fcntl.h>
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
++#include <string.h>
++#include <math.h>
++
++#include "utils.h"
++#include "tc_util.h"
++#include "tc_red.h"
++
++/* ======================== PPERED =======================*/
++
++static void ppered_explain(void)
++{
++	fprintf(stderr, "Usage: ...  ppered limit BYTES avpkt BYTES [ min BYTES ] [ max BYTES ] [ probability VALUE ]\n");
++	fprintf(stderr, "                   [ burst PACKETS ] [ecn] [ set_default ] \n");
++}
++
++
++static int ppered_parse_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	struct rtattr *tail;
++	struct tc_ppered_qopt opt;
++
++	unsigned burst = 0;
++	unsigned avpkt = 0;
++	double probability = 0.0;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (strcmp(*argv, "limit") == 0) {
++			NEXT_ARG();
++			if (get_size(&opt.limit, *argv)) {
++				fprintf(stderr, "Illegal \"limit\"\n");
++				return -1;
++			}
++		} else if (strcmp(*argv, "set_default") == 0) {
++			opt.set_default = 1;
++		} else if (strcmp(*argv, "min") == 0) {
++			NEXT_ARG();
++			if (get_size(&opt.rap.min, *argv)) {
++				fprintf(stderr, "Illegal \"min\"\n");
++				return -1;
++			}
++		} else if (strcmp(*argv, "max") == 0) {
++			NEXT_ARG();
++			if (get_size(&opt.rap.max, *argv)) {
++				fprintf(stderr, "Illegal \"max\"\n");
++				return -1;
++			}
++		} else if (strcmp(*argv, "burst") == 0) {
++			NEXT_ARG();
++			if (get_unsigned(&burst, *argv, 0)) {
++				fprintf(stderr, "Illegal \"burst\"\n");
++				return -1;
++			}
++		} else if (strcmp(*argv, "avpkt") == 0) {
++			NEXT_ARG();
++			if (get_size(&avpkt, *argv)) {
++				fprintf(stderr, "Illegal \"avpkt\"\n");
++				return -1;
++			}
++		} else if (strcmp(*argv, "probability") == 0) {
++			NEXT_ARG();
++			if (sscanf(*argv, "%lg", &probability) != 1) {
++				fprintf(stderr, "Illegal \"probability\"\n");
++				return -1;
++			}
++		} else if (strcmp(*argv, "ecn") == 0) {
++			opt.ecn = 1;
++		} else if (strcmp(*argv, "help") == 0) {
++			ppered_explain();
++			return -1;
++		} else {
++			fprintf(stderr, "What is \"%s\"?\n", *argv);
++			ppered_explain();
++			return -1;
++		}
++		argc--; argv++;
++	}
++
++	if (!opt.limit || !avpkt) {
++		fprintf(stderr, "Require limit, avpkt");
++		return -1;
++	}
++
++	/*
++	 * Compute default min/max thresholds based on
++	 * Sally Floyd's recommendations:
++	 * http://www.icir.org/floyd/REDparameters.txt
++	 */
++	if (!opt.rap.max)
++		opt.rap.max = opt.rap.min ? opt.rap.min * 3 : opt.limit / 4;
++	if (!opt.rap.min)
++		opt.rap.min = opt.rap.max / 3;
++	if (!burst)
++		burst = (2 * opt.rap.min + opt.rap.max) / (3 * avpkt);
++	if ((opt.rap.exp_weight_factor = tc_red_eval_ewma(opt.rap.min, burst, avpkt)) < 0) {
++		fprintf(stderr, "Failed to calculate EWMA constant.\n");
++		return -1;
++	}
++
++	/*
++	 * project [0.0-1.0] to [0-255] to avoid floating point calculation
++	 */
++	opt.rap.probability = probability * (pow(2, 8)-1);
++
++	tail = NLMSG_TAIL(n);
++	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
++	addattr_l(n, 1024, TCA_PPERED_PARMS, &opt, sizeof(opt));
++	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
++
++	return 0;
++}
++
++static int ppered_print_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPERED_MAX + 1];
++	struct tc_ppered_qopt *qopt;
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPERED_MAX, opt);
++
++	if (tb[TCA_PPERED_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPERED_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPERED_PARMS]);
++
++	if (strcmp(qu->id, "ppered") == 0){
++		double prob = (double)qopt->rap.probability;
++		fprintf(f, "limit %d, min: %d max: %d, probability %.2f\n",
++					qopt->limit, qopt->rap.min,qopt->rap.max,prob/255);
++	}
++
++	if (qopt->ecn)
++		fprintf(f, "ECN enabled ");
++        if (qopt->set_default)
++                fprintf(f, "set_default ");
++
++	return 0;
++}
++
++struct qdisc_util ppered_qdisc_util = {
++	.id		= "ppered",
++	.parse_qopt	= ppered_parse_opt,
++	.print_qopt	= ppered_print_opt,
++};
++
++
++/* ======================== PPEFIFO =======================*/
++
++static void ppefifo_explain(void)
++{
++	fprintf(stderr, "Usage: ...  ppepfifo [ limit PACKETS ] [ set_default ] \n");
++}
++
++static int ppefifo_parse_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	struct rtattr *tail;
++	struct tc_ppefifo_qopt opt;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (strcmp(*argv, "limit") == 0) {
++			NEXT_ARG();
++			if (get_size(&opt.limit, *argv) || opt.limit == 0) {
++				fprintf(stderr, "Illegal \"limit\"\n");
++				return -1;
++			}
++		} else if (strcmp(*argv, "set_default") == 0) {
++			opt.set_default = 1;
++		} else if (strcmp(*argv, "help") == 0) {
++			ppefifo_explain();
++			return -1;
++		} else {
++			fprintf(stderr, "What is \"%s\"?\n", *argv);
++			ppefifo_explain();
++			return -1;
++		}
++		argc--; argv++;
++	}
++
++	tail = NLMSG_TAIL(n);
++	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
++	addattr_l(n, 1024, TCA_PPEFIFO_PARMS, &opt, sizeof(opt));
++	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
++
++	return 0;
++}
++
++static int ppefifo_print_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPEFIFO_MAX + 1];
++	struct tc_ppefifo_qopt *qopt;
++	SPRINT_BUF(b1);
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPEFIFO_MAX, opt);
++
++	if (tb[TCA_PPEFIFO_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPEFIFO_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPEFIFO_PARMS]);
++
++	if (strcmp(qu->id, "ppebfifo") == 0)
++		fprintf(f, "limit %s ", sprint_size(qopt->limit, b1));
++	else
++		fprintf(f, "limit %up ", qopt->limit);
++
++	if (qopt->set_default)
++		fprintf(f, "set_default ");
++
++	return 0;
++}
++
++struct qdisc_util ppepfifo_qdisc_util = {
++	.id		= "ppepfifo",
++	.parse_qopt	= ppefifo_parse_opt,
++	.print_qopt	= ppefifo_print_opt,
++};
++
++struct qdisc_util ppebfifo_qdisc_util = {
++	.id		= "ppebfifo",
++	.parse_qopt	= ppefifo_parse_opt,
++	.print_qopt	= ppefifo_print_opt,
++};
++
++/* ======================== PPETBL =======================*/
++
++static void ppetbl_explain(void)
++{
++	fprintf(stderr, "Usage: ... ppetbl burst BYTES rate BPS [ mtu BYTES ] \n");
++}
++
++static int ppetbl_parse_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	int ok = 0;
++	struct rtattr *tail;
++	struct tc_ppetbl_qopt opt;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (strcmp(*argv, "burst") == 0 ||
++			   strcmp(*argv, "buffer") == 0 ||
++			   strcmp(*argv, "maxburst") == 0) {
++			NEXT_ARG();
++			if (opt.burst) {
++				fprintf(stderr, "Double \"buffer/burst\" spec\n");
++				return -1;
++			}
++			if (get_size(&opt.burst, *argv)) {
++				fprintf(stderr, "Illegal \"burst\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "mtu") == 0 ||
++			   strcmp(*argv, "minburst") == 0) {
++			NEXT_ARG();
++			if (opt.mtu) {
++				fprintf(stderr, "Double \"mtu/minburst\" spec\n");
++				return -1;
++			}
++			if (get_size(&opt.mtu, *argv)) {
++				fprintf(stderr, "Illegal \"mtu\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "rate") == 0) {
++			NEXT_ARG();
++			if (opt.rate) {
++				fprintf(stderr, "Double \"rate\" spec\n");
++				return -1;
++			}
++			if (get_rate(&opt.rate, *argv)) {
++				fprintf(stderr, "Illegal \"rate\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "help") == 0) {
++			ppetbl_explain();
++			return -1;
++		} else {
++			fprintf(stderr, "What is \"%s\"?\n", *argv);
++			ppetbl_explain();
++			return -1;
++		}
++		argc--; argv++;
++	}
++
++	if (!ok) {
++		ppetbl_explain();
++		return -1;
++	}
++
++	if (!opt.rate || !opt.burst) {
++		fprintf(stderr, "Both \"rate\" and \"burst\" are required.\n");
++		return -1;
++	}
++
++	tail = NLMSG_TAIL(n);
++	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
++	addattr_l(n, 1024, TCA_PPETBL_PARMS, &opt, sizeof(opt));
++	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
++
++	return 0;
++}
++
++static int ppetbl_print_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPETBL_MAX + 1];
++	struct tc_ppetbl_qopt *qopt;
++	SPRINT_BUF(b1);
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPETBL_MAX, opt);
++
++	if (tb[TCA_PPETBL_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPETBL_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPETBL_PARMS]);
++
++	fprintf(f, "buffer/maxburst %s ", sprint_size(qopt->burst, b1));
++	fprintf(f, "rate %s ", sprint_rate(qopt->rate, b1));
++	fprintf(f, "mtu %s ", sprint_size(qopt->mtu, b1));
++
++	return 0;
++}
++
++struct qdisc_util ppetbl_qdisc_util = {
++	.id		= "ppetbl",
++	.parse_qopt	= ppetbl_parse_opt,
++	.print_qopt	= ppetbl_print_opt,
++};
++
++/* ======================== PPEPRIO =======================*/
++
++static void ppeprio_explain(void)
++{
++	fprintf(stderr, "Usage: ... ppeprio [ bands NUMBER (default 2 & [max 4(non-root)]) ] \n");
++}
++
++static int ppeprio_parse_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	int ok = 0;
++	struct rtattr *tail;
++	struct tc_ppeprio_qopt opt;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (strcmp(*argv, "bands") == 0) {
++			NEXT_ARG();
++			if (get_unsigned(&opt.bands, *argv, 0)) {
++				fprintf(stderr, "Illegal \"limit\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "help") == 0) {
++			ppeprio_explain();
++			return -1;
++		} else {
++			fprintf(stderr, "What is \"%s\"?\n", *argv);
++			ppeprio_explain();
++			return -1;
++		}
++		argc--; argv++;
++	}
++
++	if (!ok) {
++		opt.bands = TCA_PPEPRIO_MAX_BANDS/2;
++	} else if (opt.bands > TCA_PPEPRIO_MAX_BANDS) {
++		ppeprio_explain();
++		return -1;
++	}
++
++	tail = NLMSG_TAIL(n);
++	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
++	addattr_l(n, 1024, TCA_PPEPRIO_PARMS, &opt, sizeof(opt));
++	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
++
++	return 0;
++}
++
++static int ppeprio_print_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPEPRIO_MAX + 1];
++	struct tc_ppeprio_qopt *qopt;
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPEPRIO_MAX, opt);
++
++	if (tb[TCA_PPEPRIO_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPEPRIO_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPEPRIO_PARMS]);
++
++	fprintf(f, "bands %u ", qopt->bands);
++
++	return 0;
++}
++
++struct qdisc_util ppeprio_qdisc_util = {
++	.id		= "ppeprio",
++	.parse_qopt	= ppeprio_parse_opt,
++	.print_qopt	= ppeprio_print_opt,
++};
++
++/* ======================== PPEWRR =======================*/
++
++static void ppewrr_explain_qdisc(void)
++{
++	fprintf(stderr,	"Usage (qdisc): ... ppewrr\n");
++}
++
++static void ppewrr_explain_class(void)
++{
++	fprintf(stderr, "Usage (class): ... ppewrr quantum PACKETS ]\n");
++}
++
++static int ppewrr_parse_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	struct tc_ppewrr_qopt opt;
++	struct rtattr *tail;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (matches(*argv, "help") == 0) {
++			ppewrr_explain_qdisc();
++			return -1;
++		} else {
++			fprintf(stderr, "What is \"%s\" ?\n", *argv);
++			ppewrr_explain_qdisc();
++			return -1;
++		}
++		argc--, argv++;
++	}
++
++	return 0;
++}
++
++static int ppewrr_print_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPEWRR_MAX + 1];
++	struct tc_ppewrr_qopt *qopt;
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPEWRR_MAX, opt);
++
++	if (tb[TCA_PPEWRR_QDISC_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPEWRR_QDISC_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPEWRR_QDISC_PARMS]);
++
++	return 0;
++}
++
++static int ppewrr_parse_class_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	int ok = 0;
++	struct rtattr *tail;
++	struct tc_ppewrr_class_qopt opt;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (strcmp(*argv, "quantum") == 0) {
++			NEXT_ARG();
++			if (get_u32(&opt.quantum, *argv, 10)) {
++				fprintf(stderr, "Illegal \"quantum\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "help") == 0) {
++			ppewrr_explain_class();
++			return -1;
++		} else {
++			fprintf(stderr, "What is \"%s\"?\n", *argv);
++			ppewrr_explain_class();
++			return -1;
++		}
++		argc--; argv++;
++	}
++
++	if (!ok) {
++		ppewrr_explain_class();
++		return -1;
++	}
++
++	tail = NLMSG_TAIL(n);
++	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
++	addattr_l(n, 1024, TCA_PPEWRR_CLASS_PARMS, &opt, sizeof(opt));
++	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
++
++	return 0;
++}
++
++static int ppewrr_print_class_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPEWRR_MAX + 1];
++	struct tc_ppewrr_class_qopt *qopt;
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPEWRR_MAX, opt);
++
++	if (tb[TCA_PPEWRR_CLASS_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPEWRR_CLASS_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPEWRR_CLASS_PARMS]);
++
++	fprintf(f, "quantum %up ", qopt->quantum);
++	return 0;
++}
++
++struct qdisc_util ppewrr_qdisc_util = {
++	.id		= "ppewrr",
++	.parse_qopt	= ppewrr_parse_opt,
++	.print_qopt	= ppewrr_print_opt,
++	.parse_copt	= ppewrr_parse_class_opt,
++	.print_copt	= ppewrr_print_class_opt,
++};
++
++/* ======================== PPEWFQ =======================*/
++
++static void ppewfq_explain_qdisc(void)
++{
++	fprintf(stderr, "Usage (qdisc): ... ppewfq \n");
++}
++
++static void ppewfq_explain_class(void)
++{
++	fprintf(stderr, "Usage (class): ... ppewfq quantum BYTES ]\n");
++}
++
++static int ppewfq_parse_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	struct tc_ppewfq_qopt opt;
++	struct rtattr *tail;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (matches(*argv, "help") == 0) {
++			ppewfq_explain_qdisc();
++			return -1;
++		} else {
++			fprintf(stderr, "PPEWFQ: What is \"%s\" ?\n", *argv);
++			ppewfq_explain_qdisc();
++			return -1;
++		}
++		argc--, argv++;
++	}
++
++	return 0;
++}
++
++static int ppewfq_print_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPEWFQ_MAX + 1];
++	struct tc_ppewfq_qopt *qopt;
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPEWFQ_MAX, opt);
++
++	if (tb[TCA_PPEWFQ_QDISC_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPEWFQ_QDISC_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPEWFQ_QDISC_PARMS]);
++
++	return 0;
++}
++
++static int ppewfq_parse_class_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	int ok = 0;
++	struct rtattr *tail;
++	struct tc_ppewfq_class_qopt opt;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (strcmp(*argv, "quantum") == 0) {
++			NEXT_ARG();
++			if (get_size(&opt.quantum, *argv)) {
++				fprintf(stderr, "Illegal \"quantum\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "help") == 0) {
++			ppewfq_explain_class();
++			return -1;
++		} else {
++			fprintf(stderr, "What is \"%s\"?\n", *argv);
++			ppewfq_explain_class();
++			return -1;
++		}
++		argc--; argv++;
++	}
++
++	if (!ok) {
++		ppewfq_explain_class();
++		return -1;
++	}
++
++	tail = NLMSG_TAIL(n);
++	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
++	addattr_l(n, 1024, TCA_PPEWFQ_CLASS_PARMS, &opt, sizeof(opt));
++	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
++
++	return 0;
++}
++
++static int ppewfq_print_class_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPEWFQ_MAX + 1];
++	struct tc_ppewfq_class_qopt *qopt;
++	SPRINT_BUF(b1);
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPEWFQ_MAX, opt);
++
++	if (tb[TCA_PPEWFQ_CLASS_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPEWFQ_CLASS_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPEWFQ_CLASS_PARMS]);
++
++	fprintf(f, "quantum %s ", sprint_size(qopt->quantum, b1));
++
++	return 0;
++}
++
++struct qdisc_util ppewfq_qdisc_util = {
++	.id		= "ppewfq",
++	.parse_qopt	= ppewfq_parse_opt,
++	.print_qopt	= ppewfq_print_opt,
++	.parse_copt	= ppewfq_parse_class_opt,
++	.print_copt	= ppewfq_print_class_opt,
++};
++
++/* ======================== PPEHTB =======================*/
++
++static void ppehtb_explain_qdisc(void)
++{
++	fprintf(stderr,
++		"Usage: ... ppehtb [ r2q ] \n"
++	);
++}
++
++static void ppehtb_explain_class(void)
++{
++	fprintf(stderr, "Usage: ... ppehtb priority 0-3 [ quantum BYTES ] [ rate BPS ] [ burst BYTES ] [crate BPS ] [ cburst BYTES ]\n");
++	fprintf(stderr, "                 [ overhead BYTES ] \n");
++}
++
++static void ppehtb_explain1(char *arg)
++{
++	fprintf(stderr, "ppehtb: Illegal \"%s\"\n", arg);
++}
++
++static int ppehtb_parse_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	struct tc_ppehtb_qopt opt;
++	struct rtattr *tail;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (strcmp(*argv, "r2q") == 0) {
++			NEXT_ARG();
++			if (opt.r2q != 0) {
++				fprintf(stderr, "PPEHTB: Double \"r2q\"\n");
++				return -1;
++			}
++			if (get_u32(&opt.r2q, *argv, 10) < 0) {
++				ppehtb_explain1("r2q");
++				return -1;
++			}
++		} else if (strcmp(*argv, "help") == 0) {
++			ppehtb_explain_qdisc();
++			return -1;
++		} else {
++			fprintf(stderr, "PPEHTB: What is \"%s\" ?\n", *argv);
++			ppehtb_explain_qdisc();
++			return -1;
++		}
++		argc--, argv++;
++	}
++
++	tail = NLMSG_TAIL(n);
++	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
++	addattr_l(n, 1024, TCA_PPEHTB_QDISC_PARMS, &opt, sizeof(opt));
++	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
++
++	return 0;
++}
++
++static int ppehtb_print_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPEHTB_MAX + 1];
++	struct tc_ppehtb_qopt *qopt;
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPEHTB_MAX, opt);
++
++	if (tb[TCA_PPEHTB_QDISC_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPEHTB_QDISC_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPEHTB_QDISC_PARMS]);
++
++	if (qopt->r2q != 0)
++		fprintf(f, "r2q %u ", qopt->r2q);
++
++	return 0;
++}
++
++static int ppehtb_parse_class_opt(struct qdisc_util *qu, int argc, char **argv, struct nlmsghdr *n, const char *dev)
++{
++	int ok = 0;
++	struct rtattr *tail;
++	struct tc_ppehtb_class_qopt opt;
++	int crate = 0;
++
++	memset(&opt, 0, sizeof(opt));
++
++	while (argc > 0) {
++		if (strcmp(*argv, "burst") == 0) {
++			NEXT_ARG();
++			if (opt.burst) {
++				fprintf(stderr, "Double \"burst\" spec\n");
++				return -1;
++			}
++			if (get_size(&opt.burst, *argv)) {
++				fprintf(stderr, "Illegal \"burst\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "rate") == 0) {
++			NEXT_ARG();
++			if (opt.rate) {
++				fprintf(stderr, "Double \"rate\" spec\n");
++				return -1;
++			}
++			if (get_rate(&opt.rate, *argv)) {
++				fprintf(stderr, "Illegal \"rate\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "cburst") == 0) {
++			NEXT_ARG();
++			if (opt.cburst) {
++				fprintf(stderr, "Double \"cburst\" spec\n");
++				return -1;
++			}
++			if (get_size(&opt.cburst, *argv)) {
++				fprintf(stderr, "Illegal \"cburst\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "crate") == 0) {
++			NEXT_ARG();
++			if (opt.crate) {
++				fprintf(stderr, "Double \"crate\" spec\n");
++				return -1;
++			}
++			if (get_rate(&opt.crate, *argv)) {
++				fprintf(stderr, "Illegal \"crate\"\n");
++				return -1;
++			}
++			crate++;
++			ok++;
++		} else if (strcmp(*argv, "priority") == 0) {
++			NEXT_ARG();
++			if (opt.priority) {
++				fprintf(stderr, "Double \"priority\" spec\n");
++				return -1;
++			}
++			if (get_u32(&opt.priority, *argv, 10) < 0) {
++				fprintf(stderr, "Illegal \"priority\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "quantum") == 0) {
++			NEXT_ARG();
++			if (opt.quantum) {
++				fprintf(stderr, "Double \"quantum\" spec\n");
++				return -1;
++			}
++			if (get_size(&opt.quantum, *argv)) {
++				fprintf(stderr, "Illegal \"quantum\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "overhead") == 0) {
++			NEXT_ARG();
++			if (opt.overhead) {
++				fprintf(stderr, "Double \"overhead\" spec\n");
++				return -1;
++			}
++			if (get_size(&opt.overhead, *argv)) {
++				fprintf(stderr, "Illegal \"overhead\"\n");
++				return -1;
++			}
++			ok++;
++		} else if (strcmp(*argv, "help") == 0) {
++			ppehtb_explain_class();
++			return -1;
++		} else {
++			fprintf(stderr, "What is \"%s\"?\n", *argv);
++			ppehtb_explain_class();
++			return -1;
++		}
++		argc--; argv++;
++	}
++
++	if (!ok) {
++		ppehtb_explain_class();
++		return -1;
++	}
++
++	if (opt.rate && !opt.burst) {
++		fprintf(stderr, "\"burst\" required if \"rate\" is specified.\n");
++		return -1;
++	}
++
++	if (!crate) {
++		fprintf(stderr, "\"crate\" is required.\n");
++		return -1;
++	}
++
++	if (opt.crate && !opt.cburst) {
++		fprintf(stderr, "\"cburst\" required if \"crate\" is non-zero.\n");
++		return -1;
++	}
++
++	if (opt.priority > 3) {
++		fprintf(stderr, "\"priority\" should be an integer between 0 and 3.\n");
++		return -1;
++	}
++
++	tail = NLMSG_TAIL(n);
++	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
++	addattr_l(n, 1024, TCA_PPEHTB_CLASS_PARMS, &opt, sizeof(opt));
++	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
++
++	return 0;
++}
++
++static int ppehtb_print_class_opt(struct qdisc_util *qu, FILE *f, struct rtattr *opt)
++{
++	struct rtattr *tb[TCA_PPEHTB_MAX + 1];
++	struct tc_ppehtb_class_qopt *qopt;
++	SPRINT_BUF(b1);
++
++	if (opt == NULL)
++		return 0;
++
++	parse_rtattr_nested(tb, TCA_PPEHTB_MAX, opt);
++
++	if (tb[TCA_PPEHTB_CLASS_PARMS] == NULL)
++		return -1;
++
++	if (RTA_PAYLOAD(tb[TCA_PPEHTB_CLASS_PARMS]) < sizeof(*qopt))
++		return -1;
++
++	qopt = RTA_DATA(tb[TCA_PPEHTB_CLASS_PARMS]);
++
++	fprintf(f, "burst %s ", sprint_size(qopt->burst, b1));
++	fprintf(f, "rate %s ", sprint_rate(qopt->rate, b1));
++	fprintf(f, "cburst %s ", sprint_size(qopt->cburst, b1));
++	fprintf(f, "crate %s ", sprint_rate(qopt->crate, b1));
++	fprintf(f, "priority %u ", qopt->priority);
++	fprintf(f, "quantum %s ", sprint_size(qopt->quantum, b1));
++	fprintf(f, "overhead %s ", sprint_size(qopt->overhead, b1));
++
++	return 0;
++}
++
++struct qdisc_util ppehtb_qdisc_util = {
++	.id		= "ppehtb",
++	.parse_qopt	= ppehtb_parse_opt,
++	.print_qopt	= ppehtb_print_opt,
++	.parse_copt	= ppehtb_parse_class_opt,
++	.print_copt	= ppehtb_print_class_opt,
++};
++
++

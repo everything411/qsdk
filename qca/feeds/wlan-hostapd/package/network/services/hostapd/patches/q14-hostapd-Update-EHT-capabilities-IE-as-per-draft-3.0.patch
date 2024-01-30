@@ -1,0 +1,91 @@
+From ea7c208c0c5558dafdd213805696872d81daee6c Mon Sep 17 00:00:00 2001
+From: Yuvarani V <quic_yuvarani@quicinc.com>
+Date: Fri, 14 Jul 2023 10:58:40 +0530
+Subject: [PATCH] hostapd: Update EHT capabilities IE as per draft 3.0
+
+Update EHT capabilities IE definitions as per 11be draft 3.0
+specification.
+
+Add the below EHT capabilities IE definitions,
+EHT MAC Capabilities(Draft 3.1 - 9.4.2.313.2):
+Two BQRs Support - B11(1 Bit)
+EHT Link Adaptation Support - B12,B13(2 Bits)
+
+EHT PHY Capabilities(Draft 3.1 - 9.4.2.313.3):
+20 MHz-Only Limited Capabilities Support - B66(1 Bit)
+20 MHz-Only Triggered MU Beamforming Full BW Feedback And DL MU-MIMO - B67(1 Bit)
+20 MHz-Only M-RU Support - B68(1 Bit)
+
+Signed-off-by: Yuvarani V <quic_yuvarani@quicinc.com>
+---
+ src/ap/ap_config.h           |  3 +++
+ src/ap/ieee802_11_eht.c      | 12 ++++++++++++
+ src/common/ieee802_11_defs.h |  8 ++++++++
+ 3 files changed, 23 insertions(+)
+
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 454a84a..bff0100 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -982,6 +982,9 @@ struct eht_phy_capabilities_info {
+ 	bool non_ofdma_ulmumimo_80mhz;
+ 	bool non_ofdma_ulmumimo_160mhz;
+ 	bool non_ofdma_ulmumimo_320mhz;
++	bool caps_20mhz_only;
++	bool trigger_mubf_fl_bw_fb_dlmumimo_20mhz_only;
++	bool mru_supp_20mhz_only;
+ };
+ 
+ /**
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index d9dfe93..e64ca04 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -163,6 +163,18 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
+ 		cap->phy_cap[EHT_PHYCAP_MU_CAPABILITY_IDX] &=
+ 					~EHT_PHYCAP_NON_OFDMA_UL_MU_MIMO_320MHZ;
+ 
++	if (!hapd->iface->conf->eht_phy_capab.caps_20mhz_only)
++		cap->phy_cap[EHT_PHYCAP_20MHZ_ONLY_CAPS_IDX] &=
++			~EHT_PHYCAP_20MHZ_ONLY_CAPS;
++
++	if (!hapd->iface->conf->eht_phy_capab.trigger_mubf_fl_bw_fb_dlmumimo_20mhz_only)
++		cap->phy_cap[EHT_PHYCAP_20MHZ_ONLY_TRIGGER_MUBF_FL_BW_FB_DLMUMIMO_IDX] &=
++			~EHT_PHYCAP_20MHZ_ONLY_TRIGGER_MUBF_FL_BW_FB_DLMUMIMO;
++
++	if (!hapd->iface->conf->eht_phy_capab.mru_supp_20mhz_only)
++		cap->phy_cap[EHT_PHYCAP_20MHZ_ONLY_MRU_SUPP_IDX] &=
++			~EHT_PHYCAP_20MHZ_ONLY_MRU_SUPP;
++
+ 	pos = cap->optional;
+ 
+ 	mcs_nss_len = ieee80211_eht_mcs_set_size(mode->mode,
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index edd1572..5d890e2 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2550,6 +2550,8 @@ struct ieee80211_eht_operation {
+ #define EHT_MACCAP_MAX_MPDU_LEN_7991		BIT(6)
+ #define EHT_MACCAP_MAX_MPDU_LEN_11454		BIT(7)
+ #define EHT_MACCAP_MAX_AMPDU_LEN_EXP_EXT	BIT(8)
++#define EHT_MACCAP_TWO_BQRS_SUPP                BIT(11)
++#define EHT_MACCAP_EHT_LINK_ADAPTATION_SUPP     (BIT(12) | BIT(13))
+ 
+ /* Figure 9-1002ag: EHT PHY Capabilities Information field format
+  * _IDX indicates the octet index within the field */
+@@ -2576,6 +2578,12 @@ struct ieee80211_eht_operation {
+ #define EHT_PHYCAP_MU_BEAMFORMER_MASK	(EHT_PHYCAP_MU_BEAMFORMER_80MHZ | \
+ 					 EHT_PHYCAP_MU_BEAMFORMER_160MHZ | \
+ 					 EHT_PHYCAP_MU_BEAMFORMER_320MHZ)
++#define EHT_PHYCAP_20MHZ_ONLY_CAPS_IDX          8
++#define EHT_PHYCAP_20MHZ_ONLY_CAPS              ((u8) BIT(2))
++#define EHT_PHYCAP_20MHZ_ONLY_TRIGGER_MUBF_FL_BW_FB_DLMUMIMO_IDX 8
++#define EHT_PHYCAP_20MHZ_ONLY_TRIGGER_MUBF_FL_BW_FB_DLMUMIMO     ((u8) BIT(3))
++#define EHT_PHYCAP_20MHZ_ONLY_MRU_SUPP_IDX      8
++#define EHT_PHYCAP_20MHZ_ONLY_MRU_SUPP          ((u8) BIT(4))
+ 
+ /* Figure 9-1002ah: Supported EHT-MCS and NSS Set field format */
+ #define EHT_PHYCAP_MCS_NSS_LEN_20MHZ_ONLY	4
+-- 
+2.17.1
+

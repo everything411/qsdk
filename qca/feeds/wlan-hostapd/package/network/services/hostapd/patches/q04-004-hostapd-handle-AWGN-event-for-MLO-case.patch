@@ -1,0 +1,50 @@
+From 44f56bec01ba5d06d26c065001dc11a10dab037a Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Sat, 7 Jan 2023 23:21:37 +0530
+Subject: [PATCH] hostapd: handle AWGN event for MLO case
+
+During MLO operation, AWGN event needs to be routed to each
+BSSes under the MLD. Add support to do that.
+
+Now since it is possible that the event handler may be called
+for BSS which is not a 6 GHz BSS, hence, add an appropriate
+condition check in the handler.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/interference.c              | 4 ++++
+ src/drivers/driver_nl80211_event.c | 3 +++
+ 2 files changed, 7 insertions(+)
+
+diff --git a/src/ap/interference.c b/src/ap/interference.c
+index 1d66d6f..3dbfb77 100644
+--- a/src/ap/interference.c
++++ b/src/ap/interference.c
+@@ -361,6 +361,10 @@ int hostapd_intf_awgn_detected(struct hostapd_iface *iface, int freq, int chan_w
+ 	int new_centre_freq;
+ 	int temp_width;
+ 	struct hostapd_hw_modes *mode = iface->current_mode;
++	int curr_freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
++
++	if (!is_6ghz_freq(curr_freq))
++		return 0;
+ 
+ 	wpa_printf(MSG_DEBUG,
+ 		   "input freq=%d, chan_width=%d, cf1=%d cf2=%d"
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index ee10477..313c584 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3377,6 +3377,9 @@ static bool check_route_global_event(int cmd)
+ 		 * whether the event is applicable for that BSS or not
+ 		 */
+ 	case NL80211_CMD_WIPHY_REG_CHANGE:
++	case NL80211_CMD_AWGN_DETECT:
++		/* safe to route this command too like RADAR_DETECT */
++
+ 		/* These commands are passed to each bss of the MLD */
+ 		return true;
+ 	case NL80211_CMD_CH_SWITCH_NOTIFY:
+-- 
+2.17.1
+

@@ -1,0 +1,75 @@
+Author: Subhash Kumar Katnapally <quic_skatnapa@quicinc.com>
+Date:   Tue Feb 21 17:15:35 2023 +0530
+
+    config-netifd: Avoid deleting MLO bond netdevice
+
+    Avoid deleting MLO bond netdevice by netifd
+
+    Change-Id: I1ccbe32c214a323d1d9014df041f77a8b1887e54
+    Signed-off-by: Subhash Kumar Katnapally <quic_skatnapa@quicinc.com>
+
+Index: netifd-2021-01-09-753c351b/system-linux.c
+===================================================================
+--- netifd-2021-01-09-753c351b.orig/system-linux.c
++++ netifd-2021-01-09-753c351b/system-linux.c
+@@ -1141,6 +1141,32 @@ out:
+ }
+ 
+ /*
++ * system_is_bonding_mode_mlo()
++ *     	Check if iface is bond MLO or not
++ */
++static bool system_is_bonding_mode_mlo(const char *name, char *buf, const size_t buf_sz)
++{
++	int fd = -1;
++
++	snprintf(buf, buf_sz, "/sys/class/net/%s/bonding/mode", name);
++	fd = open(buf, O_RDONLY);
++	if (fd < 0)
++		return NULL;
++
++	ssize_t len = read(fd, buf, buf_sz - 1);
++	if (len < 0) {
++		close(fd);
++		return NULL;
++	}
++
++	if (strstr(buf, "mlo") != NULL) {
++		return true;
++	}
++
++	return false;
++}
++
++/*
+  * Clear bridge (membership) state and bring down device
+  */
+ void system_if_clear_state(struct device *dev)
+@@ -1153,15 +1179,21 @@ void system_if_clear_state(struct device
+ 
+ 	if (dev->external || !dev->ifindex)
+ 		return;
+-
+ 	if (system_is_bonding(dev->ifname, buf, sizeof(buf))) {
+-		D(SYSTEM, "Delete existing bonding named '%s'\n", dev->ifname);
+-		system_bonding_delbonding(dev);
+-		return;
+-	}
+ 
++		/*
++		 * Do not delete bond netdevice with MLO type.
++		 * As add/delete is handled by wifi driver.
++		*/
++		if (system_is_bonding_mode_mlo(dev->ifname, buf, sizeof(buf))) {
++			D(SYSTEM, "Do not delete mlo bonding named '%s'\n", dev->ifname);
++		} else {
++			D(SYSTEM, "Delete existing bonding named '%s'\n", dev->ifname);
++			system_bonding_delbonding(dev);
++		}
++		return;
++        }
+ 	system_if_flags(dev->ifname, 0, IFF_UP);
+-
+ 	if (system_is_bridge(dev->ifname, buf, sizeof(buf))) {
+ 		D(SYSTEM, "Delete existing bridge named '%s'\n", dev->ifname);
+ 		system_bridge_delbr(dev);

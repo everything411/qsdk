@@ -1,0 +1,265 @@
+From f434348ca5eea424c8277b72c157003e9e8eb4e6 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Thu, 10 Nov 2022 12:20:05 +0530
+Subject: [PATCH] hostapd: add support for mle fragmentation
+
+Handle cases where the MLE encoding exceeds size of
+255. In such cases fragment the IE and populate
+the buffer accordingly before sending the frame.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/ieee802_11.c | 105 +++++++++++++++++++++++++++++++-------------
+ 1 file changed, 75 insertions(+), 30 deletions(-)
+
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -83,6 +83,10 @@ static void pasn_fils_auth_resp(struct h
+ #endif /* CONFIG_FILS */
+ #endif /* CONFIG_PASN */
+ 
++static size_t hostapd_eid_basic_resp_mle_len(struct hostapd_data *hapd,
++					     struct multi_link_data *ml_data,
++					     u32 type);
++
+ static void handle_auth(struct hostapd_data *hapd,
+ 			struct ieee80211_mgmt *mgmt, size_t len,
+ 			int rssi, int from_queue,
+@@ -8408,19 +8412,79 @@ u8 * hostapd_eid_rnr(struct hostapd_data
+ }
+ 
+ 
++static u8 * hostapd_add_mle_data(u8 *buf, u16 *curr_len, u8 *data, u16 len,
++				 u16 *total_rem_len)
++{
++	u16 rem_len;
++	u8 tmp_len, frag_len;
++
++	tmp_len = *curr_len % 255;
++
++	if (*total_rem_len < len)
++		rem_len = *total_rem_len;
++	else
++		rem_len = len;
++
++	while (rem_len) {
++		if (rem_len + tmp_len >=  255)
++			frag_len = 255 - tmp_len;
++		else
++			frag_len = rem_len;
++		/* This is basically fragmentation of the outer ML IE and not
++		 * sub element fragmentation. curr_len is the ML ie len and total
++		 * rem len is the len left to be added in the ML IE
++		 */
++		if (!tmp_len && (*curr_len >= 255)) {
++			*buf++ = WLAN_EID_FRAGMENT;
++			*buf++ = *total_rem_len > 255 ? 255 : *total_rem_len;
++		}
++		memcpy(buf, data, frag_len);
++		buf += frag_len;
++		data += frag_len;
++		rem_len -= frag_len;
++		tmp_len = 0;
++		*curr_len += frag_len;
++		*total_rem_len -= frag_len;
++	}
++
++	return buf;
++}
++
++static u8 * hostapd_add_mle_u8(u8 *buf, u16 *curr_len, u8 val,
++			       u16 *total_rem_len)
++{
++	return hostapd_add_mle_data(buf, curr_len, &val, sizeof(u8),
++				    total_rem_len);
++}
++
++static u8 * hostapd_add_mle_le16(u8 *buf, u16 *curr_len, u16 val,
++				 u16 *total_rem_len)
++{
++	u8 val_le[2];
++
++	WPA_PUT_LE16(val_le, val);
++	return hostapd_add_mle_data(buf, curr_len, val_le, sizeof(u16),
++				    total_rem_len);
++}
++
+ static u8 * hostapd_eid_basic_resp_mle(struct hostapd_data *hapd,
+ 				       struct multi_link_data *ml_data,
+-				       u8 *link_info, u32 type)
++				       u8 *link_info, u32 type, u16 curr_len)
+ {
+ 	struct hostapd_data *link_bss;
+ 	u8 link_id;
+ 	u8 *link_info_len, *profile;
+ 	u16 link_bmap;
+ 	size_t profile_len;
++	u8 link_tsf[BASIC_MLE_STA_INFO_TSF_LENGTH] = {0};
++	u16 rem_link_info_len;
++	u8 total_frag_count = 0, prev_frag_count = 0;
+ 
+ 	if (!hapd->mld)
+ 		return link_info;
+ 
++	rem_link_info_len = hostapd_eid_basic_resp_mle_len(hapd, ml_data, type);
++
+ 	for (link_bss = hapd->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
+ 		if (hapd == link_bss)
+ 			continue;
+@@ -8446,46 +8510,71 @@ static u8 * hostapd_eid_basic_resp_mle(s
+ 		}
+ 
+ 		if (!(BIT(link_id) & link_bmap))
+-		if (ml_data->u.preq.link_bmap &&
+-		    !(BIT(link_id) & ml_data->u.preq.link_bmap))
+ 			continue;
+ 
+-		*link_info++ = WLAN_EID_SUBELEMENT_PER_STA_PROFILE;
++		link_info = hostapd_add_mle_u8(link_info, &curr_len,
++					       WLAN_EID_SUBELEMENT_PER_STA_PROFILE,
++					       &rem_link_info_len);
+ 
+ 		link_info_len = link_info++;
+ 
++		/* sta profile len field */
++		curr_len++;
++		rem_link_info_len--;
++
+ 		/* TODO supporting only complete profile for now for presp */
+-		*link_info++ = (link_id & MLE_STA_CONTROL_LINK_ID_MASK) |
+-				(MLE_STA_CONTROL_COMPLETE_PROFILE |
+-				 MLE_STA_CONTROL_MAC_ADDR_PRESENT |
+-				 MLE_STA_CONTROL_BEACON_INT_PRESENT |
+-				 MLE_STA_CONTROL_DTIM_PRESENT) << 4;
++		link_info = hostapd_add_mle_u8(link_info, &curr_len,
++					       (link_id & MLE_STA_CONTROL_LINK_ID_MASK) |
++					        (MLE_STA_CONTROL_COMPLETE_PROFILE |
++					         MLE_STA_CONTROL_MAC_ADDR_PRESENT |
++				  	         MLE_STA_CONTROL_BEACON_INT_PRESENT |
++				 	         MLE_STA_CONTROL_TSF_OFFSET_PRESENT) << 4,
++						&rem_link_info_len);
+ 
+ 		/* TODO NSTR info and bss change cnt to be added */
+-		*link_info++ = 0;
+-
+-		*link_info++ = MLE_STA_INFO_LENGTH;
+-
+-		memcpy(link_info, link_bss->own_addr, ETH_ALEN);
+-
+-		link_info += ETH_ALEN;
+-
+-		WPA_PUT_LE16(link_info, link_bss->iconf->beacon_int);
+-		link_info += 2;
++		/* DTIM encoded by default */
++		link_info = hostapd_add_mle_u8(link_info, &curr_len, 1,
++					       &rem_link_info_len);
++		link_info = hostapd_add_mle_u8(link_info, &curr_len,
++					       MLE_STA_INFO_LENGTH,
++					       &rem_link_info_len);
++
++		link_info = hostapd_add_mle_data(link_info, &curr_len, link_bss->own_addr, ETH_ALEN,
++						 &rem_link_info_len);
++
++		link_info = hostapd_add_mle_le16(link_info, &curr_len, link_bss->iconf->beacon_int,
++						 &rem_link_info_len);
++
++		/* TSF offset - driver might support to find this, currently filled as 0*/
++		link_info = hostapd_add_mle_data(link_info, &curr_len,
++						 link_tsf, BASIC_MLE_STA_INFO_TSF_LENGTH,
++						 &rem_link_info_len);
+ 
+ 		/* TODO confirm dtim count */
+-		*link_info++ = 1;
++		link_info = hostapd_add_mle_u8(link_info, &curr_len, 1,
++					       &rem_link_info_len);
++		link_info = hostapd_add_mle_u8(link_info, &curr_len, link_bss->conf->dtim_period,
++					       &rem_link_info_len);
+ 
+-		*link_info++ = link_bss->conf->dtim_period;
++		link_info = hostapd_add_mle_data(link_info, &curr_len, profile, profile_len,
++						 &rem_link_info_len);
+ 
+-		memcpy(link_info, profile, profile_len);
+-
+-		link_info += profile_len;
++		/* TODO for now subelem frag is not expected handle later.. */
+ 
+ 		/* update link info len */
+ 		*link_info_len = link_info - link_info_len - 1;
+ 
+-		/* TODO FIXME  detect and handle fragmentation */
++		/* Detect if any frag IE got added during this loop */
++		if (curr_len > 255)
++			total_frag_count = curr_len / 256;
++
++		prev_frag_count = total_frag_count - prev_frag_count;
++
++		/* If frag happened in this loop reduce the frag ie hdr from it */
++		if (prev_frag_count)
++			*link_info_len -= prev_frag_count * 2;
++
++		prev_frag_count = total_frag_count;
+ 	}
+ 	return link_info;
+ }
+@@ -8536,8 +8625,6 @@ static size_t hostapd_eid_basic_resp_mle
+ 		total_profile_len += profile_len;
+ 	}
+ 
+-	/* TODO detect fragmentation */
+-
+ 	return total_profile_len;
+ }
+ 
+@@ -8545,6 +8632,7 @@ size_t hostapd_eid_basic_mle_len(struct
+ 				 struct multi_link_data *ml_data)
+ {
+ 	size_t total_len = 0;
++	u8 frag_count;
+ 
+ 	if (!hapd->mld || !hapd->mld->num_links)
+ 		return 0;
+@@ -8569,7 +8657,12 @@ size_t hostapd_eid_basic_mle_len(struct
+ 
+ 	total_len += hostapd_eid_basic_resp_mle_len(hapd, ml_data, type);
+ 
+-	/* TODO detect fragmentation */
++	/* Consider fragmentation */
++	if ( total_len > 255) {
++		frag_count = total_len / 255;
++		/* Add extra FID and length */
++		total_len += frag_count * 2;
++	}
+ 
+ 	return total_len;
+ }
+@@ -8630,9 +8723,13 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 		return eid;
+ 	}
+ 
+-	eid = hostapd_eid_basic_resp_mle(hapd, ml_data, eid, type);
++	eid = hostapd_eid_basic_resp_mle(hapd, ml_data, eid, type, eid - eid_len - 1);
++
++	if ((eid - eid_len) <= 255)
++		*eid_len = eid - eid_len - 1;
++	else
++		*eid_len = 255;
+ 
+-	*eid_len = eid - eid_len - 1;
+ 	return eid;
+ }
+ 
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2485,8 +2485,9 @@ struct ieee80211_he_mu_edca_parameter_se
+ #define MLE_STA_CONTROL_NSTR_BITMAP			BIT(6)
+ #define MLE_STA_CONTROL_BSS_PARAM_CHANGE_CNT_PRESENT	BIT(7)
+ 
+-/* STA Info Length, MAC, BI, DTIM included, TODO - NSTR, BSS change cnt*/
+-#define MLE_STA_INFO_LENGTH	11
++/* STA Info Length, MAC, BI, TSF, DTIM included, TODO - NSTR, BSS change cnt*/
++#define MLE_STA_INFO_LENGTH	19
++#define BASIC_MLE_STA_INFO_TSF_LENGTH 8
+ 
+ /* IEEE P802.11be/D2.0, 9.4.2.311 - EHT Operation element */
+ 

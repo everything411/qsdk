@@ -1,0 +1,444 @@
+From 4132ce137e4f74eee347621e8af9a7e4d9243991 Mon Sep 17 00:00:00 2001
+From: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+Date: Mon, 21 Aug 2023 12:37:24 +0530
+Subject: [PATCH] hostapd: update critical bit and bpcc on probe/assoc response
+ frame
+
+Update critical bit CUF1 in Capabilities Information in a probe response
+when critical flag is set for that ML bss.
+Update critical bit CUF2 in Capabilities Information in a probe response
+when critical flag is set for ML non-tx bss on mbssid/ema.
+
+While adding MBSSIE element, if non Tx VDEVs  critical flag is set, then set
+CUF1 bit in MBSSIE capability information for non-Tx bss in MBSSIE sub element.
+Update mld params BPCC values in BMLE of bss.
+update BPCC values for partner link  MLD bss in per sta profile.
+Update RNR BPCC mld params.
+
+Include category 1 elements like CSA, eCSA and CCA on per-STA profile of
+BMLE.
+
+Change-Id: I7bb7d7f683a025959ca4edb7ce95ebeba6cdadc4
+Signed-off-by: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+---
+ hostapd/ctrl_iface.c         |  9 ++++
+ src/ap/beacon.c              |  5 ++-
+ src/ap/beacon.h              |  1 +
+ src/ap/drv_callbacks.c       | 14 ++++++
+ src/ap/hostapd.c             | 19 +++++++++
+ src/ap/hostapd.h             |  6 +++
+ src/ap/ieee802_11.c          | 82 ++++++++++++++++++++++++++++++++----
+ src/ap/ieee802_11.h          |  1 +
+ src/common/ieee802_11_defs.h |  4 +-
+ src/drivers/driver.h         | 19 +++++++++
+ src/drivers/driver_common.c  |  1 +
+ 11 files changed, 149 insertions(+), 12 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index f01b501..f882598 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2639,6 +2639,7 @@ static int hostapd_ctrl_iface_color_change(struct hostapd_iface *iface,
+ 	int ret, color;
+ 	unsigned int i;
+ 	char *end;
++	struct hostapd_data *link_bss;
+ 
+ 	os_memset(&settings, 0, sizeof(settings));
+ 	color = strtol(pos, &end, 10);
+@@ -2709,6 +2710,14 @@ static int hostapd_ctrl_iface_color_change(struct hostapd_iface *iface,
+ 		}
+ 		if (ret)
+ 			 hostapd_cleanup_cca_params(bss);
++		if (!ret && bss->mld) {
++			/* Generate per sta profiles for affiliated APs */
++			for (link_bss = bss->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++				if (bss == link_bss)
++					continue;
++				hostapd_gen_per_sta_profiles(link_bss);
++			}
++		}
+ 	}
+ 
+         return 0;
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index b557f04..0c590cd 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -872,7 +872,7 @@ u8 * hostapd_gen_sta_profile(struct ieee80211_mgmt *own_data,
+ 	return sta_profile;
+ }
+ 
+-static void hostapd_gen_per_sta_profiles(struct hostapd_data *hapd)
++void hostapd_gen_per_sta_profiles(struct hostapd_data *hapd)
+ {
+ 	struct ieee80211_mgmt *own_data, *link_data;
+ 	struct hostapd_data *link_bss;
+@@ -1049,6 +1049,9 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
+ 	resp->u.probe_resp.capab_info =
+ 		host_to_le16(hostapd_own_capab_info(hapd));
+ 
++	resp->u.probe_resp.capab_info |=
++		host_to_le16(hostapd_critical_update_capab(hapd));
++
+ 	pos = resp->u.probe_resp.variable;
+ 	*pos++ = WLAN_EID_SSID;
+ 	if (hapd->conf->ignore_broadcast_ssid && hapd != hapd_probed) {
+diff --git a/src/ap/beacon.h b/src/ap/beacon.h
+index d168888..4d34f72 100644
+--- a/src/ap/beacon.h
++++ b/src/ap/beacon.h
+@@ -40,5 +40,6 @@ u8 * hostapd_gen_sta_profile(struct ieee80211_mgmt *own_data,
+ #ifdef CONFIG_IEEE80211AX
+ u8 * hostapd_unsol_bcast_probe_resp(struct hostapd_data *hapd,
+ 				    struct unsol_bcast_probe_resp *ubpr);
++void hostapd_gen_per_sta_profiles(struct hostapd_data *hapd);
+ #endif /* CONFIG_IEEE80211AX */
+ #endif /* BEACON_H */
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 55e5530..7a7e441 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2127,12 +2127,21 @@ static void hostapd_mld_if_enable(struct hostapd_mld *mld)
+ 		hostpad_if_enable(hapd);
+ }
+ 
++static void hostapd_event_update_cu_param(struct hostapd_data *hapd,
++					  struct cu_event *cu_event)
++{
++	/* Update critical update parameters */
++	hapd->rx_cu_param.critical_flag = cu_event->critical_flag;
++	hapd->rx_cu_param.bpcc = cu_event->bpcc;
++	hapd->rx_cu_param.switch_count = cu_event->switch_count;
++}
+ 
+ void hostapd_wpa_event(void *ctx, enum wpa_event_type event,
+ 			  union wpa_event_data *data)
+ {
+ 	struct hostapd_data *hapd = ctx;
+ 	int b, err;
++	struct hostapd_data *link_bss;
+ 
+ #ifndef CONFIG_NO_STDOUT_DEBUG
+ 	int level = MSG_DEBUG;
+@@ -2404,6 +2413,11 @@ void hostapd_wpa_event(void *ctx, enum wpa_event_type event,
+ 	case EVENT_UPDATE_MUEDCA_PARAMS:
+ 		hostapd_event_update_muedca_params(hapd, &data->update_muedca);
+ 		break;
++	case EVENT_RX_CRITICAL_UPDATE:
++		link_bss = data->cu_event.link_ctx;
++		if (link_bss)
++			hostapd_event_update_cu_param(link_bss, &data->cu_event);
++		break;
+ 	default:
+ 		wpa_printf(MSG_DEBUG, "Unknown event %d", event);
+ 		break;
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 49a6f07..f32d3f4 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4562,6 +4562,7 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+ 	int ret;
+ 	int oper_centr_freq0_idx;
+ 	int cur_bandwidth;
++	struct hostapd_data *link_bss;
+ 
+ 	if (!(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_AP_CSA)) {
+ 		wpa_printf(MSG_INFO, "CSA is not supported");
+@@ -4596,6 +4597,14 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+ 	}
+ 
+ 	hapd->csa_in_progress = 1;
++	if (hapd->mld) {
++		/* Generate per sta profiles for affiliated APs */
++		for (link_bss = hapd->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++			if (hapd == link_bss)
++				continue;
++			hostapd_gen_per_sta_profiles(link_bss);
++		}
++	}
+ 	return 0;
+ }
+ 
+@@ -4729,6 +4738,7 @@ static void hostapd_switch_color_timeout_handler(void *eloop_data,
+ 	unsigned int b;
+ 	int i, r;
+ 	u64 neighbor_color;
++	struct hostapd_data *link_bss;
+ 
+ 	 /* CCA can be triggered once the handler constantly receives
+ 	  * color collision events to for at least
+@@ -4795,6 +4805,15 @@ static void hostapd_switch_color_timeout_handler(void *eloop_data,
+ 
+ 		free_beacon_data(&settings.beacon_cca);
+ 		free_beacon_data(&settings.beacon_after);
++		if (!ret && bss->mld) {
++			/* Generate per sta profiles for affiliated APs */
++			for (link_bss = bss->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++				if (bss == link_bss)
++					continue;
++				hostapd_gen_per_sta_profiles(link_bss);
++			}
++		}
++
+ 	}
+ }
+ 
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index b771b6c..2df76fc 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -177,6 +177,11 @@ struct hostapd_per_sta_profile {
+ 	size_t presp_len;
+ };
+ 
++struct rx_critical_param {
++	bool critical_flag;
++	u8 bpcc;
++	u8 switch_count;
++};
+ /**
+  * struct hostapd_data - hostapd per-BSS data structure
+  */
+@@ -485,6 +490,7 @@ struct hostapd_data {
+ #endif /* CONFIG_CTRL_IFACE_UDP */
+ 
+ 	struct hostapd_per_sta_profile link_profile[MAX_SUPPORTED_LINKS];
++	struct rx_critical_param rx_cu_param;
+ };
+ 
+ 
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 736ab70..37cbaa2 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -318,6 +318,25 @@ u16 hostapd_own_capab_info(struct hostapd_data *hapd)
+ 	return capab;
+ }
+ 
++u16 hostapd_critical_update_capab(struct hostapd_data *hapd)
++{
++	int capab = 0;;
++	struct hostapd_data *bss;
++        size_t i;
++
++	if (hapd && hapd->mld && hapd->rx_cu_param.critical_flag)
++		capab |= WLAN_CAPABILITY_PBCC;
++
++        if (hapd->iconf && hapd->iconf->mbssid) {
++                for (i = 1; i < hapd->iface->num_bss; i++) {
++			bss = hapd->iface->bss[i];
++			if (bss && bss->mld && bss->rx_cu_param.critical_flag)
++				capab |= WLAN_CAPABILITY_CHANNEL_AGILITY;
++		}
++        }
++	return capab;
++}
++
+ 
+ #ifdef CONFIG_WEP
+ #ifndef CONFIG_NO_RC4
+@@ -7257,7 +7276,41 @@ static void notify_mgmt_frame(struct hostapd_data *hapd, const u8 *buf,
+ 		os_free(hex);
+ 	}
+ }
++/**
++ * ieee80211_clear_critical_flag - clear critical flags on mbssid profile and MLD links
++ * @hapd: hostapd BSS data structure (the BSS to which the management frame was
++ * sent to)
++ *
++ * Clear critical flags after sending probe /assoc response frame because driver
++ * will update critical flags for each of these frames through NL80211_CMD_FRAME event
++ */
+ 
++static void ieee80211_clear_critical_flag(struct hostapd_data *hapd)
++{
++	struct hostapd_data *bss, *link_bss;
++	size_t i;
++
++	if (!hapd->mld)
++		return;
++	/*clear mbssid bss critical flags*/
++	if (hapd->iconf->mbssid) {
++		for (i = 0; i < hapd->iface->num_bss; i++) {
++			bss = hapd->iface->bss[i];
++			if (bss)
++				bss->rx_cu_param.critical_flag  = 0;
++		}
++	} else {
++		/*clear bss critical flag*/
++		hapd->rx_cu_param.critical_flag  = 0;
++	}
++
++	/*clear MLO partner link bss critical flags*/
++	for (link_bss = hapd->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++		if (hapd == link_bss)
++			continue;
++		link_bss->rx_cu_param.critical_flag  = 0;
++	}
++}
+ 
+ /**
+  * ieee802_11_mgmt - process incoming IEEE 802.11 management frames
+@@ -7333,6 +7386,7 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ 
+ 	if (stype == WLAN_FC_STYPE_PROBE_REQ) {
+ 		handle_probe_req(hapd, mgmt, len, ssi_signal, fi);
++		ieee80211_clear_critical_flag(hapd);
+ 		return 1;
+ 	}
+ 
+@@ -7361,11 +7415,13 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ 	case WLAN_FC_STYPE_ASSOC_REQ:
+ 		wpa_printf(MSG_DEBUG, "mgmt::assoc_req");
+ 		handle_assoc(hapd, mgmt, len, 0, ssi_signal, fi);
++		ieee80211_clear_critical_flag(hapd);
+ 		ret = 1;
+ 		break;
+ 	case WLAN_FC_STYPE_REASSOC_REQ:
+ 		wpa_printf(MSG_DEBUG, "mgmt::reassoc_req");
+ 		handle_assoc(hapd, mgmt, len, 1, ssi_signal, fi);
++		ieee80211_clear_critical_flag(hapd);
+ 		ret = 1;
+ 		break;
+ 	case WLAN_FC_STYPE_DISASSOC:
+@@ -9042,11 +9098,12 @@ co_location_rnr:
+ 
+ 			/* TODO colocated bss match + MBSSID + MLO case */
+ 
+-			*eid++ = (bss->iface->mlo_link_id) |
++			/* bss param update info */
++			bss_param_change_count = bss->rx_cu_param.bpcc;
++			*eid++ = (bss->iface->mlo_link_id & 0xf) |
+ 				 (bss_param_change_count & 0xf) << 4;
+ 
+-			/* TODO bss param update info */
+-			*eid++ = bss_param_change_count << 4 & 0xf0;
++			*eid++ = (bss_param_change_count & 0xf0) >> 4;
+ 			len += tbtt_info_len;
+ 			tbtt_count += 1;
+ 		}
+@@ -9326,10 +9383,12 @@ static u8 * hostapd_eid_basic_resp_mle(struct hostapd_data *hapd,
+ 				  	         MLE_STA_CONTROL_BEACON_INT_PRESENT |
+ 				 	         MLE_STA_CONTROL_TSF_OFFSET_PRESENT) << 4,
+ 						&per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+-		/* TODO NSTR info and bss change cnt to be added */
+-		/* DTIM encoded by default */
+-		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len, 1,
+-					       &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
++		/* TODO NSTR info to be added */
++		/* DTIM abd BPCC are encoded */
++		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len,
++						 (MLE_STA_CONTROL_DTIM_PRESENT |
++						 MLE_STA_CONTROL_BSS_PARAM_CHANGE_CNT_PRESENT) >> 4,
++						 &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len,
+ 					       MLE_STA_INFO_LENGTH,
+ 					       &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+@@ -9351,6 +9410,9 @@ static u8 * hostapd_eid_basic_resp_mle(struct hostapd_data *hapd,
+ 		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len, link_bss->conf->dtim_period,
+ 					       &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 
++		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len, link_bss->rx_cu_param.bpcc,
++					       &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
++
+ 		sta_profile = hostapd_add_mle_data(sta_profile, &per_sta_curr_len, profile, profile_len,
+ 						 &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 
+@@ -9506,8 +9568,7 @@ u8 * hostapd_eid_basic_mle(struct hostapd_data *hapd, u8 *eid, u32 type,
+ 		*eid++ = hapd->iface->mlo_link_id;
+ 
+ 	if (presence_bmap & MLE_BSS_PARAM_CHANGE_PRESENT)
+-		*eid++ = 0; /* TODO */
+-
++		*eid++ = hapd->rx_cu_param.bpcc;
+ 	/* TODO Medium Synchronization Delay Info fields */
+ 
+ 	if (presence_bmap & MLE_EML_CAP_PRESENT) {
+@@ -10015,6 +10076,9 @@ static u8 * hostapd_eid_mbssid_elem(struct hostapd_data *hapd, u8 *eid, u8 *end,
+ 		*eid++ = WLAN_EID_NONTRANSMITTED_BSSID_CAPA;
+ 		*eid++ = sizeof(capab_info);
+ 		capab_info = host_to_le16(hostapd_own_capab_info(bss));
++		if (bss->mld && bss->rx_cu_param.critical_flag)
++			capab_info |= host_to_le16(WLAN_CAPABILITY_PBCC);
++
+ 		os_memcpy(eid, (const void *)&capab_info, sizeof(capab_info));
+ 		eid += sizeof(capab_info);
+ 
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index 4f05a41..36a1cb4 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -269,4 +269,5 @@ u8 * hostapd_gen_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+ 			   const u8 *ies, size_t ies_len, int rssi,
+ 			   int omit_rsnxe, struct multi_link_data *ml_data,
+ 			   int *send_len, u16 *res);
++u16 hostapd_critical_update_capab(struct hostapd_data *hapd);
+ #endif /* IEEE802_11_H */
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 813aca6..6fc7940 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2493,8 +2493,8 @@ struct ieee80211_he_mu_edca_parameter_set {
+ #define MLE_STA_CONTROL_NSTR_BITMAP			BIT(6)
+ #define MLE_STA_CONTROL_BSS_PARAM_CHANGE_CNT_PRESENT	BIT(7)
+ 
+-/* STA Info Length, MAC, BI, TSF, DTIM included, TODO - NSTR, BSS change cnt*/
+-#define MLE_STA_INFO_LENGTH	19
++/* STA Info Length, MAC, BI, TSF, DTIM, BSS change cnt included, TODO - NSTR*/
++#define MLE_STA_INFO_LENGTH	20
+ #define BASIC_MLE_STA_INFO_TSF_LENGTH 8
+ 
+ /* IEEE P802.11be/D2.0, 9.4.2.311 - EHT Operation element */
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index b64fec0..c2616f4 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5744,6 +5744,15 @@ enum wpa_event_type {
+ 	 */
+ 	EVENT_UPDATE_MUEDCA_PARAMS,
+ 	EVENT_AWGN_DETECTED,
++	/**
++	 * EVENT_RX_CRITICAL_UPDATE - Updated critical parameters received
++	 *
++	 * this event is emitted when updated critical parameters from driver
++	 * are received. updated critical parameters need to be updated in
++	 * probe/assoc response.
++	 */
++
++	EVENT_RX_CRITICAL_UPDATE,
+ };
+ 
+ 
+@@ -6676,6 +6685,16 @@ union wpa_event_data {
+ 		int cf2;
+ 		u32 chan_bw_interference_bitmap;
+ 	} awgn_event;
++	/**
++	 * Data for critical_update
++	 */
++	struct cu_event {
++		void *link_ctx;
++		bool critical_flag;
++		u8 bpcc;
++		u8 switch_count;
++	} cu_event;
++
+ };
+ 
+ /**
+diff --git a/src/drivers/driver_common.c b/src/drivers/driver_common.c
+index f0f7ff8..27d5b1b 100644
+--- a/src/drivers/driver_common.c
++++ b/src/drivers/driver_common.c
+@@ -100,6 +100,7 @@ const char * event_to_string(enum wpa_event_type event)
+ 	E2S(LINK_CH_SWITCH_STARTED);
+ 	E2S(UPDATE_MUEDCA_PARAMS);
+ 	E2S(AWGN_DETECTED);
++	E2S(RX_CRITICAL_UPDATE);
+ 	}
+ 
+ 	return "UNKNOWN";
+-- 
+2.17.1
+

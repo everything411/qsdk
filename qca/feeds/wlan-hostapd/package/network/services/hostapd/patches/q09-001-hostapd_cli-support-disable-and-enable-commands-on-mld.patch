@@ -1,0 +1,229 @@
+From acc6de2632fcb119d9e114df702a9e40aef16f6d Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Sun, 23 Apr 2023 16:07:54 +0530
+Subject: [PATCH] hostapd_cli: support disable and enable commands on mld iface
+
+Currently, hostapd_cli's enable/disable commands enables or
+disables all the bss on a specific interface on which the
+command is given. Extend this support for ifaces which has
+MLDs as well. Since dynamic deletion or addition of a MLD
+link is not supported, delete the whole MLD when the bss of
+a link is getting deleted. This recursively deletes all the
+bss of the partner link as well. hapd_iface which are not
+partner to any of the MLD of the disabled link has no
+impact.
+
+There is no change in command/args. Disable or enable
+of any link bss will disable/enable all the bsses in that
+hapd_iface as well as other hapd_ifaces which are partners
+of the MLDs in the disabled/enabled iface.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/beacon.c              |  6 ++-
+ src/ap/hostapd.c             | 95 ++++++++++++++++++++++++++++++++++++
+ src/ap/hostapd.h             |  1 +
+ src/drivers/driver_nl80211.c |  1 +
+ 4 files changed, 102 insertions(+), 1 deletion(-)
+
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -863,6 +863,9 @@ static void hostapd_gen_per_sta_profiles
+ 		if (hapd == link_bss)
+ 			continue;
+ 
++		if (link_bss->iface->disable_in_progress)
++			continue;
++
+ 		link_id = link_bss->iface->mlo_link_id;
+ 
+ 		if (link_id > MAX_SUPPORTED_LINKS)
+@@ -2626,6 +2629,9 @@ int ieee802_11_set_beacon(struct hostapd
+ 	size_t i, j;
+ 	bool is_6g;
+ 
++	if (iface->disable_in_progress)
++		return 0;
++
+ 	ret = __ieee802_11_set_beacon(hapd);
+ 	if (ret != 0)
+ 		return ret;
+@@ -2645,6 +2651,9 @@ int ieee802_11_set_beacon(struct hostapd
+ 		if (is_6g == is_6ghz_op_class(colocated->conf->op_class))
+ 			continue;
+ 
++		if (colocated->disable_in_progress)
++			continue;
++
+ 		for (i = 0; i < colocated->num_bss; i++) {
+ 			colocated_hapd = colocated->bss[i];
+ 
+@@ -2653,7 +2662,7 @@ int ieee802_11_set_beacon(struct hostapd
+ 
+ 			if (colocated_hapd->mld && !colocated_hapd->beacon_set_done)
+ 				continue;
+-			
++
+ 			__ieee802_11_set_beacon(colocated_hapd);
+ 		}
+ 	}
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2728,7 +2728,9 @@ int hostapd_setup_interface_complete(str
+ 				 * in case of mbssid.
+ 				 */
+ 				tx_hapd = hostapd_mbssid_get_tx_bss(link_bss);
+-				if (tx_hapd == link_bss || tx_hapd->beacon_set_done)
++				if ((tx_hapd == link_bss && !tx_hapd->beacon_set_done) ||
++				    (tx_hapd != link_bss && !link_bss->beacon_set_done &&
++				     tx_hapd->beacon_set_done))
+ 					hostapd_set_beacon(link_bss);
+ 
+ 				link_bss = link_bss->nbss;
+@@ -2761,6 +2763,10 @@ int hostapd_setup_interface_complete(str
+ 				if (non_tx_hapd->mld &&
+ 				    non_tx_hapd->mld->mld_start_blocked)
+ 					continue;
++
++				if (non_tx_hapd->beacon_set_done)
++					continue;
++
+ 				if (hostapd_set_beacon(non_tx_hapd))
+ 					return -1;
+ 			}
+@@ -3463,6 +3469,45 @@ int hostapd_enable_iface(struct hostapd_
+ 		return -1;
+ 	}
+ 
++#ifdef NEED_AP_MLME
++	for (j = 0; j < hapd_iface->num_bss; j++) {
++		struct hostapd_data *hapd = hapd_iface->bss[j];
++		struct hostapd_data *link_bss;
++		struct hostapd_iface *link_iface;
++		struct hostapd_iface *next_link_iface;
++
++		if (!hapd->mld)
++			continue;
++
++		link_bss = hapd->mld->bss;
++
++		while (link_bss) {
++			if (hapd == link_bss) {
++				link_bss = link_bss->nbss;
++				continue;
++			}
++
++			link_iface = link_bss->iface;
++
++			if (link_iface->state != HAPD_IFACE_DISABLED) {
++				link_bss = link_bss->nbss;
++				continue;
++			}
++
++			link_bss = link_bss->nbss;
++
++			if (link_bss)
++				next_link_iface = link_bss->iface;
++			else
++				next_link_iface = NULL;
++
++			hostapd_enable_iface(link_iface);
++
++			if (!next_link_iface || next_link_iface->state != HAPD_IFACE_DISABLED)
++				break;
++		}
++	}
++#endif /* NEED_AP_MLME */
+ 	return 0;
+ }
+ 
+@@ -3505,6 +3550,61 @@ int hostapd_disable_iface(struct hostapd
+ 		return -1;
+ 	}
+ 
++	if (hapd_iface->disable_in_progress)
++		return 0;
++
++	if (hapd_iface->bss[0]->mld) {
++		hapd_iface->need_to_start_in_sync = 1;
++		hapd_iface->ready_to_start_in_sync = 0;
++	}
++
++	hapd_iface->disable_in_progress = true;
++
++#ifdef NEED_AP_MLME
++	for (j = 0; j < hapd_iface->num_bss; j++) {
++		struct hostapd_data *hapd = hapd_iface->bss[j];
++		struct hostapd_data *link_bss;
++		struct hostapd_iface *link_iface;
++		struct hostapd_iface *next_link_iface;
++
++		if (!hapd->mld)
++			continue;
++
++		link_bss = hapd->mld->bss;
++
++		while (link_bss) {
++			if (hapd == link_bss) {
++				link_bss = link_bss->nbss;
++				continue;
++			}
++
++			link_iface = link_bss->iface;
++
++			if (link_iface->disable_in_progress) {
++				link_bss = link_bss->nbss;
++				continue;
++			}
++
++			link_bss = link_bss->nbss;
++
++			if (link_bss)
++				next_link_iface = link_bss->iface;
++			else
++				next_link_iface = NULL;
++
++			hostapd_disable_iface(link_iface);
++
++			/* If the recursions already disabled the other ifaces in line
++			 * we can break
++			 */
++			if (!next_link_iface || next_link_iface->state == HAPD_IFACE_DISABLED)
++				break;
++		}
++
++		hapd->mld->if_setup_done = false;
++	}
++#endif /* NEED_AP_MLME */
++
+ 	wpa_msg(hapd_iface->bss[0]->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
+ 	driver = hapd_iface->bss[0]->driver;
+ 	drv_priv = hapd_iface->bss[0]->drv_priv;
+@@ -3537,6 +3637,7 @@ int hostapd_disable_iface(struct hostapd
+ 		   hapd_iface->bss[0]->conf->iface);
+ 	hostapd_set_state(hapd_iface, HAPD_IFACE_DISABLED);
+ 	hostapd_interface_update_fils_ubpr(hapd_iface, false);
++	hapd_iface->disable_in_progress = false;
+ 	return 0;
+ }
+ 
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -707,6 +707,7 @@ struct hostapd_iface {
+ 	struct hostapd_multi_hw_info *multi_hw_info;
+ 	u8 num_multi_hws;
+ 	struct hostapd_multi_hw_info *current_hw_info;
++	bool disable_in_progress;
+ };
+ 
+ /* hostapd.c */
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -8730,6 +8730,7 @@ static int wpa_driver_nl80211_if_add(voi
+ 	nlmode = wpa_driver_nl80211_if_type(type);
+ 	if (!first_link_bss) {
+ 		ifidx = if_nametoindex(ifname);
++		added = 0;
+ 		goto add_bss;
+ 	}
+ 

@@ -1,0 +1,35 @@
+From 89f111b9c297f2f8daa6940559d6bf284ecf6346 Mon Sep 17 00:00:00 2001
+From: Aaradhana Sahu <quic_aarasahu@quicinc.com>
+Date: Wed, 21 Dec 2022 16:52:14 +0530
+Subject: [PATCH] hostapd: fill link id in set bss for MLO
+
+Currently, we are not filling link id attribute for MLO due to this
+NL80211_CMD_SET_BSS command drop for mlo case.
+
+So, fix this issue by filling link id value for MLO.
+
+Signed-off-by: Aaradhana Sahu <quic_aarasahu@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 29d27fd..821e6a6 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -4270,6 +4270,12 @@ static int nl80211_set_bss(struct i802_bss *bss, int cts, int preamble,
+ 		return -ENOBUFS;
+ 	}
+ 
++	if (drv->mlo_link_id >= 0 &&
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id)) {
++		nlmsg_free(msg);
++		return -ENOBUFS;
++	}
++
+ 	return send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ }
+ 
+-- 
+2.17.1
+

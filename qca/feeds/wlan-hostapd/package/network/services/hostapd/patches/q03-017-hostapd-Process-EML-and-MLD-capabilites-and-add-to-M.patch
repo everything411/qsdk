@@ -1,0 +1,204 @@
+From 060fc1e1a0d0719f109b64cac125e3b2748b2da6 Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Wed, 7 Dec 2022 15:09:34 -0800
+Subject: [PATCH] hostapd: Process EML and MLD capabilites and add to ML IE
+
+Recieve EML and MLD capabilities from driver and store. Add these
+capabilites to Multi-link IE.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ hostapd/main.c                    |  2 ++
+ src/ap/hostapd.h                  |  2 ++
+ src/ap/ieee802_11.c               | 17 ++++++++++-------
+ src/common/ieee802_11_defs.h      |  3 +++
+ src/drivers/driver.h              |  5 +++++
+ src/drivers/driver_nl80211_capa.c |  9 ++++++++-
+ 6 files changed, 30 insertions(+), 8 deletions(-)
+
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -267,6 +267,16 @@ static int hostapd_driver_init(struct ho
+ 		iface->drv_max_acl_mac_addrs = capa.max_acl_mac_addrs;
+ 		iface->ru_punct_supp_bw = capa.ru_punct_supp_bw;
+ 
++		if (hapd->mld) {
++			if (!(capa.flags2 & WPA_DRIVER_FLAGS2_MLO)) {
++				wpa_printf(MSG_ERROR,
++					   "Wiphy does not support MLO.");
++				return -1;
++			}
++			iface->eml_cap = capa.eml_cap;
++			iface->mld_cap = capa.mld_cap;
++		}
++
+ 		/*
+ 		 * Override extended capa with per-interface type (AP), if
+ 		 * available from the driver.
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -701,6 +701,8 @@ struct hostapd_iface {
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	u8 mlo_link_id;
++	u16 eml_cap;
++	u16 mld_cap;
+ #endif
+ };
+ 
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8842,7 +8842,7 @@ size_t hostapd_eid_basic_mle_len(struct
+ 	else
+ 		total_len += MLE_COMMON_INFO_AUTH;
+ 
+-	/* TODO EML caps and Medium Synchronization Delay Info fields */
++	/* TODO Medium Synchronization Delay Info fields */
+ 
+ 	if (ml_data == NULL || !ml_data->present)
+ 		return total_len;
+@@ -8882,7 +8882,7 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 	if (type != WLAN_FC_STYPE_AUTH) {
+ 		/* Fill these info by default currently */
+ 		presence_bmap = MLE_LINK_ID_PRESENT | MLE_BSS_PARAM_CHANGE_PRESENT |
+-				MLE_MLD_CAP_PRESENT;
++				MLE_EML_CAP_PRESENT | MLE_MLD_CAP_PRESENT;
+ 	}
+ 
+ 	*eid++ = MLE_TYPE_BASIC | ((presence_bmap & 0x0f) << MLE_PRESENCE_BMAP_SHIFT);
+@@ -8901,11 +8901,37 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 	if (presence_bmap & MLE_BSS_PARAM_CHANGE_PRESENT)
+ 		*eid++ = 0; /* TODO */
+ 
+-	/* TODO EML caps and Medium Synchronization Delay Info fields */
++	/* TODO Medium Synchronization Delay Info fields */
++
++	if (presence_bmap & MLE_EML_CAP_PRESENT) {
++		*eid = host_to_le16(hapd->iface->eml_cap);
++		eid += 2;
++	}
+ 
+ 	if (presence_bmap & MLE_MLD_CAP_PRESENT) {
+-		*eid++ = hapd->mld->num_links - 1; /* TODO Other caps info not present */
+-		*eid++ = 0; /* TODO Other caps info not present */
++		u16 mld_cap = host_to_le16(hapd->iface->mld_cap);
++		u8 max_simul_links = mld_cap & MLE_MLD_CAP_MAX_SIMULTANEOUS_LINK_MASK;
++		u8 tid_to_link_map = (mld_cap & MLE_MLD_CAP_TID_TO_LINK_MAP_MASK) >>
++				     MLE_MLD_CAP_TID_TO_LINK_MAP_SHIFT;
++		u8 active_links = hapd->mld->num_links - 1;
++
++		if (active_links > max_simul_links) {
++			wpa_printf(MSG_ERROR, "Error in max simultaneous links, advertised=%x current=%x",
++				   max_simul_links, active_links);
++			active_links = max_simul_links;
++		}
++
++		mld_cap &= ~MLE_MLD_CAP_MAX_SIMULTANEOUS_LINK_MASK;
++		mld_cap |= (active_links & MLE_MLD_CAP_MAX_SIMULTANEOUS_LINK_MASK);
++
++		/* TODO: advertise T2LM based on driver support as well */
++		tid_to_link_map = MLE_MLD_CAP_TID_TO_LINK_MAP_DISABLED;
++
++		mld_cap &= ~MLE_MLD_CAP_TID_TO_LINK_MAP_MASK;
++		mld_cap |= (tid_to_link_map << MLE_MLD_CAP_TID_TO_LINK_MAP_SHIFT);
++
++		os_memcpy(eid, &mld_cap, 2);
++		eid += 2;
+ 	}
+ 
+ 	*eid_cmn_info_len = eid - eid_cmn_info_len ;
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2449,9 +2449,9 @@ struct ieee80211_he_mu_edca_parameter_se
+ /* Beacon or a non ML Probe response should include
+  * Common Info Length(1) + MLD MAC Address(6) +
+  * Link ID Info(1) + BSS Parameters Change count(1) +
+- * MLD Capabilities (2)
++ * EML Capabilities (2) + MLD Capabilities (2)
+  */
+-#define MLE_COMMON_INFO_BCN			11
++#define MLE_COMMON_INFO_BCN			13
+ #define MLE_COMMON_INFO_AUTH			7
+ 
+ #define MLE_TYPE_BASIC				0
+@@ -2471,6 +2471,11 @@ struct ieee80211_he_mu_edca_parameter_se
+ 
+ #define MLE_PRESENCE_BMAP_SHIFT			4
+ 
++#define MLE_MLD_CAP_MAX_SIMULTANEOUS_LINK_MASK	((u8) (BIT(0) | BIT(1) | BIT(2) | BIT(3)))
++#define MLE_MLD_CAP_TID_TO_LINK_MAP_SHIFT	5
++#define MLE_MLD_CAP_TID_TO_LINK_MAP_MASK	((u8) (BIT(5) | BIT(6)))
++#define MLE_MLD_CAP_TID_TO_LINK_MAP_DISABLED	0
++
+ #define MLE_PER_STA_PROFILE_SUBELEM_ID		0
+ #define MLE_PER_STA_PROFILE_MIN_LENGTH		4
+ 
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2260,6 +2260,8 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA	0x0000000000002000ULL
+ /** Driver supports Beacon frame TX rate configuration (EHT rates) */
+ #define WPA_DRIVER_FLAGS2_BEACON_RATE_EHT       0x0000000000004000ULL
++/** Driver supports MLO connection */
++#define WPA_DRIVER_FLAGS2_MLO			0x0000000000008000ULL
+ 	u64 flags2;
+ 
+ #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
+@@ -2391,6 +2393,11 @@ struct wpa_driver_capa {
+ 
+ 	/* Minimum bandwidth the driver supports RU Puncturing */
+ 	u8 ru_punct_supp_bw;
++
++	/* Mulit-link EML Capabilities in driver */
++	u16 eml_cap;
++	/* Mulit-link MLD Capabilities in driver */
++	u16 mld_cap;
+ };
+ 
+ 
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -818,6 +818,7 @@ static void wiphy_info_wowlan_triggers(s
+ 
+ 
+ static void wiphy_info_extended_capab(struct wpa_driver_nl80211_data *drv,
++				      struct wpa_driver_capa *drv_capa,
+ 				      struct nlattr *tb)
+ {
+ 	int rem = 0, i;
+@@ -867,6 +868,16 @@ static void wiphy_info_extended_capab(st
+ 		drv->num_iface_ext_capa++;
+ 		if (drv->num_iface_ext_capa == NL80211_IFTYPE_MAX)
+ 			break;
++
++		if (tb1[NL80211_ATTR_EML_CAPABILITY])
++			drv_capa->eml_cap = nla_get_u16(tb1[NL80211_ATTR_EML_CAPABILITY]);
++
++		if (tb1[NL80211_ATTR_MLD_CAPA_AND_OPS])
++			drv_capa->mld_cap = nla_get_u16(tb1[NL80211_ATTR_MLD_CAPA_AND_OPS]);
++
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Driver-advertised EML Capability:0x%x MLD Capability:0x%x",
++			   drv_capa->eml_cap, drv_capa->mld_cap);
+ 	}
+ 
+ 	return;
+@@ -1027,7 +1038,7 @@ static int wiphy_info_handler(struct nl_
+ 		}
+ 	}
+ 
+-	wiphy_info_extended_capab(drv, tb[NL80211_ATTR_IFTYPE_EXT_CAPA]);
++	wiphy_info_extended_capab(drv, capa, tb[NL80211_ATTR_IFTYPE_EXT_CAPA]);
+ 
+ 	if (tb[NL80211_ATTR_VENDOR_DATA]) {
+ 		struct nlattr *nl;
+@@ -1166,6 +1177,9 @@ static int wiphy_info_handler(struct nl_
+ 		}
+ 	}
+ 
++	if (tb[NL80211_ATTR_MLO_SUPPORT])
++		capa->flags2 |= WPA_DRIVER_FLAGS2_MLO;
++
+ 	return NL_SKIP;
+ }
+ 

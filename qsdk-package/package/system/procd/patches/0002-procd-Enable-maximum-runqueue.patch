@@ -1,0 +1,64 @@
+From 0d436f89f273499bf001582635747bc90e6a52dd Mon Sep 17 00:00:00 2001
+From: Ram Chandra Jangir <quic_rjangir@quicinc.com>
+Date: Tue, 24 May 2022 12:14:40 +0530
+Subject: [PATCH] procd : Enable maximum runqueue
+
+Signed-off-by: Ram Chandra Jangir <quic_rjangir@quicinc.com>
+---
+ rcS.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/rcS.c b/rcS.c
+index c2e1abb..80a6111 100644
+--- a/rcS.c
++++ b/rcS.c
+@@ -22,6 +22,7 @@
+ #include <stdio.h>
+ #include <unistd.h>
+
++#include <sys/sysinfo.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <fcntl.h>
+@@ -178,11 +179,40 @@ static int _rc(struct runqueue *q, char
+	return 0;
+ }
+
++#define COMMAND_LINE_SIZE   2048
++static inline int file_exists (char *filename) {
++	struct stat   buffer;
++	return (stat (filename, &buffer) == 0);
++}
++
++static inline int get_max_running_tasks()
++{
++	char cmdline[COMMAND_LINE_SIZE];
++	int fd, ret = -1;
++	int max_running_tasks=1;
++
++	if (file_exists("/tmp/.multicore_boot")) {
++		return max_running_tasks;
++	}
++
++	if ((fd = open("/proc/cmdline", O_RDONLY)) != -1) {
++		ret = read(fd, cmdline, sizeof(cmdline) - 1);
++		close(fd);
++	}
++
++	if (ret != -1 && strstr(cmdline, "fastboot_disable") != NULL) {
++		return max_running_tasks;
++	}
++	system("touch /tmp/.multicore_boot");
++	max_running_tasks = get_nprocs();
++	return (max_running_tasks > 3 ? (max_running_tasks-2) : max_running_tasks);
++}
++
+ int rcS(char *pattern, char *param, void (*q_empty)(struct runqueue *))
+ {
+	runqueue_init(&q);
+	q.empty_cb = q_empty;
+-	q.max_running_tasks = 1;
++	q.max_running_tasks = get_max_running_tasks();
+
+	return _rc(&q, "/etc/rc.d", pattern, "*", param);
+ }

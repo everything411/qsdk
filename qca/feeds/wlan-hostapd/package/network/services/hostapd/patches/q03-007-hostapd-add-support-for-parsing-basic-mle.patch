@@ -1,0 +1,236 @@
+From 5912e4672175ef74c565a7205d4d397550c045b3 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Wed, 5 Oct 2022 15:29:19 +0530
+Subject: [PATCH] hostapd: add support for parsing basic mle
+
+Parse Basic MLE type receieved in assoc/reassoc requests
+and parse/store the sta profile for using in assoc response.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/ieee802_11.c            | 131 +++++++++++++++++++++++++++++++--
+ src/common/ieee802_11_common.h |  27 ++++++-
+ 2 files changed, 151 insertions(+), 7 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 1452529..3756d63 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8212,9 +8212,6 @@ static void hostapd_parse_probe_req_mle(struct hostapd_data *hapd,
+ 	u8 *mle_pos = (u8 *)mle;
+ 	u8 *sta_profile_start, sta_profile_len, link_id;
+ 
+-	mle_pos += sizeof(struct multi_link_control);
+-	len -= sizeof(struct multi_link_control);
+-
+ 	if (!len)
+ 		return;
+ 
+@@ -8252,6 +8249,7 @@ static void hostapd_parse_probe_req_mle(struct hostapd_data *hapd,
+ 	       *mle_pos++ == MLE_PER_STA_PROFILE_SUBELEM_ID) {
+ 		sta_profile_len = *mle_pos++;
+ 		sta_profile_start = mle_pos;
++
+ 		if (len < sta_profile_len + 2)
+ 			break;
+ 
+@@ -8272,15 +8270,117 @@ static void hostapd_parse_probe_req_mle(struct hostapd_data *hapd,
+ 	}
+ }
+ 
++static void hostapd_parse_basic_mle(struct hostapd_data *hapd,
++				    const u8 *mle, u8 len,
++				    struct multi_link_data *ml_data)
++{
++	u8 *mle_pos = (u8 *)mle;
++	u8 link_id;
++	u8 *sub_elem, sub_elem_len;
++	struct ml_sta_control sta_control;
++
++	if (!len)
++		return;
++
++	if (len < *mle_pos)
++		return;
++
++	/* Common length */
++	mle_pos++;
++	len--;
++
++	memcpy(ml_data->u.basic.mld_addr, mle_pos, ETH_ALEN);
++	mle_pos += ETH_ALEN;
++	len -= ETH_ALEN;
++
++	if (ml_data->control.presence & MLE_EML_CAP_PRESENT) {
++		/* TODO EML caps */
++		mle_pos += 2;
++		len -= 2;
++	}
++
++	if (ml_data->control.presence & MLE_MLD_CAP_PRESENT) {
++		/* TODO MLD caps */
++		mle_pos += 2;
++		len -= 2;
++	}
++
++	if (!len)
++		return;
++
++	/* Link Info with one or more per STA subelems  */
++	while (len >= MLE_PER_STA_PROFILE_MIN_LENGTH &&
++	       *mle_pos++ == MLE_PER_STA_PROFILE_SUBELEM_ID) {
++		sub_elem_len = *mle_pos++;
++		sub_elem = mle_pos;
++
++		len -= 2;
++
++		if (len < sub_elem_len) {
++			wpa_printf(MSG_ERROR, "Not enough buf to parse sta profile");
++			break;
++		}
++
++		os_memcpy(&sta_control, sub_elem, sizeof(struct ml_sta_control));
++		sub_elem += sizeof(struct ml_sta_control);
++
++		if (sta_control.present & (MLE_STA_CONTROL_BEACON_INT_PRESENT |
++		    MLE_STA_CONTROL_DTIM_PRESENT | MLE_STA_CONTROL_BSS_PARAM_CHANGE_CNT_PRESENT)) {
++			wpa_printf(MSG_ERROR, "Unexpected info present in (Re)Assoc Req MLE Control");
++			mle_pos += sub_elem_len;
++			len -= sub_elem_len;
++			continue;
++		}
++
++		if (!(sta_control.present & MLE_STA_CONTROL_COMPLETE_PROFILE)) {
++			wpa_printf(MSG_ERROR, "Need STA complete profile in Re/assoc req");
++			mle_pos += sub_elem_len;
++			len -= sub_elem_len;
++			continue;
++		}
++
++		link_id = sta_control.link_id;
++		if (link_id < MAX_SUPPORTED_LINKS) {
++			ml_data->u.basic.link_bmap |= BIT(link_id);
++			ml_data->u.basic.link_info[link_id].control = sta_control;
++
++			/* STA Info length */
++			sub_elem++;
++
++			if (sta_control.present & MLE_STA_CONTROL_MAC_ADDR_PRESENT) {
++				memcpy(ml_data->u.basic.link_info[link_id].addr, sub_elem, ETH_ALEN);
++				sub_elem += ETH_ALEN;
++			}
++
++
++			/* TODO Handling of nstr */
++			if (sta_control.present & MLE_STA_CONTROL_NSTR_PAIR_PRESENT) {
++				if (sta_control.present & MLE_STA_CONTROL_NSTR_BITMAP)
++					sub_elem += 2;
++				else
++					sub_elem += 1;
++			}
++			ml_data->u.basic.link_info[link_id].sta_profile = sub_elem;
++			ml_data->u.basic.link_info[link_id].sta_profile_len = sub_elem_len - (sub_elem - mle_pos);
++		}
++
++		mle_pos += sub_elem_len;
++		len -= sub_elem_len;
++	}
++}
++
+ void hostapd_parse_mle(struct hostapd_data *hapd, u32 type,
+ 		       struct ieee802_11_elems *elems,
+ 		       struct multi_link_data *ml_data)
+ {
+ 	const u8 *mle;
++	u8 len;
+ 
+ 	if (!elems->mle || !hapd->mld)
+ 		return;
+ 
++	len = elems->mle_len;
++
+ 	if (elems->mle_len < sizeof(struct multi_link_control))
+ 		return;
+ 
+@@ -8290,10 +8390,29 @@ void hostapd_parse_mle(struct hostapd_data *hapd, u32 type,
+ 
+ 	os_memcpy(&ml_data->control, mle, sizeof(struct multi_link_control));
+ 
+-	if (ml_data->control.type == MULTI_LINK_PROBE_REQ)
+-		return hostapd_parse_probe_req_mle(hapd, mle, elems->mle_len, ml_data);
++	mle += sizeof(struct multi_link_control);
++	len -= sizeof(struct multi_link_control);
++
++	if (ml_data->control.type == MULTI_LINK_PROBE_REQ &&
++	    type == WLAN_FC_STYPE_PROBE_REQ) {
++		hostapd_parse_probe_req_mle(hapd, mle, len, ml_data);
++		return;
++	}
++
++	if (type != WLAN_FC_STYPE_ASSOC_REQ &&
++	    type != WLAN_FC_STYPE_REASSOC_REQ) {
++		ml_data->present = false;
++		return;
++	}
++
++	if (ml_data->control.presence & (MLE_LINK_ID_PRESENT | MLE_BSS_PARAM_CHANGE_PRESENT |
++	    MLE_MEDIUM_SYNC_DELAY_PRESENT)) {
++		wpa_printf(MSG_ERROR, "Unexpected info present in (Re)Assoc Req MLE");
++		ml_data->present = false;
++		return;
++	}
+ 
+-	/* TODO Parse MLE in Assoc req */
++	hostapd_parse_basic_mle(hapd, mle, len, ml_data);
+ }
+ 
+ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index 797ff6e..afb93e9 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -63,8 +63,32 @@ struct multi_link_control {
+ 	u16 presence : 12;
+ };
+ 
++struct ml_sta_control {
++	u16 link_id : 4;
++	u16 present : 7;
++	u16 reserved : 5;
++};
++
+ struct multi_link_basic_info {
+-	/* TODO */
++
++	/* common info */
++	u8 mld_addr[ETH_ALEN];
++	u8 link_id;
++	u8 bss_param_change_count;
++	u16 medium_sync_delay_info;
++	u16 eml_caps;
++	u16 mld_caps;
++
++	/* indicates the requested links */
++	u16 link_bmap;
++
++	/* link info */
++	struct	{
++		struct ml_sta_control control;
++		u8 addr[ETH_ALEN];
++		u8 *sta_profile;
++		u8 sta_profile_len;
++	} link_info[MAX_SUPPORTED_LINKS];
+ };
+ 
+ struct multi_link_preq_info {
+@@ -78,6 +102,7 @@ struct multi_link_preq_info {
+ };
+ 
+ struct multi_link_data {
++	u8 mgmt_type;
+ 	/* MLE present in the mgmt frame */
+ 	bool present;
+ 
+-- 
+2.17.1
+

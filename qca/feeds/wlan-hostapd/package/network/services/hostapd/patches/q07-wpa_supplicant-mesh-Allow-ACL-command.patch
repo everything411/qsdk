@@ -1,0 +1,86 @@
+From 7ef23635252e4707f1e26a8dcada84e79195bcb9 Mon Sep 17 00:00:00 2001
+From: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+Date: Tue, 18 Apr 2023 18:08:25 +0530
+Subject: [PATCH] wpa_supplicant: mesh: Allow ACL command
+
+As part of extended AP changes ACL command APIs has been changed.
+
+Allow ACL commands for mesh mode.
+
+Fixes: 9828aba16eee ("Support ACL operations in wpa_supplicant AP mode")
+
+Signed-off-by: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+---
+ wpa_supplicant/ap.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/wpa_supplicant/ap.c b/wpa_supplicant/ap.c
+index 4a4ca65d6799..faa6259fc0b5 100644
+--- a/wpa_supplicant/ap.c
++++ b/wpa_supplicant/ap.c
+@@ -1642,6 +1642,8 @@ int ap_ctrl_iface_acl_add_mac(struct wpa_supplicant *wpa_s,
+ 
+ 	if (wpa_s->ap_iface)
+ 		hapd = wpa_s->ap_iface->bss[0];
++	else if (wpa_s->ifmsh)
++		hapd = wpa_s->ifmsh->bss[0];
+ 	else
+ 		return -1;
+ 
+@@ -1668,6 +1670,8 @@ int ap_ctrl_iface_acl_del_mac(struct wpa_supplicant *wpa_s,
+ 
+ 	if (wpa_s->ap_iface)
+ 		hapd = wpa_s->ap_iface->bss[0];
++	else if (wpa_s->ifmsh)
++		hapd = wpa_s->ifmsh->bss[0];
+ 	else
+ 		return -1;
+ 
+@@ -1694,6 +1698,8 @@ int ap_ctrl_iface_acl_show_mac(struct wpa_supplicant *wpa_s,
+ 
+ 	if (wpa_s->ap_iface)
+ 		hapd = wpa_s->ap_iface->bss[0];
++	else if (wpa_s->ifmsh)
++		hapd = wpa_s->ifmsh->bss[0];
+ 	else
+ 		return -1;
+ 
+@@ -1717,6 +1723,8 @@ void ap_ctrl_iface_acl_clear_list(struct wpa_supplicant *wpa_s,
+ 
+ 	if (wpa_s->ap_iface)
+ 		hapd = wpa_s->ap_iface->bss[0];
++	else if (wpa_s->ifmsh)
++		hapd = wpa_s->ifmsh->bss[0];
+ 	else
+ 		return;
+ 
+@@ -1737,6 +1745,8 @@ int ap_ctrl_iface_disassoc_deny_mac(struct wpa_supplicant *wpa_s)
+ 
+ 	if (wpa_s->ap_iface)
+ 		hapd = wpa_s->ap_iface->bss[0];
++	else if (wpa_s->ifmsh)
++		hapd = wpa_s->ifmsh->bss[0];
+ 	else
+ 		return -1;
+ 
+@@ -1750,6 +1760,8 @@ int ap_ctrl_iface_disassoc_accept_mac(struct wpa_supplicant *wpa_s)
+ 
+ 	if (wpa_s->ap_iface)
+ 		hapd = wpa_s->ap_iface->bss[0];
++	else if (wpa_s->ifmsh)
++		hapd = wpa_s->ifmsh->bss[0];
+ 	else
+ 		return -1;
+ 
+@@ -1763,6 +1775,8 @@ int ap_ctrl_iface_set_acl(struct wpa_supplicant *wpa_s)
+ 
+ 	if (wpa_s->ap_iface)
+ 		hapd = wpa_s->ap_iface->bss[0];
++	else if (wpa_s->ifmsh)
++		hapd = wpa_s->ifmsh->bss[0];
+ 	else
+ 		return -1;
+ 
+-- 
+2.38.0
+

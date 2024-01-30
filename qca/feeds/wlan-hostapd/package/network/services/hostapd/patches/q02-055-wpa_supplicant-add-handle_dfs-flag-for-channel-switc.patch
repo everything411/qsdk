@@ -1,0 +1,57 @@
+From f82404aecd2235e2e7359c5c965fd74cf58fe36d Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <quic_hprem@quicinc.com>
+Date: Thu, 1 Dec 2022 13:07:20 +0530
+Subject: [PATCH] wpa_supplicant: add handle_dfs flag for channel switch
+
+For mesh/ibss case, in order to change from non-DFS to
+DFS channel we have to pass this flag.
+
+Signed-off-by: Harshitha Prem <quic_hprem@quicinc.com>
+---
+ src/ap/ctrl_iface_ap.c       | 1 +
+ src/drivers/driver.h         | 1 +
+ src/drivers/driver_nl80211.c | 4 ++++
+ 3 files changed, 6 insertions(+)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index bf3cf43..477badf 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -1118,6 +1118,7 @@ int hostapd_parse_csa_settings(const char *pos,
+ 	settings->freq_params.ru_punct_ofdma = !!os_strstr(pos,
+ 							   " ru_punct_ofdma");
+ 	settings->block_tx = !!os_strstr(pos, " blocktx");
++	settings->handle_dfs = !!os_strstr(pos, " handle_dfs");
+ #undef SET_CSA_SETTING
+ 
+ 	return 0;
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index abed54e..e574aa0 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2635,6 +2635,7 @@ struct csa_settings {
+ 
+ 	u16 counter_offset_beacon[2];
+ 	u16 counter_offset_presp[2];
++	bool handle_dfs;
+ };
+ 
+ /**
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index b1cd78b..723f949 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10464,6 +10464,10 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
+ 		goto fail;
+ 
+ 	nla_nest_end(msg, beacon_csa);
++
++	if (settings->handle_dfs && nla_put_flag(msg, NL80211_ATTR_HANDLE_DFS))
++		goto fail;
++
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: switch_channel failed err=%d (%s)",
+-- 
+2.17.1
+

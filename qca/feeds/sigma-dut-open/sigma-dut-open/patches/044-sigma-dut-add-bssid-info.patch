@@ -1,0 +1,40 @@
+From e1b2a087ce3251d81f03e587489c721bf606968a Mon Sep 17 00:00:00 2001
+From: Sriram R <srirrama@codeaurora.org>
+Date: Sat, 17 Oct 2020 18:39:23 +0530
+Subject: [PATCH] sigma-dut: Add bssid value to hostapd conf
+
+Add the bssid value of the main iface to the hostapd conf.
+Currently only bssid of the additional iface is being added.
+
+Signed-off-by: Sriram R <srirrama@codeaurora.org>
+---
+ ap.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -8424,6 +8424,7 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 	enum ap_chwidth chwidth;
+ 	enum sec_ch_offset offset;
+ 	int chan;
++	unsigned char main_bssid[6];
+ 
+ 	drv = get_driver_type(dut);
+ 
+@@ -8685,6 +8686,16 @@ write_conf:
+ 	if (dut->ap_start_disabled)
+ 		fprintf(f, "start_disabled=1\n");
+ 
++	/* add the bssid of the main iface before other bss are added to this conf */
++	if (get_hwaddr(ifname, main_bssid)) {
++		fclose(f);
++		return -2;
++	}
++
++	fprintf(f, "bssid=%02x:%02x:%02x:%02x:%02x:%02x\n",
++		main_bssid[0], main_bssid[1], main_bssid[2], main_bssid[3],
++		main_bssid[4], main_bssid[5]);
++
+ 	if (dut->ap_akm_values) {
+ 		struct {
+ 			int akm;

@@ -1,0 +1,227 @@
+From baec57305a1c8f413ec534ad5108da74d4dcdaf7 Mon Sep 17 00:00:00 2001
+From: Yuvarani V <quic_yuvarani@quicinc.com>
+Date: Mon, 7 Aug 2023 23:44:18 +0530
+Subject: [PATCH] hostapd: Add support for Per-STA Profile Subelement
+ Fragmentation
+
+Add support for Per-STA Profile Subelement Fragmentation
+if the Per-STA Profile Subelement length exceeds 255.
+
+Signed-off-by: Yuvarani V <quic_yuvarani@quicinc.com>
+---
+ src/ap/ieee802_11.c          | 106 ++++++++++++++++++++---------------
+ src/common/ieee802_11_defs.h |   1 +
+ 2 files changed, 62 insertions(+), 45 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 97be6e8..f31cc4b 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8969,7 +8969,7 @@ u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type,
+ 
+ 
+ static u8 * hostapd_add_mle_data(u8 *buf, u16 *curr_len, u8 *data, u16 len,
+-				 u16 *total_rem_len)
++				 u16 *total_rem_len, int fid)
+ {
+ 	u16 rem_len;
+ 	u8 tmp_len, frag_len;
+@@ -8986,12 +8986,8 @@ static u8 * hostapd_add_mle_data(u8 *buf, u16 *curr_len, u8 *data, u16 len,
+ 			frag_len = 255 - tmp_len;
+ 		else
+ 			frag_len = rem_len;
+-		/* This is basically fragmentation of the outer ML IE and not
+-		 * sub element fragmentation. curr_len is the ML ie len and total
+-		 * rem len is the len left to be added in the ML IE
+-		 */
+ 		if (!tmp_len && (*curr_len >= 255)) {
+-			*buf++ = WLAN_EID_FRAGMENT;
++			*buf++ = fid;
+ 			*buf++ = *total_rem_len > 255 ? 255 : *total_rem_len;
+ 		}
+ 		memcpy(buf, data, frag_len);
+@@ -9007,20 +9003,20 @@ static u8 * hostapd_add_mle_data(u8 *buf, u16 *curr_len, u8 *data, u16 len,
+ }
+ 
+ static u8 * hostapd_add_mle_u8(u8 *buf, u16 *curr_len, u8 val,
+-			       u16 *total_rem_len)
++			       u16 *total_rem_len, int fid)
+ {
+ 	return hostapd_add_mle_data(buf, curr_len, &val, sizeof(u8),
+-				    total_rem_len);
++				    total_rem_len, fid);
+ }
+ 
+ static u8 * hostapd_add_mle_le16(u8 *buf, u16 *curr_len, u16 val,
+-				 u16 *total_rem_len)
++				 u16 *total_rem_len, int fid)
+ {
+ 	u8 val_le[2];
+ 
+ 	WPA_PUT_LE16(val_le, val);
+ 	return hostapd_add_mle_data(buf, curr_len, val_le, sizeof(u16),
+-				    total_rem_len);
++				    total_rem_len, fid);
+ }
+ 
+ static u8 * hostapd_eid_basic_resp_mle(struct hostapd_data *hapd,
+@@ -9033,15 +9029,24 @@ static u8 * hostapd_eid_basic_resp_mle(struct hostapd_data *hapd,
+ 	u16 link_bmap;
+ 	size_t profile_len;
+ 	u8 link_tsf[BASIC_MLE_STA_INFO_TSF_LENGTH] = {0};
+-	u16 rem_link_info_len;
+-	u8 total_frag_count = 0, prev_frag_count = 0;
+-
++	u16 rem_link_info_len, mle_per_sta_len, per_sta_curr_len;
++	u16 per_sta_profile_len = 0, prev_sta_curr_len = 0, per_sta_len = 0;
++	u8 *sta_profile, *per_sta_profile, *sta_profile_mem;
+ 	if (!hapd->mld)
+ 		return link_info;
+ 
+ 	rem_link_info_len = hostapd_eid_basic_resp_mle_len(hapd, ml_data, type);
+ 
++	/* Per STA Profile Memory Allocation */
++
++	sta_profile = os_zalloc((rem_link_info_len) + (2 * ((rem_link_info_len) / 255)));
++	if (sta_profile == NULL)
++		return NULL;
++	sta_profile_mem = sta_profile;
++
+ 	for (link_bss = hapd->mld->bss; link_bss != NULL; link_bss = link_bss->nbss) {
++		per_sta_profile_len = 0;
++		per_sta_curr_len = 0;
+ 		if (hapd == link_bss)
+ 			continue;
+ 
+@@ -9065,73 +9070,84 @@ static u8 * hostapd_eid_basic_resp_mle(struct hostapd_data *hapd,
+ 			profile_len = ml_data->u.basic.link_info[link_id].resp_sta_profile_len;
+ 		}
+ 
++		/* Per STA Profile len */
++		/* Common part , variable STA info and Link STA profile field */
++		per_sta_profile_len = MLE_PER_STA_PROFILE_MIN_LENGTH + MLE_STA_INFO_LENGTH + profile_len;
++
++		rem_link_info_len += 2 * (per_sta_profile_len / 255);
++
+ 		if (!(BIT(link_id) & link_bmap))
+ 			continue;
+ 
+ 		link_info = hostapd_add_mle_u8(link_info, &curr_len,
+ 					       WLAN_EID_SUBELEMENT_PER_STA_PROFILE,
+-					       &rem_link_info_len);
++					       &rem_link_info_len, WLAN_EID_FRAGMENT);
+ 
+ 		link_info_len = link_info++;
+ 
+ 		/* sta profile len field */
+ 		curr_len++;
+ 		rem_link_info_len--;
++		/* sta profile SUBELEMENT EID & len field */
++		per_sta_profile_len -= 2;
++
++		/* Per STA Profile Subelement Fragmentation starts */
++
++		per_sta_profile = sta_profile;
++		prev_sta_curr_len = per_sta_curr_len;
+ 
+ 		/* TODO supporting only complete profile for now for presp */
+-		link_info = hostapd_add_mle_u8(link_info, &curr_len,
++		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len,
+ 					       (link_id & MLE_STA_CONTROL_LINK_ID_MASK) |
+ 					        (MLE_STA_CONTROL_COMPLETE_PROFILE |
+ 					         MLE_STA_CONTROL_MAC_ADDR_PRESENT |
+ 				  	         MLE_STA_CONTROL_BEACON_INT_PRESENT |
+ 				 	         MLE_STA_CONTROL_TSF_OFFSET_PRESENT) << 4,
+-						&rem_link_info_len);
+-
++						&per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 		/* TODO NSTR info and bss change cnt to be added */
+ 		/* DTIM encoded by default */
+-		link_info = hostapd_add_mle_u8(link_info, &curr_len, 1,
+-					       &rem_link_info_len);
+-		link_info = hostapd_add_mle_u8(link_info, &curr_len,
++		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len, 1,
++					       &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
++		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len,
+ 					       MLE_STA_INFO_LENGTH,
+-					       &rem_link_info_len);
++					       &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 
+-		link_info = hostapd_add_mle_data(link_info, &curr_len, link_bss->own_addr, ETH_ALEN,
+-						 &rem_link_info_len);
++		sta_profile = hostapd_add_mle_data(sta_profile, &per_sta_curr_len, link_bss->own_addr, ETH_ALEN,
++						 &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 
+-		link_info = hostapd_add_mle_le16(link_info, &curr_len, link_bss->iconf->beacon_int,
+-						 &rem_link_info_len);
++		sta_profile = hostapd_add_mle_le16(sta_profile, &per_sta_curr_len, link_bss->iconf->beacon_int,
++						 &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 
+ 		/* TSF offset - driver might support to find this, currently filled as 0*/
+-		link_info = hostapd_add_mle_data(link_info, &curr_len,
++		sta_profile = hostapd_add_mle_data(sta_profile, &per_sta_curr_len,
+ 						 link_tsf, BASIC_MLE_STA_INFO_TSF_LENGTH,
+-						 &rem_link_info_len);
++						 &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 
+ 		/* TODO confirm dtim count */
+-		link_info = hostapd_add_mle_u8(link_info, &curr_len, 1,
+-					       &rem_link_info_len);
+-		link_info = hostapd_add_mle_u8(link_info, &curr_len, link_bss->conf->dtim_period,
+-					       &rem_link_info_len);
+-
+-		link_info = hostapd_add_mle_data(link_info, &curr_len, profile, profile_len,
+-						 &rem_link_info_len);
++		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len, 1,
++					       &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
++		sta_profile = hostapd_add_mle_u8(sta_profile, &per_sta_curr_len, link_bss->conf->dtim_period,
++					       &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 
+-		/* TODO for now subelem frag is not expected handle later.. */
++		sta_profile = hostapd_add_mle_data(sta_profile, &per_sta_curr_len, profile, profile_len,
++						 &per_sta_profile_len, WLAN_SUBEID_FRAGMENT);
+ 
+-		/* update link info len */
+-		*link_info_len = link_info - link_info_len - 1;
++		/* Per STA Profile Subelement Fragmentation ends */
+ 
+-		/* Detect if any frag IE got added during this loop */
+-		if (curr_len > 255)
+-			total_frag_count = curr_len / 256;
++		/* Total Per STA Profile Subelement len to be added in MLE */
++		mle_per_sta_len = sta_profile - per_sta_profile;
+ 
+-		prev_frag_count = total_frag_count - prev_frag_count;
++		per_sta_len = per_sta_curr_len - prev_sta_curr_len;
+ 
+-		/* If frag happened in this loop reduce the frag ie hdr from it */
+-		if (prev_frag_count)
+-			*link_info_len -= prev_frag_count * 2;
++		/* update link info len - Per STA Profile */
++		*link_info_len = per_sta_len > 255 ? 255 : per_sta_len;
+ 
+-		prev_frag_count = total_frag_count;
++		/* MLE Fragmentation */
++		link_info = hostapd_add_mle_data(link_info, &curr_len, per_sta_profile, mle_per_sta_len,
++						&rem_link_info_len, WLAN_EID_FRAGMENT);
+ 	}
++	os_free(sta_profile_mem);
++	sta_profile_mem = NULL;
+ 	return link_info;
+ }
+ 
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 5d890e2..49666aa 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -456,6 +456,7 @@
+ #define WLAN_EID_DILS 241
+ #define WLAN_EID_FRAGMENT 242
+ #define WLAN_EID_RSNX 244
++#define WLAN_SUBEID_FRAGMENT 254
+ #define WLAN_EID_EXTENSION 255
+ 
+ /* Element ID Extension (EID 255) values */
+-- 
+2.17.1
+

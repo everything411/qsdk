@@ -1,0 +1,67 @@
+From 0c139ed754e7ae9bdcd256efd6aeeed7e568f49a Mon Sep 17 00:00:00 2001
+From: Yuvarani V <quic_yuvarani@quicinc.com>
+Date: Fri, 25 Aug 2023 16:46:35 +0530
+Subject: [PATCH] hostapd: Update Wide Bandwidth Channel Switch element
+
+Update Wide Bandwidth Channel Switch element as per Draft P802.11Revme_D4.0
+(9.4.2.159 Wide Bandwidth Channel Switch element).
+
+Update the below subfields,
+New Channel Width,
+New Channel Center Frequency Segment 0 and
+New Channel Center Frequency Segment 1
+as per Draft P802.11Revme_D4.0 for 160 MHz and 80+80 MHz bandwidth.
+
+Signed-off-by: Yuvarani V <quic_yuvarani@quicinc.com>
+---
+ src/ap/ieee802_11.c | 20 ++++++++++++--------
+ 1 file changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 37cbaa2..5281fb2 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8334,20 +8334,24 @@ u8 * hostapd_eid_wide_bw_chan_switch(struct hostapd_data *hapd,
+ 	struct ieee80211_wb_chsw_element *wb_chsw_elem;
+ 	u8 bw;
+ 
+-	/* bandwidth: 0: 40, 1: 80, 2: 160, 3: 80+80 */
++	/* bandwidth: 0: 40, 1: 80, 160, 80+80 as per Draft P802.11Revme_D4.0 */
+ 	switch (hapd->cs_freq_params.bandwidth) {
+ 	case 40:
+ 		bw = 0;
+ 		break;
+ 	case 80:
+-		/* check if it's 80+80 */
+-		if (!hapd->cs_freq_params.center_freq2)
+-			bw = 1;
+-		else
+-			bw = 3;
++		bw = 1;
+ 		break;
+ 	case 160:
+-		bw = 2;
++		bw = 1;
++		/* ccfs1 - the channel center frequency index of the 160 MHz channel */
++		ccfs1 = ccfs0;
++		/* ccfs0 - the channel center frequency index of the 80 MHz
++		 * channel segment that contains the primary channel */
++		if (hapd->cs_freq_params.channel < ccfs0)
++			ccfs0 -= 8;
++		else
++			ccfs0 += 8;
+ 		break;
+ 	default:
+ 		/* not valid VHT bandwidth or not in CSA */
+@@ -8457,7 +8461,7 @@ u8 * hostapd_eid_bw_indication(struct hostapd_data *hapd, u8 *eid, u8 ccfs0, u8
+ u8 * hostapd_eid_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
+ {
+ 	u8 *pos = eid, *length_pos;
+-	u8 ccfs0, ccfs1;
++	u8 ccfs0 = 0, ccfs1 = 0;
+ 	int freq;
+ 
+ 	if (!hapd->cs_freq_params.channel ||
+-- 
+2.17.1
+

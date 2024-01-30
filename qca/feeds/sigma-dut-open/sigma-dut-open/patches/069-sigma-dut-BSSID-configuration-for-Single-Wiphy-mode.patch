@@ -1,0 +1,28 @@
+From a541dbb464a5a1a2f2d806ee4adf3c52e426e50e Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Tue, 2 May 2023 11:53:47 -0700
+Subject: [PATCH] sigma-dut: BSSID configuration for Single Wiphy mode
+
+Same BSSID is configured for dual band configurations when in Single
+Wiphy mode, causing issue to bring up dual band APs. Modify existing
+conditional to configure a different BSSID for second configuration in
+Single Wiphy mode.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -9268,8 +9268,8 @@ write_conf:
+ 
+ 	fprintf(f, "bssid=%02x:%02x:%02x:%02x",
+ 		main_bssid[0], main_bssid[1], main_bssid[2], main_bssid[3]);
+-	if (dut->ap_is_mld && conf_counter == 1)
+-		fprintf(f, ":%02x:%02x\n", main_bssid[4] + 1, main_bssid[5] + 1);
++	if (conf_counter > 0 && strncmp(dut->device_driver, "ath12k", 6) == 0)
++		fprintf(f, ":%02x:%02x\n", main_bssid[4] + conf_counter, main_bssid[5] + conf_counter);
+ 	else
+ 		fprintf(f, ":%02x:%02x\n", main_bssid[4], main_bssid[5]);
+ 

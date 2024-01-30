@@ -1,0 +1,106 @@
+From 277ce2150f2b969c33f9b2ab45a3c42cccf0663e Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Mon, 5 Dec 2022 13:07:04 +0530
+Subject: [PATCH] hostapd: defer link beaconing until CAC completes during
+ bringup
+
+In multi-link scenario, if one of the participating link is
+in 5 GHz DFS mode and there is a need to do a CAC, then it
+is better to defer beaconing in other links as well until
+CAC is completed on that 5 GHz link.
+
+Add defer link beaconing logic until CAC completes in the 5 GHz
+link.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/hostapd.c | 32 +++++++++++++++++++++++++++++++-
+ 1 file changed, 31 insertions(+), 1 deletion(-)
+
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2525,15 +2525,49 @@ int hostapd_setup_interface_complete(str
+ 	wpa_printf(MSG_INFO,
+ 		   "%s: Last interface to sync - starting all interfaces",
+ 		   iface->bss[0]->conf->iface);
++
+ 	iface->need_to_start_in_sync = 0;
+ 	hostapd_setup_interface_complete_sync(iface, err);
++
++	/* During MLO, other link beaconing is dependent on this iface
++	 * state coming to ENABLED. If need_to_start_in_sync is not set
++	 * back to 1, once CAC is done, first if() condition will pass and
++	 * 5 GHz link alone will be set up.
++	 *
++	 * This will be the case when 5 GHz link is the last config provided in
++	 * hostapd start command in order.
++	 * Example: 2GHz + 5 GHz
++	 */
++#ifdef CONFIG_IEEE80211BE
++	if ((iface->state == HAPD_IFACE_DFS) && hapd->mld) {
++		iface->need_to_start_in_sync = 1;
++		iface->ready_to_start_in_sync = 0;
++	}
++#endif
++
+ 	for (i = 0; i < interfaces->count; i++) {
+ 		if (interfaces->iface[i]->need_to_start_in_sync &&
+ 		    interfaces->iface[i]->ready_to_start_in_sync) {
+ 			hostapd_setup_interface_complete_sync(
+ 				interfaces->iface[i], 0);
++
+ 			/* Only once the interfaces are sync started */
+ 			interfaces->iface[i]->need_to_start_in_sync = 0;
++
++			/* During MLO, other link beaconing is dependent on this
++			 * iface state coming to ENABLED.
++			 *
++			 * This will be the case 5 GHz link is NOT the last config
++			 * provided in hostapd start command in order.
++			 * Example: 5GHz + 2 GHz
++			 */
++#ifdef CONFIG_IEEE80211BE
++			if ((interfaces->iface[i]->state == HAPD_IFACE_DFS) &&
++			     interfaces->iface[i]->bss[0]->mld) {
++				interfaces->iface[i]->need_to_start_in_sync = 1;
++				interfaces->iface[i]->ready_to_start_in_sync = 0;
++			}
++#endif
+ 		}
+ 	}
+ 
+@@ -2542,10 +2576,34 @@ int hostapd_setup_interface_complete(str
+ 	for (i = 0; i < interfaces->mld_count; i++) {
+ 		struct hostapd_data *link_bss;
+ 		struct hostapd_mld *mld;
++		bool mld_start = true;
+ 
+ 		mld = interfaces->mld[i];
+ 		if (mld && mld->bss) {
+ 			link_bss = mld->bss;
++
++			/* If any iface belonging to this MLD's BSSes is
++			 * in DFS state, do not start beaconing on any of the
++			 * link BSS too. Upon successful CAC completion, this
++			 * will be called again via hostapd_dfs_complete_cac()
++			 */
++			while (link_bss) {
++				if (link_bss->iface->state == HAPD_IFACE_DFS) {
++					mld_start = false;
++					break;
++				}
++
++				link_bss = link_bss->nbss;
++			}
++
++			if (!mld_start) {
++				wpa_printf(MSG_INFO, "DFS in progress for bss " MACSTR " mld %s\n",
++					   MAC2STR(link_bss->own_addr), mld->name);
++				continue;
++			}
++
++			link_bss = mld->bss;
++
+ 			while (link_bss) {
+ 				hostapd_set_beacon(link_bss);
+ 				link_bss = link_bss->nbss;

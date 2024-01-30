@@ -1,0 +1,21 @@
+From f9a7a09fd3067053fd5c1d3fe251650032498705 Mon Sep 17 00:00:00 2001
+From: Sathishkumar Kumar <quic_satku@quicinc.com>
+Date: Thu, 3 Nov 2022 10:18:15 +0530
+Subject: [PATCH] breakpad: Add 0002-fix-build-with-ubuntu22.patch file
+
+This change will fix compilation issue in ubuntu 22 machine
+
+Signed-off-by: Sathishkumar Kumar <quic_satku@quicinc.com>
+---
+
+--- a/src/client/linux/handler/exception_handler.cc
++++ b/src/client/linux/handler/exception_handler.cc
+@@ -138,7 +138,7 @@ void InstallAlternateStackLocked() {
+   // SIGSTKSZ may be too small to prevent the signal handlers from overrunning
+   // the alternative stack. Ensure that the size of the alternative stack is
+   // large enough.
+-  static const unsigned kSigStackSize = std::max(16384, SIGSTKSZ);
++  static const unsigned kSigStackSize = std::max(16384u, static_cast<unsigned>(SIGSTKSZ));
+ 
+   // Only set an alternative stack if there isn't already one, or if the current
+   // one is too small.

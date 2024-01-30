@@ -1,0 +1,52 @@
+From ddfae1b8a68ef08827a60c2512d0c758230d53cc Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Mon, 6 Feb 2023 18:04:17 +0530
+Subject: [PATCH] hostapd: add MLO support for HE-BSS color change event
+
+Currently, HE-BSS color change feature is only supported for non-MLO
+scenario. There is a need to support link_id handling during the NL
+events in order to support HE-BSS color change events during
+Multi-Link operation.
+
+Add link_id support in the NL events and hence enable HE-BSS color
+change events for MLO.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211.c       | 11 +++++
+ src/drivers/driver_nl80211_event.c | 79 ++++++++++++++++++++++++++++--
+ 2 files changed, 86 insertions(+), 4 deletions(-)
+
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -11073,6 +11073,17 @@ static int nl80211_switch_color(void *pr
+ 	}
+ 
+ 	nla_nest_end(msg, beacon_cca);
++
++	if (drv->mlo_link_id >= 0) {
++		wpa_printf(MSG_DEBUG, "nl80211: Color change request on link_id=%d",
++			   drv->mlo_link_id);
++
++		if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id)) {
++			nlmsg_free(msg);
++			return -1;
++		}
++	}
++
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG,
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3359,6 +3359,10 @@ static bool check_route_global_event(int
+ 		return true;
+ 	case NL80211_CMD_CH_SWITCH_STARTED_NOTIFY:
+ 	case NL80211_CMD_CH_SWITCH_NOTIFY:
++#ifdef CONFIG_IEEE80211AX
++	case NL80211_CMD_OBSS_COLOR_COLLISION:
++	case NL80211_CMD_COLOR_CHANGE_STARTED:
++#endif
+ 		/* Either handler has check to fetch appropriate bss based on the
+ 		 * link_id passed or link_id was provided with global event
+ 		 * hence no need to explicitly route this event */

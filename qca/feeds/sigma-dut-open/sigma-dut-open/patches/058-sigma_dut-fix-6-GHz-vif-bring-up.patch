@@ -1,0 +1,48 @@
+From df35d428f9275aee50dfd0cae01a21a099bedd94 Mon Sep 17 00:00:00 2001
+From: Hari Chandrakanthan <quic_haric@quicinc.com>
+Date: Wed, 24 Aug 2022 23:01:36 +0530
+Subject: [PATCH] sigma_dut : fix 6 GHz vif bring up
+
+is_6g gets set only when ChnlFreq is available.
+It is possible that there are more than one set_wireless
+CAPI commands for a single test case and all the set_wireless
+command need not have ChnlFreq field.
+
+For 6 GHz single band test case with more than one set_wireless cmd,
+the dut->ap_band gets overwritten with incorrect value and
+it leads to incorrect hostapd config being generated.
+
+Avoid the overwriting by including proper checks.
+
+Fixes: 2b0e72cbe704 ("sigma-dut: fix dual band support")
+
+Signed-off-by: Hari Chandrakanthan <quic_haric@quicinc.com>
+---
+ ap.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 2eced17..0b8f936 100644
+--- a/ap.c
++++ b/ap.c
+@@ -937,7 +937,7 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 	if (dut->ap_is_dual)
+ 		dut->use_5g = 1;
+ 
+-	if (wlan_tag > 1) {
++	if (wlan_tag > 1 && dut->ap_band_1 == BAND_UNKNOWN) {
+ 		if (is_6g)
+ 			dut->ap_band_1 = BAND_6G;
+ 		else if (dut->ap_channel_1 >= 1 && dut->ap_channel_1 <= 14)
+@@ -948,7 +948,7 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 		if (dut->ap_band_1 != BAND_2G && (dut->ap_mode_1 == AP_11ac ||
+ 		    dut->ap_mode_1 == AP_11ax))
+ 			dut->ap_chwidth_1 = AP_80;
+-	} else {
++	} else if (dut->ap_band == BAND_UNKNOWN) {
+ 		if (is_6g)
+ 			dut->ap_band = BAND_6G;
+ 		else if (dut->ap_channel >= 1 && dut->ap_channel <= 14)
+-- 
+2.7.4
+

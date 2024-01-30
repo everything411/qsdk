@@ -1,0 +1,109 @@
+From 9401af4506decfb133e0cb947dba07c1da6f3b01 Mon Sep 17 00:00:00 2001
+From: Ramanathan Choodamani <quic_rchoodam@quicinc.com>
+Date: Mon, 17 Apr 2023 21:40:55 -0700
+Subject: [PATCH] hostapd: Add config support for updating  bridge connections
+
+Add config support for updating bridge connections during
+bringup.
+This function will be called when all the interfaces
+are up.
+
+Signed-off-by: Ramanathan Choodamani <quic_rchoodam@quicinc.com>
+---
+ hostapd/config_file.c  |  2 ++
+ hostapd/main.c         |  2 ++
+ src/ap/ap_config.h     |  1 +
+ src/ap/drv_callbacks.c | 26 ++++++++++++++++++++++++++
+ src/ap/hostapd.h       |  1 +
+ 5 files changed, 32 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index af90ede..4502b39 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4743,6 +4743,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 				   line);
+ 			return 1;
+ 		}
++	} else if (os_strcmp(buf, "bonded") == 0) {
++		bss->is_bonded_iface_enabled = true;
+ #endif /* CONFIG_IEEE80211BE */
+ 	} else if (os_strcmp(buf, "disable_csa_dfs") == 0) {
+ 		conf->disable_csa_dfs = atoi(pos);
+diff --git a/hostapd/main.c b/hostapd/main.c
+index f4e0ad1..29cbe53 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -242,6 +242,8 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
+ 	params.own_addr = hapd->own_addr;
+ 
+ 	hapd->drv_priv = hapd->driver->hapd_init(hapd, &params);
++	if (hapd->conf->is_bonded_iface_enabled)
++		hostapd_mld_update_bridge_conn(hapd->conf->bridge, hapd->mld->name);
+ 	os_free(params.bridge);
+ 	if (hapd->drv_priv == NULL) {
+ 		wpa_printf(MSG_ERROR, "%s driver initialization failed.",
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 193f8cf..454a84a 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -287,6 +287,7 @@ struct hostapd_bss_config {
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	unsigned int mlo_link_id;
++	bool is_bonded_iface_enabled;
+ #endif
+ 	enum hostapd_logger_level logger_syslog_level, logger_stdout_level;
+ 
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 1ddc4e0..0a8962a 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1999,6 +1999,32 @@ static void hostpad_if_enable(struct hostapd_data *hapd)
+ 	}
+ }
+ 
++int hostapd_mld_update_bridge_conn(char *brname,
++		char *ifname)
++{
++	char bonded_ifname[IFNAMSIZ + 3];
++	char buf[128];
++	int res = 0;
++
++	os_snprintf(bonded_ifname, sizeof(bonded_ifname), "%s_b", ifname);
++	os_snprintf(buf, sizeof(buf), "brctl delif %s %s",
++			brname, ifname);
++	res = system(buf);
++	if (res)
++		return -1;
++	os_memset(buf, 0, sizeof(buf));
++	os_snprintf(buf, sizeof(buf), "brctl addif %s %s",
++			brname, bonded_ifname);
++	res = system(buf);
++	os_memset(buf, 0, sizeof(buf));
++	os_snprintf(buf, sizeof(buf), "ifconfig %s up",
++			bonded_ifname);
++	res = system(buf);
++	if (res)
++		return -1;
++
++	return 0;
++}
+ 
+ static void hostapd_mld_if_disable(struct hostapd_mld *mld)
+ {
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 0e508a5..d022cf0 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -801,6 +801,7 @@ struct hostapd_data * hostapd_get_iface(struct hapd_interfaces *interfaces,
+ void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
+ 				      enum smps_mode smps_mode,
+ 				      enum chan_width chan_width, u8 rx_nss);
++int hostapd_mld_update_bridge_conn(char *brname, char *ifname);
+ #ifdef CONFIG_IEEE80211BE
+ int hostapd_mld_validate_link_conf(struct hostapd_mld *mld);
+ #endif
+-- 
+2.7.4
+

@@ -1,0 +1,422 @@
+From 0ed898b271df38d2eed3bd57969b7a5ec56f2e94 Mon Sep 17 00:00:00 2001
+From: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+Date: Thu, 10 Aug 2023 14:45:21 +0530
+Subject: [PATCH] mac80211/cfg80211: Parse NL attribute to set critical update
+ params
+
+Parse NL attribute NL80211_ATTR_SET_CRITICAL_UPDATE to get critical
+update params and pass this data to driver to update on beacon
+template
+
+Change-Id: I3ee10f3690fb47053ba76cf4533c9727a929df44
+Signed-off-by: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+---
+ include/linux/ieee80211.h    | 66 ------------------------------------
+ include/net/cfg80211.h       |  6 ++++
+ include/net/mac80211.h       |  8 ++---
+ include/uapi/linux/nl80211.h | 20 +++++++++++
+ net/mac80211/cfg.c           | 26 ++++++++------
+ net/wireless/nl80211.c       | 34 +++++++++++++++++++
+ 6 files changed, 79 insertions(+), 81 deletions(-)
+
+diff --git a/include/linux/ieee80211.h b/include/linux/ieee80211.h
+index ce822c0..0c30a25 100644
+--- a/include/linux/ieee80211.h
++++ b/include/linux/ieee80211.h
+@@ -4802,70 +4802,4 @@ struct ieee80211_mle_per_sta_profile {
+ 				 _data + ieee80211_mle_common_size(_data),\
+ 				 _len - ieee80211_mle_common_size(_data))
+ 
+-/**
+- * enum ieee80211_critical_updates - Critical Update (CU) flags
+- *
+- * These flags are used to indicate the type of critical update happening
+- * on a link in an interface.
+- *
+- * @IEEE80211_CU_INCLUDE_CSA_ELEM: critical update due to inclusion of a Channel
+- *	Switch Announcement element.
+- * @IEEE80211_CU_INCLUDE_ECSA_ELEM: critical update due to inclusion of an
+- *	Extended Channel Switch Announcement element.
+- * @IEEE80211_CU_MODIFY_EDCA_PARAM_ELEM: critical update due to modification of
+- *	the EDCA parameters element.
+- * @IEEE80211_CU_INCLUDE_QUIET_ELEM: critical update due to inclusion of a Quiet
+- *	element.
+- * @IEEE80211_CU_MODIFY_DSSS_PARAM_ELEM: critical update due to modification of
+- *	the DSSS Parameter Set.
+- * @IEEE80211_CU_MODIFY_HT_OPER_ELEM: critical update due to modification of the
+- *	HT Operation element
+- * @IEEE80211_CU_INCLUDE_WBCS_ELEM: critical update due to inclusion of a Wide
+- *	Bandwidth Channel Switch element.
+- * @IEEE80211_CU_INCLUDE_CSW_ELEM: critical update due to inclusion of a Channel
+- *	Switch Wrapper element.
+- * @IEEE80211_CU_INCLUDE_OMN_ELEM: critical update due to inclusion of an
+- *	Operating Mode Notification element.
+- * @IEEE80211_CU_INCLUDE_Q_CHAN_ELEM: critical update due to inclusion of a
+- *	Quiet Channel element.
+- * @IEEE80211_CU_MODIFY_VHT_OPER_ELEM: critical update due to modification of the
+- *	VHT Operation element.
+- * @IEEE80211_CU_MODIFY_HE_OPER_ELEM: critical update due to modification of the
+- *	HE Operation element.
+- * @IEEE80211_CU_INCLUDE_B_TWT_ELEM: critical update due to inclusion a
+- *	Broadcast TWT element.
+- * @IEEE80211_CU_INCLUDE_B_TWT_EXIST_ELEM: critical update due to inclusion of a
+- *	Broadcast TWT Parameter Set field in an existing Broadcast TWT element.
+- * @IEEE80211_CU_INCLUDE_BCCA_ELEM: critical update due to inclusion of the BSS
+- *	Color Change Announcement element.
+- * @IEEE80211_CU_MODIFY_MU_EDCA_PARAM_ELEM: critical update due to modification
+- *	of the MU EDCA Parameter Set element.
+- * @IEEE80211_CU_MODIFY_SR_PARAM_ELEM: critical update due to modification of the
+- *	Spatial Reuse Parameter Set element.
+- * @IEEE80211_CU_MODIFY_UORA_PARAM_ELEM: critical update due to modification of
+- *	the UORA Parameter Set element.
+- * @IEEE80211_CU_MODIFY_EHT_OPER_ELEM: critical update due to modification of the
+- *	EHT Operation element.
+- */
+-enum ieee80211_critical_updates {
+-	IEEE80211_CU_INCLUDE_CSA_ELEM			= 1 << 0,
+-	IEEE80211_CU_INCLUDE_ECSA_ELEM			= 1 << 1,
+-	IEEE80211_CU_MODIFY_EDCA_PARAM_ELEM		= 1 << 2,
+-	IEEE80211_CU_INCLUDE_QUIET_ELEM			= 1 << 3,
+-	IEEE80211_CU_MODIFY_DSSS_PARAM_ELEM		= 1 << 4,
+-	IEEE80211_CU_MODIFY_HT_OPER_ELEM		= 1 << 5,
+-	IEEE80211_CU_INCLUDE_WBCS_ELEM			= 1 << 6,
+-	IEEE80211_CU_INCLUDE_CSW_ELEM			= 1 << 7,
+-	IEEE80211_CU_INCLUDE_OMN_ELEM			= 1 << 8,
+-	IEEE80211_CU_INCLUDE_Q_CHAN_ELEM		= 1 << 9,
+-	IEEE80211_CU_MODIFY_VHT_OPER_ELEM		= 1 << 10,
+-	IEEE80211_CU_MODIFY_HE_OPER_ELEM		= 1 << 11,
+-	IEEE80211_CU_INCLUDE_B_TWT_ELEM			= 1 << 12,
+-	IEEE80211_CU_INCLUDE_B_TWT_EXIST_ELEM		= 1 << 13,
+-	IEEE80211_CU_INCLUDE_BCCA_ELEM			= 1 << 14,
+-	IEEE80211_CU_MODIFY_MU_EDCA_PARAM_ELEM		= 1 << 15,
+-	IEEE80211_CU_MODIFY_SR_PARAM_ELEM		= 1 << 16,
+-	IEEE80211_CU_MODIFY_UORA_PARAM_ELEM		= 1 << 17,
+-	IEEE80211_CU_MODIFY_EHT_OPER_ELEM		= 1 << 18,
+-};
+ #endif /* LINUX_IEEE80211_H */
+diff --git a/include/net/cfg80211.h b/include/net/cfg80211.h
+index bfaee40..df907ec 100644
+--- a/include/net/cfg80211.h
++++ b/include/net/cfg80211.h
+@@ -1453,6 +1453,8 @@ struct cfg80211_unsol_bcast_probe_resp {
+  * @unsol_bcast_probe_resp: Unsolicited broadcast probe response parameters
+  * @mbssid_config: AP settings for multiple bssid
+  * @beacon_tx_mode: Beacon Tx Mode setting
++ * @elemid_added: critical update element id inserted
++ * @elemid_modified: critical update element id modified
+  */
+ struct cfg80211_ap_settings {
+ 	struct cfg80211_chan_def chandef;
+@@ -1490,6 +1492,8 @@ struct cfg80211_ap_settings {
+ 	enum nl80211_beacon_tx_mode beacon_tx_mode;
+ 	bool ap_ps_valid;
+ 	bool ap_ps_enable;
++	bool elemid_added;
++	bool elemid_modified;
+ };
+ 
+ /**
+@@ -1521,6 +1525,7 @@ struct cfg80211_csa_settings {
+ 	bool block_tx;
+ 	u8 count;
+ 	struct cfg80211_unsol_bcast_probe_resp unsol_bcast_probe_resp;
++	bool elemid_added;
+ };
+ 
+ /**
+@@ -1544,6 +1549,7 @@ struct cfg80211_color_change_settings {
+ 	u8 count;
+ 	u8 color;
+ 	struct cfg80211_unsol_bcast_probe_resp unsol_bcast_probe_resp;
++	bool elemid_added;
+ };
+ 
+ /**
+diff --git a/include/net/mac80211.h b/include/net/mac80211.h
+index 61039f6..406bc9d 100644
+--- a/include/net/mac80211.h
++++ b/include/net/mac80211.h
+@@ -690,8 +690,8 @@ struct ieee80211_fils_discovery {
+  * @beacon_tx_mode: Beacon Tx Mode setting.
+  * @eht_oper: EHT operation information of the BSS (AP/Mesh) or of the AP we
+  * 	are connected to (STA)
+- * @critical_update_flag: indicates any Critical update going on in the BSS.
+- *	see &enum ieee80211_critical_updates
++ * @elemid_added: critical update element id inserted
++ * @elemid_modified: critical update element id modified
+  */
+ struct ieee80211_bss_conf {
+ 	const u8 *bssid;
+@@ -793,8 +793,8 @@ struct ieee80211_bss_conf {
+ 	bool nss_offld_mesh_forward_enabled;
+ 	u32 nss_offld_mpath_refresh_time;
+ 
+-	/* Critical Update flag*/
+-	u32 critical_update_flag;
++	bool elemid_added;
++	bool elemid_modified;
+ 	u32 rts_threshold;
+ };
+ 
+diff --git a/include/uapi/linux/nl80211.h b/include/uapi/linux/nl80211.h
+index b171bc3..99b68b0 100644
+--- a/include/uapi/linux/nl80211.h
++++ b/include/uapi/linux/nl80211.h
+@@ -2830,6 +2830,9 @@ enum nl80211_commands {
+  *	update for each MLD. In each nested item, it contains attributes
+  *	defined in &enum nl80211_cu_attrs.
+  *
++ * @NL80211_ATTR_SET_CRITICAL_UPDATE: set critical update for the bss (u8)
++ *     (see &enum nl80211_set_cu).
++ *
+  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
+  * @NL80211_ATTR_MAX: highest attribute number currently defined
+  * @__NL80211_ATTR_AFTER_LAST: internal use
+@@ -3389,6 +3392,7 @@ enum nl80211_attrs {
+ 	NL80211_ATTR_ADD_MULTI_CHAN,
+ 	NL80211_ATTR_DEL_MULTI_CHAN,
+ 	NL80211_ATTR_RXMGMT_CRITICAL_UPDATE,
++	NL80211_ATTR_SET_CRITICAL_UPDATE,
+ 	/* add attributes here, update the policy in nl80211.c */
+ 
+ 	__NL80211_ATTR_AFTER_LAST,
+@@ -8098,4 +8102,20 @@ enum nl80211_cu_mld_link_attrs {
+        __NL80211_CU_MLD_LINK_ATTR_LAST,
+        NL80211_CU_MLD_LINK_ATTR_MAX = __NL80211_CU_MLD_LINK_ATTR_LAST - 1
+ };
++
++/**
++ * enum nl80211_set_cu - set critical update params
++ *
++ * @NL80211_CU_UNSPEC: reserved
++ * @NL80211_CU_ELEMID_ADDED: Critical update - Element id added
++ * @NL80211_CU_ELEMID_MODIFIED: Critical update - Element id Modified
++ * @NUM_NL80211_CUS: number of CU attributes
++ */
++enum nl80211_set_cu {
++        NL80211_CU_UNSPEC,
++        NL80211_CU_ELEMID_ADDED,
++        NL80211_CU_ELEMID_MODIFIED,
++
++        NUM_NL80211_CUS,
++};
+ #endif /* __LINUX_NL80211_H */
+diff --git a/net/mac80211/cfg.c b/net/mac80211/cfg.c
+index c55fa7d..ac3e8c4 100644
+--- a/net/mac80211/cfg.c
++++ b/net/mac80211/cfg.c
+@@ -1618,6 +1618,8 @@ static int ieee80211_start_ap(struct wiphy *wiphy, struct net_device *dev,
+ 	if (err < 0)
+ 		goto error;
+ 	changed |= BSS_CHANGED_UNSOL_BCAST_PROBE_RESP;
++	link_conf->elemid_added = params->elemid_added;
++	link_conf->elemid_modified = params->elemid_modified;
+ 
+ 	err = drv_start_ap(sdata->local, sdata, link_conf);
+ 	if (err) {
+@@ -1627,6 +1629,8 @@ static int ieee80211_start_ap(struct wiphy *wiphy, struct net_device *dev,
+ 			kfree_rcu(old, rcu_head);
+ 		RCU_INIT_POINTER(link->u.ap.beacon, NULL);
+ 		sdata->u.ap.active = false;
++		link_conf->elemid_added = 0;
++		link_conf->elemid_modified = 0;
+ 		goto error;
+ 	}
+ 
+@@ -1638,6 +1642,8 @@ static int ieee80211_start_ap(struct wiphy *wiphy, struct net_device *dev,
+ 	list_for_each_entry(vlan, &sdata->u.ap.vlans, u.vlan.list)
+ 		netif_carrier_on(vlan->dev);
+ 
++	link_conf->elemid_added = 0;
++	link_conf->elemid_modified = 0;
+ 	return 0;
+ 
+ error:
+@@ -1714,7 +1720,12 @@ static int ieee80211_update_ap(struct wiphy *wiphy, struct net_device *dev,
+ 		return err;
+ 	changed |= BSS_CHANGED_UNSOL_BCAST_PROBE_RESP;
+ 
++	link_conf->elemid_added = params->elemid_added;
++	link_conf->elemid_modified = params->elemid_modified;
++
+ 	ieee80211_link_info_change_notify(sdata, link, changed);
++	link_conf->elemid_added = 0;
++	link_conf->elemid_modified = 0;
+ 	return 0;
+ }
+ 
+@@ -3985,10 +3996,6 @@ static int ieee80211_set_after_csa_beacon(struct ieee80211_link_data *link,
+ 
+ 		if (err < 0)
+ 			return err;
+-
+-		link->conf->critical_update_flag &=
+-					     ~(IEEE80211_CU_INCLUDE_CSA_ELEM |
+-					       IEEE80211_CU_INCLUDE_ECSA_ELEM);
+ 		*changed |= err;
+ 		break;
+ 	case NL80211_IFTYPE_ADHOC:
+@@ -4176,9 +4183,6 @@ static int ieee80211_set_csa_beacon(struct ieee80211_link_data *link,
+ 			return err;
+ 		}
+ 
+-		link->conf->critical_update_flag |=
+-					(IEEE80211_CU_INCLUDE_CSA_ELEM |
+-					 IEEE80211_CU_INCLUDE_ECSA_ELEM);
+ 		*changed |= err;
+ 
+ 		break;
+@@ -4333,6 +4337,7 @@ __ieee80211_channel_switch(struct wiphy *wiphy, struct net_device *dev,
+ 	if (err)
+ 		goto out;
+ 	changed |= BSS_CHANGED_UNSOL_BCAST_PROBE_RESP;
++	link_conf->elemid_added = params->elemid_added;
+ 
+ 	/* should we pass link_id here ? */
+ 	err = drv_pre_channel_switch(sdata, &ch_switch);
+@@ -4386,6 +4391,7 @@ __ieee80211_channel_switch(struct wiphy *wiphy, struct net_device *dev,
+ 
+ out:
+ 	mutex_unlock(&local->chanctx_mtx);
++	link_conf->elemid_added = 0;
+ 	return err;
+ }
+ 
+@@ -5113,8 +5119,6 @@ ieee80211_set_after_color_change_beacon(struct ieee80211_link_data *link,
+ 		if (ret < 0)
+ 			return ret;
+ 
+-		link->conf->critical_update_flag &= ~IEEE80211_CU_INCLUDE_BCCA_ELEM;
+-
+ 		*changed |= ret;
+ 		break;
+ 	}
+@@ -5159,8 +5163,6 @@ ieee80211_set_color_change_beacon(struct ieee80211_link_data *link,
+ 			return err;
+ 		}
+ 
+-		link->conf->critical_update_flag |= IEEE80211_CU_INCLUDE_BCCA_ELEM;
+-
+ 		*changed |= err;
+ 		break;
+ 	default:
+@@ -5376,6 +5378,7 @@ ieee80211_color_change(struct wiphy *wiphy, struct net_device *dev,
+ 
+ 	link_conf->color_change_active = true;
+ 	link_conf->color_change_color = params->color;
++	link_conf->elemid_added = params->elemid_added;
+ 
+ 	err = ieee80211_set_unsol_bcast_probe_resp(sdata, &params->unsol_bcast_probe_resp,
+ 						   link, link_conf);
+@@ -5394,6 +5397,7 @@ ieee80211_color_change(struct wiphy *wiphy, struct net_device *dev,
+ 
+ out:
+ 	mutex_unlock(&local->mtx);
++	link_conf->elemid_added = 0;
+ 
+ 	return err;
+ }
+diff --git a/net/wireless/nl80211.c b/net/wireless/nl80211.c
+index cb335b9..c387671 100644
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -893,6 +893,7 @@ static const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
+ 	[NL80211_ATTR_ADD_MULTI_CHAN] = { .type = NLA_U32 },
+ 	[NL80211_ATTR_DEL_MULTI_CHAN] = { .type = NLA_U32 },
+ 	[NL80211_ATTR_RXMGMT_CRITICAL_UPDATE] = NLA_POLICY_NESTED(cu_policy),
++	[NL80211_ATTR_SET_CRITICAL_UPDATE] = { .type = NLA_U8 },
+ };
+ 
+ /* policy for the key attributes */
+@@ -6444,6 +6445,7 @@ static int nl80211_start_ap(struct sk_buff *skb, struct genl_info *info)
+ 	struct wireless_dev *wdev = dev->ieee80211_ptr;
+ 	struct cfg80211_ap_settings *params;
+ 	int err;
++	u8 critical_update = 0;
+ 
+ 	if (dev->ieee80211_ptr->iftype != NL80211_IFTYPE_AP &&
+ 	    dev->ieee80211_ptr->iftype != NL80211_IFTYPE_P2P_GO)
+@@ -6704,6 +6706,14 @@ static int nl80211_start_ap(struct sk_buff *skb, struct genl_info *info)
+ 			info->attrs[NL80211_ATTR_AP_SETTINGS_FLAGS]);
+ 	else if (info->attrs[NL80211_ATTR_EXTERNAL_AUTH_SUPPORT])
+ 		params->flags |= NL80211_AP_SETTINGS_EXTERNAL_AUTH_SUPPORT;
++	if (info->attrs[NL80211_ATTR_SET_CRITICAL_UPDATE]) {
++		critical_update =
++		    nla_get_u8(info->attrs[NL80211_ATTR_SET_CRITICAL_UPDATE]);
++		if (critical_update & NL80211_CU_ELEMID_ADDED)
++			params->elemid_added = 1;
++		if (critical_update & NL80211_CU_ELEMID_MODIFIED)
++			params->elemid_modified = 1;
++	}
+ 
+ 	if (wdev->conn_owner_nlportid &&
+ 	    info->attrs[NL80211_ATTR_SOCKET_OWNER] &&
+@@ -6751,6 +6761,7 @@ static int nl80211_update_ap(struct sk_buff *skb, struct genl_info *info)
+ 	struct cfg80211_ap_settings *params;
+ 	int err;
+ 	bool haveinfo = false;
++	u8 critical_update = 0;
+ 
+ 	if (dev->ieee80211_ptr->iftype != NL80211_IFTYPE_AP &&
+ 	    dev->ieee80211_ptr->iftype != NL80211_IFTYPE_P2P_GO)
+@@ -6801,6 +6812,15 @@ static int nl80211_update_ap(struct sk_buff *skb, struct genl_info *info)
+ 			goto out;
+ 	}
+ 
++	if (info->attrs[NL80211_ATTR_SET_CRITICAL_UPDATE]) {
++		critical_update =
++			nla_get_u8(info->attrs[NL80211_ATTR_SET_CRITICAL_UPDATE]);
++		if (critical_update & NL80211_CU_ELEMID_ADDED)
++			params->elemid_added = 1;
++		if (critical_update & NL80211_CU_ELEMID_MODIFIED)
++			params->elemid_modified = 1;
++	}
++
+ 	wdev_lock(wdev);
+ 	err = rdev_update_ap(rdev, dev, params);
+ 	wdev_unlock(wdev);
+@@ -10760,6 +10780,7 @@ static int nl80211_channel_switch(struct sk_buff *skb, struct genl_info *info)
+ 	bool need_handle_dfs_flag = true;
+ 	int len, i;
+ 	u32 cs_count;
++	u8 critical_update = 0;
+ 
+ 	if (!rdev->ops->channel_switch ||
+ 	    !(rdev->wiphy.flags & WIPHY_FLAG_HAS_CHANNEL_SWITCH))
+@@ -10945,6 +10966,12 @@ skip_beacons:
+ 		if (err)
+ 			goto free;
+ 	}
++	if (info->attrs[NL80211_ATTR_SET_CRITICAL_UPDATE]) {
++		critical_update =
++			nla_get_u8(info->attrs[NL80211_ATTR_SET_CRITICAL_UPDATE]);
++		if (critical_update & NL80211_CU_ELEMID_ADDED)
++			params.elemid_added = 1;
++	}
+ 
+ 	wdev_lock(wdev);
+ 	err = rdev_channel_switch(rdev, dev, &params, link_id);
+@@ -16669,6 +16696,7 @@ static int nl80211_color_change(struct sk_buff *skb, struct genl_info *info)
+ 	u16 offset;
+ 	int err;
+ 	unsigned int link_id = nl80211_link_id(info->attrs);
++	u8 critical_update = 0;
+ 
+ 	if (!rdev->ops->color_change)
+ 		return -EOPNOTSUPP;
+@@ -16757,6 +16785,12 @@ static int nl80211_color_change(struct sk_buff *skb, struct genl_info *info)
+ 		if (err)
+ 			goto out;
+ 	}
++	if (info->attrs[NL80211_ATTR_SET_CRITICAL_UPDATE]) {
++		critical_update =
++			nla_get_u8(info->attrs[NL80211_ATTR_SET_CRITICAL_UPDATE]);
++		if (critical_update & NL80211_CU_ELEMID_ADDED)
++			params.elemid_added = 1;
++	}
+ 
+ 	wdev_lock(wdev);
+ 	err = rdev_color_change(rdev, dev, &params, link_id);
+-- 
+2.17.1
+

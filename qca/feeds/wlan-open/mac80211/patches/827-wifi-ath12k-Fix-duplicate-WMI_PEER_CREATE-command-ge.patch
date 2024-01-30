@@ -1,0 +1,43 @@
+From 97b1e595ff362b1318598b07c5330272ebc75222 Mon Sep 17 00:00:00 2001
+From: Nagarajan Maran <quic_nmaran@quicinc.com>
+Date: Wed, 2 Aug 2023 15:33:27 +0530
+Subject: [PATCH] wifi: ath12k: Fix duplicate WMI_PEER_CREATE command getting
+ sent.
+
+During peer create, currently the vdev_id is checked for duplicate
+entry. This results in an issue, when two Virtual APs(VAP) are created
+in same radio, and a STA is trying to associate to the first VAP and
+second VAP one after another. This STA behaviour can occur for various
+reasons like disassoc for first VAP not reaching the AP, power down
+and power up of STA.
+
+The current logic was introduced for band steering, where only when
+vdev_id is same, peer create will not happen. For more robust approach,
+modified the logic to check the pdev_id, instead of vdev_id, which
+implies that there should not be two STA with same MAC connected to
+same radio.
+
+Fixes: 5620d1b751ce ("wifi: ath12k: Add peer rhash table support")
+Signed-off-by: Nagarajan Maran <quic_nmaran@quicinc.com>
+---
+ drivers/net/wireless/ath/ath12k/peer.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/peer.c b/drivers/net/wireless/ath/ath12k/peer.c
+index a9f41da84cd6..b5a142b748c1 100644
+--- a/drivers/net/wireless/ath/ath12k/peer.c
++++ b/drivers/net/wireless/ath/ath12k/peer.c
+@@ -591,7 +591,9 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
+ 	spin_lock_bh(&ar->ab->base_lock);
+ 	peer = ath12k_peer_find_by_addr(ar->ab, param->peer_addr);
+ 	if (peer) {
+-		if (peer->vdev_id == param->vdev_id) {
++		if (peer->pdev_idx == ar->pdev_idx) {
++			ath12k_warn(ar->ab, "Peer: %pM is already present in VDEV:%d and PDEV: %d\n",
++				    param->peer_addr, param->vdev_id, peer->pdev_idx);
+ 			spin_unlock_bh(&ar->ab->base_lock);
+ 			mutex_unlock(&ar->ab->tbl_mtx_lock);
+ 			return -EINVAL;
+-- 
+2.17.1
+

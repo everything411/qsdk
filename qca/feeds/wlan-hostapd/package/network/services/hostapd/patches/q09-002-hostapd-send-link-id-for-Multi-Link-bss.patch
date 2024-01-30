@@ -1,0 +1,219 @@
+From f7893d8d34f61c4d4a785555dcdda0ab1e2861e5 Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <quic_hprem@quicinc.com>
+Date: Mon, 15 May 2023 15:19:06 +0530
+Subject: [PATCH] hostapd: Send ML link id only for 11be enabled bss
+
+Currently, when we configure multiple virtual ap interfaces with
+some of them with 11BE enabled and some with 11BE disabled, then
+virtual ap interfaces are not coming up.
+
+This is because, when any one of the bss is 11BE enabled the link
+id information is sent to driver regardless of 11BE enabled or disabled
+in that bss interface.
+
+Hence, add changes to fill MLO link id information only if the bss has
+11BE enabled.
+
+Signed-off-by: Harshitha Prem <quic_hprem@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 27 ++++++++++++++++++---------
+ src/drivers/driver_nl80211.h |  1 +
+ 2 files changed, 19 insertions(+), 9 deletions(-)
+
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -3110,7 +3110,7 @@ static int wpa_driver_nl80211_del_beacon
+ 	nl80211_put_wiphy_data_ap(bss);
+ 	msg = nl80211_drv_msg(drv, 0, NL80211_CMD_DEL_BEACON);
+ 
+-	if (drv->mlo_link_id >= 0 &&
++	if (bss->mlo && drv->mlo_link_id >= 0 &&
+ 	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
+ 		return -1;
+ 
+@@ -3194,7 +3194,7 @@ static void wpa_driver_nl80211_remove_li
+ 	u8 cmd = NL80211_CMD_REMOVE_LINK;
+ 	int ret;
+ 
+-	if (!is_ap_interface(drv->nlmode) || drv->mlo_link_id < 0)
++	if (!is_ap_interface(drv->nlmode) || drv->mlo_link_id < 0 || !bss->mlo)
+ 		return;
+ 
+ 	wpa_printf(MSG_DEBUG, "nl80211: Remove link");
+@@ -3202,7 +3202,7 @@ static void wpa_driver_nl80211_remove_li
+ 	wpa_printf(MSG_DEBUG, "nl80211: link_id=%u", drv->mlo_link_id);
+ 
+ 	if (!(msg = nl80211_bss_msg(bss, 0, cmd)) ||
+-	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
++	    (bss->mlo && nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id)))
+ 		goto fail;
+ 
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+@@ -3677,7 +3677,7 @@ static int wpa_driver_nl80211_set_key(st
+ 		goto fail;
+ 	} else {
+ 		wpa_printf(MSG_DEBUG, "   broadcast key");
+-		if (drv->mlo_link_id >= 0 &&
++		if (bss->mlo && drv->mlo_link_id >= 0 &&
+ 		    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
+ 			goto fail;
+ 		if (key_flag & KEY_FLAG_DEFAULT)
+@@ -3730,7 +3730,7 @@ static int wpa_driver_nl80211_set_key(st
+ 	if (addr && is_broadcast_ether_addr(addr)) {
+ 		struct nlattr *types;
+ 
+-		if (drv->mlo_link_id >= 0 &&
++		if (bss->mlo && drv->mlo_link_id >= 0 &&
+ 		    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
+ 			goto fail;
+ 		types = nla_nest_start(key_msg, NL80211_KEY_DEFAULT_TYPES);
+@@ -4450,7 +4450,7 @@ static int nl80211_set_bss(struct i802_b
+ 		return -ENOBUFS;
+ 	}
+ 
+-	if (drv->mlo_link_id >= 0 &&
++	if (bss->mlo && drv->mlo_link_id >= 0 &&
+ 	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id)) {
+ 		nlmsg_free(msg);
+ 		return -ENOBUFS;
+@@ -4940,6 +4940,8 @@ static int wpa_driver_nl80211_add_link(v
+ 
+ 	if (params->link_id < 0)
+ 		return -1;
++	else
++		drv->mlo_link_id = params->link_id;
+ 
+ 	if (!(msg = nl80211_bss_msg(bss, 0, cmd)) ||
+ 	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, params->link_id) ||
+@@ -4999,6 +5001,7 @@ static int wpa_driver_nl80211_set_ap(voi
+ 	wpa_printf(MSG_DEBUG, "nl80211: ssid=%s",
+ 		   wpa_ssid_txt(params->ssid, params->ssid_len));
+ 	wpa_printf(MSG_DEBUG, "nl80211: Link ID=%d", drv->mlo_link_id);
++	wpa_printf(MSG_DEBUG, "nl80211: mlo=%d", bss->mlo);
+ 	if (!(msg = nl80211_bss_msg(bss, 0, cmd)) ||
+ 	    nla_put(msg, NL80211_ATTR_BEACON_HEAD, params->head_len,
+ 		    params->head) ||
+@@ -5013,7 +5016,8 @@ static int wpa_driver_nl80211_set_ap(voi
+ 	     nla_put_u32(msg, NL80211_ATTR_BEACON_TX_MODE, params->beacon_tx_mode)))
+ 		goto fail;
+ 
+-	if (drv->mlo_link_id >= 0 && nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
++	if (bss->mlo && drv->mlo_link_id >= 0 &&
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
+ 		goto fail;
+ 
+ 	if (params->proberesp && params->proberesp_len) {
+@@ -5489,7 +5493,7 @@ static int nl80211_set_channel(struct i8
+ 	}
+ #endif /* CONFIG_IEEE80211AX */
+ 
+-	if (drv->mlo_link_id >= 0 &&
++	if (bss->mlo && drv->mlo_link_id >= 0 &&
+ 	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
+ 		return -1;
+ 
+@@ -6316,7 +6320,7 @@ static int nl80211_tx_control_port(void
+ 	    nla_put(msg, NL80211_ATTR_FRAME, len, buf) ||
+ 	    (no_encrypt &&
+ 	     nla_put_flag(msg, NL80211_ATTR_CONTROL_PORT_NO_ENCRYPT)) ||
+-	    (bss->drv->mlo_link_id >= 0 &&
++	    (bss->mlo && bss->drv->mlo_link_id >= 0 &&
+ 	     nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, bss->drv->mlo_link_id))) {
+ 		nlmsg_free(msg);
+ 		return -ENOBUFS;
+@@ -7700,7 +7704,7 @@ static int i802_get_seqnum(const char *i
+ 	if (!msg ||
+ 	    (addr && nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, addr)) ||
+ 	    nla_put_u8(msg, NL80211_ATTR_KEY_IDX, idx) ||
+-	    (drv->mlo_link_id >= 0 &&
++	    (bss->mlo && drv->mlo_link_id >= 0 &&
+ 	     nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))) {
+ 		nlmsg_free(msg);
+ 		return -ENOBUFS;
+@@ -8015,7 +8019,7 @@ static int i802_set_tx_queue_params(void
+ 	if (!msg)
+ 		return -1;
+ 
+-	if (drv->mlo_link_id >= 0 &&
++	if (bss->mlo && drv->mlo_link_id >= 0 &&
+ 	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
+ 		goto fail;
+ 
+@@ -8093,7 +8097,8 @@ static int i802_set_sta_vlan(struct i802
+ 		return -ENOBUFS;
+ 	}
+ 
+-	if (link_id >= 0 && nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id)) {
++	if (bss->mlo && link_id >= 0 &&
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id)) {
+ 		nlmsg_free(msg);
+ 		return -ENOBUFS;
+ 	}
+@@ -8489,6 +8494,9 @@ static void *i802_init(struct hostapd_da
+ 	if (params->mld_addr) {
+ 		drv->mlo_link_id = params->mlo_link_id;
+ 		i802_chain_link_bss(bss);
++		bss->mlo = true;
++	} else {
++		bss->mlo = false;
+ 	}
+ 
+ 	if (params->mld_addr)
+@@ -8847,6 +8855,11 @@ add_bss:
+ 		new_bss->first_link_bss = first_link_bss;
+ 		drv->first_bss->next = new_bss;
+ 
++		if (link_bss_addr)
++			new_bss->mlo = true;
++		else
++			new_bss->mlo = false;
++
+ 		/* This would be always set for MLD if_add() */
+ 		if (addr)
+ 			os_memcpy(new_bss->mld_addr, addr, ETH_ALEN);
+@@ -9012,7 +9025,7 @@ static int nl80211_send_frame_cmd(struct
+ 	    nla_put(msg, NL80211_ATTR_FRAME, buf_len, buf))
+ 		goto fail;
+ 
+-	if (drv->mlo_link_id >= 0) {
++	if (bss->mlo && drv->mlo_link_id >= 0) {
+ 		 if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id))
+ 			goto fail;
+ 
+@@ -10275,7 +10288,7 @@ static int nl80211_start_radar_detection
+ 		return -1;
+ 	}
+ 
+-	if (drv->mlo_link_id >= 0) {
++	if (bss->mlo && drv->mlo_link_id >= 0) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: radar detection (CAC) on link_id=%d",
+ 			   drv->mlo_link_id);
+ 
+@@ -11021,7 +11034,7 @@ static int nl80211_switch_channel(void *
+ 	if (settings->handle_dfs && nla_put_flag(msg, NL80211_ATTR_HANDLE_DFS))
+ 		goto fail;
+ 
+-	if (drv->mlo_link_id >= 0) {
++	if (bss->mlo && drv->mlo_link_id >= 0) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Channel switch request on link_id=%d",
+ 			   drv->mlo_link_id);
+ 
+@@ -11113,7 +11126,7 @@ static int nl80211_switch_color(void *pr
+ 
+ 	nla_nest_end(msg, beacon_cca);
+ 
+-	if (drv->mlo_link_id >= 0) {
++	if (bss->mlo && drv->mlo_link_id >= 0) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Color change request on link_id=%d",
+ 			   drv->mlo_link_id);
+ 
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -70,6 +70,7 @@ struct i802_bss {
+ 
+ 	u8 addr[ETH_ALEN];
+ 	u8 mld_addr[ETH_ALEN];
++	bool mlo;
+ 
+ 	int freq;
+ 	int bandwidth;

@@ -1,0 +1,45 @@
+From 051e295a9fea3120ce4397974001da849c332996 Mon Sep 17 00:00:00 2001
+From: Karthik M <quic_karm@quicinc.com>
+Date: Thu, 24 Aug 2023 11:30:59 +0530
+Subject: [PATCH] hostapd: RNR signalling 320MHz BW reduction for 6GHz radio
+
+RnR signaling will not use 320MHz Operating class as
+WiFi6/6E STAs will not support decoding 320MHz Opclass. We have
+reduced it to 160MHz Operating class
+
+Signed-off-by: Karthik M <quic_karm@quicinc.com>
+---
+ src/ap/ieee802_11.c | 20 +++++++++++---------
+ 1 file changed, 11 insertions(+), 9 deletions(-)
+
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8912,15 +8912,19 @@ static u8 * hostapd_eid_rnr_iface(struct
+ 	if (!(iface->drv_flags & WPA_DRIVER_FLAGS_AP_CSA) || !iface->freq)
+ 		return eid;
+ 
+-	/* op_class for 5GHz 320MHz bw is not defined in spec. So use op_class of 160MHz */
+-	if (is_5ghz_freq(hapd->iface->freq) && ch_width == CONF_OPER_CHWIDTH_320MHZ)
+-		op_class = 129;
+-	else
+-		if (ieee80211_freq_to_channel_ext(iface->freq,
+-						  hapd->iconf->secondary_channel,
+-						  ch_width, &op_class, &channel) ==
+-		    NUM_HOSTAPD_MODES)
+-			return eid;
++	if (ch_width == CONF_OPER_CHWIDTH_320MHZ) {
++		/* For 5GHz, 320MHz BW is not defined in spec.
++		 * So use op_class of 160MHz
++		 * As per Draft P802.11Revme_D4.0, WIFI6/6E STA will
++		 * not support 320MHz op_class. So use op_class of 160MHz
++		 * in these cases.
++		 */
++		op_class = is_5ghz_freq(hapd->iface->freq) ? 129 : 134;
++	} else if (ieee80211_freq_to_channel_ext(iface->freq,
++						 hapd->iconf->secondary_channel,
++						 ch_width, &op_class,
++						 &channel) == NUM_HOSTAPD_MODES)
++		return eid;
+ 
+ 	if (reporting_hapd->iface == hapd->iface && reporting_hapd->mld &&
+ 	    (ema_bss_index_1 != -1) && (ema_bss_index_2 != -1))

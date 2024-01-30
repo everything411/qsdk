@@ -1,0 +1,67 @@
+From 78c2dcf8a9b665bb6f374ed9463361cdab5905c7 Mon Sep 17 00:00:00 2001
+From: Ramanathan Choodamani <quic_rchoodam@quicinc.com>
+Date: Mon, 27 Feb 2023 03:39:55 -0800
+Subject: [PATCH 1/2] hostapd: Set channel width to correct value in HE PHY CAP for
+       EHT320
+
+Problem description: For EHT320 the channel width is not
+set correctly in the frames. The effect of RU puncturing
+for EHT320 is modifying the operating channel width which
+in turn modifies the PHY capabilities repeatedly.
+
+This change ensures the channel width is handled correctly
+for EHT320 and the puncturing does not adversely affect the
+frame content modification.
+
+Signed-off-by: Ramanathan Choodamani <quic_rchoodam@quicinc.com>
+---
+ src/ap/ieee802_11_he.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/ap/ieee802_11_he.c b/src/ap/ieee802_11_he.c
+index 06c8cd3..c11050d 100644
+--- a/src/ap/ieee802_11_he.c
++++ b/src/ap/ieee802_11_he.c
+@@ -227,24 +227,24 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 	pos += 6; /* skip the fixed part */
+ 
+ 	if (is_6ghz_op_class(hapd->iconf->op_class)) {
++		enum oper_chan_width he_oper_chwidth =
++			hapd->iface->conf->he_oper_chwidth;
+ 		u8 seg0 = hapd->iconf->he_oper_centr_freq_seg0_idx;
+ 		u8 seg1 = hapd->iconf->he_oper_centr_freq_seg1_idx;
+ 		u8 control;
+ 
+ 		if (hapd->iconf->ru_punct_bitmap) {
+-			hapd->iconf->he_oper_chwidth =
++			he_oper_chwidth =
+ 				hostapd_get_oper_chwidth(hapd->iconf);
+ 			hapd->iconf->he_oper_centr_freq_seg0_idx = seg0;
+ 			hapd->iconf->he_oper_centr_freq_seg1_idx = seg1;
+ 
+ 			ru_punct_update_bw(hapd->iconf->ru_punct_bitmap,
+ 					   hapd->iconf->channel,
+-					   &hapd->iconf->he_oper_chwidth,
+-					   &hapd->iconf->he_oper_centr_freq_seg0_idx,
+-					   &hapd->iconf->he_oper_centr_freq_seg1_idx);
++					   &he_oper_chwidth,
++					   &seg0,
++					   &seg1);
+ 
+-			seg0 = hapd->iconf->he_oper_centr_freq_seg0_idx;
+-			seg1 = hapd->iconf->he_oper_centr_freq_seg1_idx;
+ 		}
+ 
+ 		if (!seg0)
+@@ -286,7 +286,7 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 		*pos++ = control;
+ 
+ 		/* Channel Center Freq Seg0/Seg1 */
+-		if (hapd->iconf->he_oper_chwidth == 2) {
++		if (he_oper_chwidth == 2) {
+ 			/*
+ 			 * Seg 0 indicates the channel center frequency index of
+ 			 * the 160 MHz channel.
+-- 
+2.7.4
+

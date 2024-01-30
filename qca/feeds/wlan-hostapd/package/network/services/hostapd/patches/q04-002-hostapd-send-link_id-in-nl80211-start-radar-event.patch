@@ -1,0 +1,39 @@
+From f48015fcbb45ada2d78f2ea93e5ba024857a86d5 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Tue, 6 Dec 2022 16:34:27 +0530
+Subject: [PATCH] hostapd: send link_id in nl80211 start radar event
+
+With Multi-Link Operation (MLO), it is mandatory to send the link_id
+on which radar detection should be started.
+
+Add link_id advertisement support in start radar event.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index c8ce9f0..8ecfc5d 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10038,6 +10038,16 @@ static int nl80211_start_radar_detection(void *priv,
+ 		return -1;
+ 	}
+ 
++	if (drv->mlo_link_id >= 0) {
++		wpa_printf(MSG_DEBUG, "nl80211: radar detection (CAC) on link_id=%d",
++			   drv->mlo_link_id);
++
++		if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, drv->mlo_link_id)) {
++			nlmsg_free(msg);
++			return -1;
++		}
++	}
++
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	if (ret == 0)
+ 		return 0;
+-- 
+2.17.1
+

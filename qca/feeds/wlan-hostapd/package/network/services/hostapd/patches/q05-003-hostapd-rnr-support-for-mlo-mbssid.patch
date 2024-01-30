@@ -1,0 +1,474 @@
+From 5be4fecc0c9069e33eca056148d15736597b741f Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Fri, 3 Mar 2023 00:36:39 +0530
+Subject: [PATCH 3/3] hostapd: extend rnr support for MBSSID
+
+Extend RNR support to add MLD parameters of
+the MLDs belonging to the non Tx profiles and their
+affiliated APs.
+
+In case of EMA, the RNR is updated and filled by the
+kernel, and in non EMA case and for non beacons in
+case of MBSSID enabled vap, the RNR is updated in
+hostapd.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+---
+ src/ap/beacon.c     |  13 ++--
+ src/ap/hostapd.c    |   2 -
+ src/ap/hostapd.h    |   1 -
+ src/ap/ieee802_11.c | 141 +++++++++++++++++++++++++++++++++-----------
+ src/ap/ieee802_11.h |   6 +-
+ 5 files changed, 118 insertions(+), 45 deletions(-)
+
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -977,7 +977,7 @@ static u8 * hostapd_gen_probe_resp(struc
+ 
+ 	buflen += hostapd_eid_mbssid_len(hapd_probed, WLAN_FC_STYPE_PROBE_RESP,
+ 					 NULL, known_bss, known_bss_len, NULL, ml_data);
+-	buflen += hostapd_eid_rnr_len(hapd, WLAN_FC_STYPE_PROBE_RESP);
++	buflen += hostapd_eid_rnr_len(hapd, WLAN_FC_STYPE_PROBE_RESP, true);
+ 	buflen += hostapd_mbo_ie_len(hapd);
+ 	buflen += hostapd_eid_owe_trans_len(hapd);
+ 	buflen += hostapd_eid_dpp_cc_len(hapd);
+@@ -1104,7 +1104,7 @@ static u8 * hostapd_gen_probe_resp(struc
+ 	    (hapd->iconf->ieee80211be && !hapd->conf->disable_11be))
+ 		pos = hostapd_eid_wb_chsw_wrapper(hapd, pos);
+ 
+-	pos = hostapd_eid_rnr(hapd, pos, WLAN_FC_STYPE_PROBE_RESP);
++	pos = hostapd_eid_rnr(hapd, pos, WLAN_FC_STYPE_PROBE_RESP, true);
+ 	pos = hostapd_eid_fils_indic(hapd, pos, 0);
+ 	pos = hostapd_get_rsnxe(hapd, pos, epos - pos);
+ 
+@@ -1951,7 +1951,7 @@ static u8 * hostapd_gen_fils_discovery(s
+ 		total_len += 3;
+ 	}
+ 
+-	total_len += hostapd_eid_rnr_len(hapd, WLAN_FC_STYPE_ACTION);
++	total_len += hostapd_eid_rnr_len(hapd, WLAN_FC_STYPE_ACTION, true);
+ 
+ 	pos = hostapd_eid_fils_indic(hapd, buf, 0);
+ 	buf_len = pos - buf;
+@@ -2030,7 +2030,7 @@ static u8 * hostapd_gen_fils_discovery(s
+ 	/* Fill in the Length field value */
+ 	*length_pos = pos - (length_pos + 1);
+ 
+-	pos = hostapd_eid_rnr(hapd, pos, WLAN_FC_STYPE_ACTION);
++	pos = hostapd_eid_rnr(hapd, pos, WLAN_FC_STYPE_ACTION, true);
+ 
+ 	/* FILS Indication element */
+ 	if (buf_len) {
+@@ -2161,7 +2161,7 @@ int ieee802_11_build_ap_params(struct ho
+ 
+ 	if (hapd->iconf->ema)
+ 		tail_len += 5; /* Multiple BSSID Configuration element */
+-	tail_len += hostapd_eid_rnr_len(hapd, WLAN_FC_STYPE_BEACON);
++	tail_len += hostapd_eid_rnr_len(hapd, WLAN_FC_STYPE_BEACON, true);
+ 	tail_len += hostapd_mbo_ie_len(hapd);
+ 	tail_len += hostapd_eid_owe_trans_len(hapd);
+ 	tail_len += hostapd_eid_dpp_cc_len(hapd);
+@@ -2292,7 +2292,8 @@ int ieee802_11_build_ap_params(struct ho
+ 	    (hapd->iconf->ieee80211be && !hapd->conf->disable_11be))
+ 		tailpos = hostapd_eid_wb_chsw_wrapper(hapd, tailpos);
+ 
+-	tailpos = hostapd_eid_rnr(hapd, tailpos, WLAN_FC_STYPE_BEACON);
++	tailpos = hostapd_eid_rnr(hapd, tailpos, WLAN_FC_STYPE_BEACON,
++				  true);
+ 	tailpos = hostapd_eid_fils_indic(hapd, tailpos, 0);
+ 	tailpos = hostapd_get_rsnxe(hapd, tailpos, tailend - tailpos);
+ 
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3139,8 +3139,6 @@ struct hostapd_iface * hostapd_init(stru
+ 				hapd->mld->bss = hapd;
+ 				hapd->mld->num_links++;
+ 
+-				//TODO: Need to know if this has to be parsed from config.
+-				hapd->mld->mld_id = interfaces->mld_count + 1;
+ 				hapd->nbss = NULL;
+ 				hapd->iface->need_to_start_in_sync = 1;
+ 				all_mld = os_realloc_array(interfaces->mld,
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -505,7 +505,6 @@ struct hostapd_sta_info {
+ struct hostapd_mld {
+ 	char name[IFNAMSIZ + 1];
+ 	u8 addr[ETH_ALEN];
+-	u8 mld_id;
+ 	struct hostapd_data *bss; /* List Head of Link BSS affiliated with this MLD */
+ 	u8 num_links;
+ 	bool if_setup_done;
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8215,6 +8215,43 @@ static size_t hostapd_eid_nr_db_len(stru
+ }
+ 
+ 
++bool hostapd_bss_mld_match(struct hostapd_data *tx_hapd, struct hostapd_data *ml_hapd,
++			   u8 *match_idx)
++{
++	int bss_idx = 0;
++	struct hostapd_data *bss;
++
++	if (!ml_hapd->mld)
++		return false;
++
++	/* If Tx bss is a EHT AP, all bss, including Tx and non Tx bss are MLD
++	 * irrespective of num of links
++	 */
++	if (!tx_hapd->mld)
++		return false;
++
++	if (match_idx)
++		*match_idx = 0;
++
++	if (!tx_hapd->iconf->mbssid || tx_hapd->iface->num_bss <= 1)
++		return tx_hapd->mld == ml_hapd->mld;
++
++	for (bss_idx = 0; bss_idx < tx_hapd->iface->num_bss; bss_idx++) {
++		if (match_idx)
++			*match_idx = bss_idx;
++
++		bss = tx_hapd->iface->bss[bss_idx];
++
++		if (!bss || !bss->mld)
++			continue;
++
++		if (bss->mld == ml_hapd->mld)
++			return true;
++	}
++
++	return false;
++}
++
+ const int ema_not_applicable = -1;
+ static size_t hostapd_eid_rnr_iface_len(struct hostapd_data *hapd,
+ 					struct hostapd_data *reporting_hapd,
+@@ -8227,6 +8264,16 @@ static size_t hostapd_eid_rnr_iface_len(
+ 	int tbtt_count = 0;
+ 	size_t i, start = 0;
+ 	u8 tbtt_info_len = mld_update ? RNR_TBTT_MLD_INFO_LEN : RNR_TBTT_INFO_LEN;
++	u8 match_idx;
++
++	if (reporting_hapd->iface == hapd->iface && reporting_hapd->mld &&
++	    (ema_bss_index_1 != -1) && (ema_bss_index_2 != -1))
++		tbtt_info_len = RNR_TBTT_MLD_INFO_LEN;
++
++	/* Add MLD param for colocated mode*/
++	if (reporting_hapd->iface != hapd->iface && hapd->mld && !mld_update &&
++	    (ema_bss_index_1 == -1) && (ema_bss_index_2 == -1))
++		tbtt_info_len = RNR_TBTT_MLD_INFO_LEN;
+ 
+ 	while (start < hapd->iface->num_bss) {
+ 		if (!len ||
+@@ -8248,7 +8295,7 @@ static size_t hostapd_eid_rnr_iface_len(
+ 			    bss->conf->ignore_broadcast_ssid)
+ 				continue;
+ 
+-			if ((ema_bss_index_1 != -1) && (ema_bss_index_2 != -1) &&
++			if (!mld_update && (ema_bss_index_1 != -1) && (ema_bss_index_2 != -1) &&
+ 			    (i >= ema_bss_index_1) && (i < ema_bss_index_2))
+ 				continue;
+ 
+@@ -8267,10 +8314,26 @@ static size_t hostapd_eid_rnr_iface_len(
+ 			}
+ 
+ 			/* MLD BSS are reported in separate Neighbor Info */
+-			if ((!bss->mld && mld_update) || (bss->mld && !mld_update))
++			if ((!bss->mld && mld_update) || (bss->mld && !mld_update &&
++			     hostapd_mbssid_get_tx_bss(bss) != reporting_hapd))
++				continue;
++
++
++			/* If the reporting hapd or its non Tx hapd MLD matches
++			 * with this bss (in other iface) report them in the RNR
++			 */
++			if (mld_update && !hostapd_bss_mld_match(reporting_hapd, bss, &match_idx))
+ 				continue;
+ 
+-			/* TODO: Misc MBSSID + MLO RNR exceptions */
++			/* When MLD params are added to beacon RNR and in case of EMA beacons
++			 * we report only affiliated APs belonging to the reported non Tx profiles
++			 * And TX profile will reported in every EMA beacon.
++			 */
++			if (mld_update && (ema_bss_index_1 != -1) && (ema_bss_index_2 != -1) && match_idx &&
++			    ((match_idx < ema_bss_index_1) || (match_idx >= ema_bss_index_2)))
++				continue;
++
++			/* TODO colocated bss match + MBSSID + MLO case */
+ 
+ co_location_rnr_len:
+ 			if (len + tbtt_info_len > 255 ||
+@@ -8329,6 +8392,7 @@ enum colocation_mode get_colocation_mode
+ 
+ 
+ static size_t hostapd_eid_rnr_mlo_len(struct hostapd_data *hapd, u32 type,
++				      int ema_bss_index_1, int ema_bss_index_2,
+ 				      size_t *current_len)
+ {
+ 	struct hostapd_iface *iface;
+@@ -8338,9 +8402,12 @@ static size_t hostapd_eid_rnr_mlo_len(st
+ 	if (!hapd->iface || !hapd->iface->interfaces)
+ 		return 0;
+ 
++	hapd = hostapd_mbssid_get_tx_bss(hapd);
++
+ 	if (!hapd->mld)
+ 		return 0;
+ 
++	/* TODO allow for FILS/Action as well */
+ 	if (type != WLAN_FC_STYPE_BEACON && type != WLAN_FC_STYPE_PROBE_RESP)
+ 		return 0;
+ 
+@@ -8361,8 +8428,8 @@ static size_t hostapd_eid_rnr_mlo_len(st
+ 
+ 		len += hostapd_eid_rnr_iface_len(iface->bss[0], hapd,
+ 						 current_len,
+-						 ema_not_applicable,
+-						 ema_not_applicable,
++						 ema_bss_index_1,
++						 ema_bss_index_2,
+ 						 true);
+ 	}
+ 	return len;
+@@ -8399,7 +8466,7 @@ static size_t hostapd_eid_rnr_colocation
+ }
+ 
+ 
+-size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type)
++size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type, bool include_mld_params)
+ {
+ 	size_t total_len = 0, current_len = 0;
+ 	enum colocation_mode mode = get_colocation_mode(hapd);
+@@ -8437,7 +8504,12 @@ size_t hostapd_eid_rnr_len(struct hostap
+ 		break;
+ 	}
+ 
+-	total_len += hostapd_eid_rnr_mlo_len(hapd, type, &current_len);
++	/* For EMA Beacons, MLD neighbor repoting is added as part of mbssid rnr */
++	if (include_mld_params && (type != WLAN_FC_STYPE_BEACON || !hapd->iconf->ema))
++		total_len += hostapd_eid_rnr_mlo_len(hapd, type,
++						     ema_not_applicable,
++						     ema_not_applicable,
++						     &current_len);
+ 
+ 	return total_len;
+ }
+@@ -8513,6 +8585,7 @@ static u8 * hostapd_eid_rnr_iface(struct
+ 	u8 tbtt_count = 0, op_class, channel, bss_param;
+ 	u8 tbtt_info_len = mld_update ? RNR_TBTT_MLD_INFO_LEN : RNR_TBTT_INFO_LEN;
+ 	u8 bss_param_change_count = 0;
++	u8 match_idx;
+ 
+ 	if (!(iface->drv_flags & WPA_DRIVER_FLAGS_AP_CSA) || !iface->freq)
+ 		return eid;
+@@ -8527,6 +8600,15 @@ static u8 * hostapd_eid_rnr_iface(struct
+ 		    NUM_HOSTAPD_MODES)
+ 			return eid;
+ 
++	if (reporting_hapd->iface == hapd->iface && reporting_hapd->mld &&
++	    (ema_bss_index_1 != -1) && (ema_bss_index_2 != -1))
++		tbtt_info_len = RNR_TBTT_MLD_INFO_LEN;
++
++	/* Add MLD param for colocated mode*/
++	if (reporting_hapd->iface != hapd->iface && hapd->mld && !mld_update &&
++	    (ema_bss_index_1 == -1) && (ema_bss_index_2 == -1))
++		tbtt_info_len = RNR_TBTT_MLD_INFO_LEN;
++
+ 	while (start < iface->num_bss) {
+ 		if (!len ||
+ 		    len + RNR_TBTT_HEADER_LEN + tbtt_info_len > 255) {
+@@ -8553,7 +8635,7 @@ static u8 * hostapd_eid_rnr_iface(struct
+ 			    bss->conf->ignore_broadcast_ssid)
+ 				continue;
+ 
+-			if ((ema_bss_index_1 != -1) && (ema_bss_index_2 != -1) &&
++			if (!mld_update && (ema_bss_index_1 != -1) && (ema_bss_index_2 != -1) &&
+ 			    (i >= ema_bss_index_1) && (i < ema_bss_index_2))
+ 				continue;
+ 
+@@ -8572,10 +8654,27 @@ static u8 * hostapd_eid_rnr_iface(struct
+ 			}
+ 
+ 			/* MLD BSS are reported in separate Neighbor Info */
+-			if ((!bss->mld && mld_update) || (bss->mld && !mld_update))
++			if ((!bss->mld && mld_update) || (bss->mld && !mld_update &&
++			    hostapd_mbssid_get_tx_bss(bss) != reporting_hapd))
+ 				continue;
+ 
+-			/* TODO: Misc MBSSID + MLO RNR exceptions */
++			/* If the reporting hapd or its non Tx hapd MLD matches
++			 * with this bss (in other iface) report them in the RNR
++			 * TODO MLO+ MBSS+ colocated MLD not part of the reporting hapd
++			 * match idx is neither 0 or the non Tx bss idx , it just needs
++			 * to be unique
++			 */
++			if (mld_update && !hostapd_bss_mld_match(reporting_hapd, bss,
++								 &match_idx))
++				continue;
++
++			/* When MLD params are added to beacon RNR and in case of EMA beacons
++			 * we report only affiliated APs belonging to the reported non Tx profiles
++			 * and TX profile will reported in every EMA beacon.
++			 */
++			if (mld_update && (ema_bss_index_1 != -1) && (ema_bss_index_2 != -1) && match_idx &&
++			    ((match_idx < ema_bss_index_1) || (match_idx >= ema_bss_index_2)))
++				continue;
+ 
+ co_location_rnr:
+ 			if (len + tbtt_info_len > 255 ||
+@@ -8607,27 +8706,24 @@ co_location_rnr:
+ 			*eid++ = bss_param;
+ 			*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER - 1;
+ 
+-			if (!mld_update) {
++			if (tbtt_info_len != RNR_TBTT_MLD_INFO_LEN) {
+ 				len += tbtt_info_len;
+ 				tbtt_count += 1;
+ 				continue;
++			} else if (!mld_update && reporting_hapd->mld != bss->mld) {
++			/* This is not an intended ML update but RNR for EMA partial profile,
++			 * since TX BSS is an MLD, advetised NON_TX Profile is also MLD hence
++			 * add ML Parameters.
++			 */
++				if (!hostapd_bss_mld_match(reporting_hapd, bss,
++							   &match_idx))
++					match_idx = 255;
+ 			}
+ 
+-			if (!reporting_hapd->iconf->mbssid) {
+-				if (!reporting_hapd->mld)
+-					*eid++ = bss->mld->mld_id + 1;
+-				else if (reporting_hapd->mld->mld_id == bss->mld->mld_id)
+-					*eid++ = 0;
+-				else
+-					*eid++ = bss->mld->mld_id + 1;
+-			} else {
+-				/* TODO check if no non TX vap is also not part of MLD */
+-				if (!reporting_hapd->mld)
+-					*eid++ = bss->mld->mld_id + 1;
+-				else if (reporting_hapd->mld->mld_id == bss->mld->mld_id)
+-					*eid++ = 0;
+-				/* TODO Misc MBSSID cases - involving non Tx mlds */
+-			}
++			/* MLD ID */
++			*eid++ = match_idx;
++
++			/* TODO colocated bss match + MBSSID + MLO case */
+ 
+ 			*eid++ = (bss->iface->mlo_link_id) |
+ 				 (bss_param_change_count & 0xf) << 4;
+@@ -8679,7 +8775,8 @@ static u8 * hostapd_eid_rnr_colocation(s
+ }
+ 
+ static u8 * hostapd_eid_rnr_mlo(struct hostapd_data *hapd, u32 type, u8 *eid,
+-				  size_t *current_len)
++				int ema_bss_index_1, int ema_bss_index_2,
++				size_t *current_len)
+ {
+ 	struct hostapd_iface *iface;
+ 	size_t i;
+@@ -8687,9 +8784,12 @@ static u8 * hostapd_eid_rnr_mlo(struct h
+ 	if (!hapd->iface || !hapd->iface->interfaces)
+ 		return eid;
+ 
++	hapd = hostapd_mbssid_get_tx_bss(hapd);
++
+ 	if (!hapd->mld)
+ 		return eid;
+ 
++	/* TODO allow for FILS/Action as well */
+ 	if (type != WLAN_FC_STYPE_BEACON && type != WLAN_FC_STYPE_PROBE_RESP)
+ 		return eid;
+ 
+@@ -8710,14 +8810,15 @@ static u8 * hostapd_eid_rnr_mlo(struct h
+ 
+ 		eid = hostapd_eid_rnr_iface(iface->bss[0], hapd,
+ 					     eid, current_len,
+-					     ema_not_applicable,
+-					     ema_not_applicable,
++					     ema_bss_index_1,
++					     ema_bss_index_2,
+ 					     true);
+ 	}
+ 	return eid;
+ }
+ 
+-u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type)
++u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type,
++		     bool include_mld_params)
+ {
+ 	u8 *eid_start = eid;
+ 	size_t current_len = 0;
+@@ -8756,7 +8857,11 @@ u8 * hostapd_eid_rnr(struct hostapd_data
+ 		return eid_start;
+ 	}
+ 
+-	eid = hostapd_eid_rnr_mlo(hapd, type, eid, &current_len);
++	/* For EMA Beacons, MLD neighbor repoting is added as part of mbssid rnr */
++	if (include_mld_params && (type != WLAN_FC_STYPE_BEACON || !hapd->iconf->ema))
++		eid = hostapd_eid_rnr_mlo(hapd, type, eid,
++					  ema_not_applicable, ema_not_applicable,
++					  &current_len);
+ 
+ 	if (eid == eid_start + 2)
+ 		return eid_start;
+@@ -9501,11 +9606,18 @@ size_t hostapd_eid_mbssid_len(struct hos
+ 								rnr_count,
+ 								bss_index,
+ 								false);
++
++			if (hostapd_mbssid_get_tx_bss(hapd)->mld)
++				(*rnr_len) += hostapd_eid_rnr_mlo_len(hostapd_mbssid_get_tx_bss(hapd),
++								      frame_type,
++								      rnr_count,
++								      bss_index,
++								      &rnr_cur_len);
+ 		}
+ 	}
+ 
+ 	if (hapd->iconf->ema && rnr_len)
+-		(*rnr_len) += hostapd_eid_rnr_len(hapd, frame_type);
++		(*rnr_len) += hostapd_eid_rnr_len(hapd, frame_type, false);
+ 
+ 	return len;
+ }
+@@ -9700,6 +9812,14 @@ u8 * hostapd_eid_mbssid(struct hostapd_d
+ 							rnr_eid, &cur_len,
+ 							rnr_start_count,
+ 							bss_index, false);
++
++			if (hostapd_mbssid_get_tx_bss(hapd)->mld)
++				rnr_eid = hostapd_eid_rnr_mlo(hostapd_mbssid_get_tx_bss(hapd),
++							      frame_type,
++							      rnr_eid,
++							      rnr_start_count,
++							      bss_index,
++							      &cur_len);
+ 		}
+ 	}
+ 
+@@ -9714,7 +9834,6 @@ u8 * hostapd_eid_mbssid(struct hostapd_d
+ 			rnr_eid = hostapd_eid_rnr_colocation(hapd, rnr_eid,
+ 							     &cur_len);
+ 	}
+-
+ 	return eid;
+ }
+ 
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -229,8 +229,10 @@ void auth_sae_process_commit(void *eloop
+ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len);
+ u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
+ 		    const u8 *ext_capab_ie, size_t ext_capab_ie_len);
+-size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type);
+-u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type);
++size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type,
++			   bool include_mld_params);
++u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type,
++		     bool include_mld_params);
+ int ieee802_11_set_radius_info(struct hostapd_data *hapd, struct sta_info *sta,
+ 			       int res, struct radius_sta *info);
+ size_t hostapd_eid_eht_capab_len(struct hostapd_data *hapd,

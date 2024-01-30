@@ -1,0 +1,243 @@
+From 168613b872de9f0f617499fc4440ebaf71f7c538 Mon Sep 17 00:00:00 2001
+From: Ramasamy Kaliappan <quic_rkaliapp@quicinc.com>
+Date: Fri, 9 Dec 2022 14:26:52 +0530
+Subject: [PATCH] hostapd: parse eml capability in ml ie
+
+Parse eml and mld capability sub field present in common
+info field of Multi-Link element from
+association request sent by non-AP MLD.
+
+These eml capabilities stored in ml sta and
+send to the target driver.
+
+Signed-off-by: Ramasamy Kaliappan <quic_rkaliapp@quicinc.com>
+---
+ src/ap/ap_drv_ops.c          |  4 +++-
+ src/ap/ap_drv_ops.h          |  2 +-
+ src/ap/ieee802_11.c          | 10 +++++++++-
+ src/ap/sta_info.h            |  2 ++
+ src/drivers/driver.h         |  2 ++
+ src/drivers/driver_nl80211.c | 15 +++++++++++++++
+ 6 files changed, 32 insertions(+), 3 deletions(-)
+
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -449,6 +449,7 @@ int hostapd_sta_add(struct hostapd_data
+ 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
+ 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
+ 		    int set, bool link_add_mod, int link_id, const u8 *mld_addr,
++		    u16 eml_cap, u16 mld_cap,
+ 		    const struct ieee80211_240mhz_vendor_oper *eht_240mhz_capab,
+ 		    size_t eht_240mhz_len)
+ {
+@@ -483,6 +484,8 @@ int hostapd_sta_add(struct hostapd_data
+ 	params.set = set;
+ 	params.link_id = link_id;
+ 	params.mld_addr = mld_addr;
++	params.eml_cap = eml_cap;
++	params.mld_cap = mld_cap;
+ 	params.eht_240mhz_capab = eht_240mhz_capab;
+ 	params.eht_240mhz_len = eht_240mhz_len;
+ 
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -48,6 +48,7 @@ int hostapd_sta_add(struct hostapd_data
+ 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
+ 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
+ 		    int set, bool link_add_mod, int link_id, const u8 *mld_addr,
++		    u16 eml_cap, u16 mld_cap,
+ 		    const struct ieee80211_240mhz_vendor_oper *eht_240mhz_capab,
+ 		    size_t eht_240mhz_len);
+ int hostapd_set_privacy(struct hostapd_data *hapd, int enabled);
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5378,6 +5378,8 @@ static int add_associated_sta(struct hos
+ 	int link_id = -1;
+ 	bool ml_sta = false;
+ 	u8 *link_addr = sta->addr;
++	u16 eml_cap = 0;
++	u16 mld_cap = 0;
+  
+ 	if (sta->ml_sta) {
+ 		mld_addr = sta->addr;
+@@ -5386,6 +5388,8 @@ static int add_associated_sta(struct hos
+ 			ml_sta = true;
+ 			set = 0;
+ 		}
++		eml_cap = sta->ml_sta->eml_cap;
++		mld_cap = sta->ml_sta->mld_cap;
+ 	}
+ 
+ 	if (hapd->mld)
+@@ -5473,6 +5477,7 @@ static int add_associated_sta(struct hos
+ 			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
+ 			    sta->vht_opmode, sta->p2p_ie ? 1 : 0,
+ 			    set, ml_sta, link_id, mld_addr,
++			    eml_cap, mld_cap,
+ 			    sta->flags & WLAN_STA_EHT? sta->eht_240mhz_capab : NULL,
+ 			    sta->flags & WLAN_STA_EHT? sta->eht_240mhz_len : 0)) {
+ 		hostapd_logger(hapd, link_addr,
+@@ -6002,6 +6007,8 @@ static u16 prepare_link_sta_assoc_resp(s
+ 		return res;
+ 
+ 	ml_sta = sta->ml_sta;
++	ml_sta->eml_cap = ml_data->u.basic.eml_caps;
++	ml_sta->mld_cap = ml_data->u.basic.mld_caps;
+ 
+ 	/* should have added the first sta during ml sta creation */
+ 	if (ml_sta->linksta == NULL)
+@@ -6035,7 +6042,8 @@ static u16 prepare_link_sta_assoc_resp(s
+ 				    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
+ 				    sta->flags, 0, 0, 0, 0, false,
+ 				    hapd->iface->mlo_link_id,
+-				    sta->addr, NULL, 0))
++				    sta->addr,
++				    0, 0, NULL, 0))
+ 				return WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+ 		}
+ 
+@@ -9026,7 +9034,9 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 	if (type != WLAN_FC_STYPE_AUTH) {
+ 		/* Fill these info by default currently */
+ 		presence_bmap = MLE_LINK_ID_PRESENT | MLE_BSS_PARAM_CHANGE_PRESENT |
+-				MLE_EML_CAP_PRESENT | MLE_MLD_CAP_PRESENT;
++				MLE_MLD_CAP_PRESENT;
++		if (!hapd->iconf->disable_eml_cap)
++			presence_bmap |= MLE_EML_CAP_PRESENT;
+ 	}
+ 
+ 	*eid++ = MLE_TYPE_BASIC | ((presence_bmap & 0x0f) << MLE_PRESENCE_BMAP_SHIFT);
+@@ -9051,8 +9061,8 @@ u8 * hostapd_eid_basic_mle(struct hostap
+ 	/* TODO Medium Synchronization Delay Info fields */
+ 
+ 	if (presence_bmap & MLE_EML_CAP_PRESENT) {
+-		*eid = host_to_le16(hapd->iface->eml_cap);
+-		eid += 2;
++		*eid++ = (hapd->iface->eml_cap & 0x00FF);
++		*eid++ = (hapd->iface->eml_cap >> 8);
+ 	}
+ 
+ 	if (presence_bmap & MLE_MLD_CAP_PRESENT) {
+@@ -9201,13 +9211,14 @@ static void hostapd_parse_basic_mle(stru
+ 	len -= ETH_ALEN;
+ 
+ 	if (ml_data->control.presence & MLE_EML_CAP_PRESENT) {
+-		/* TODO EML caps */
++		if (!hapd->iconf->disable_eml_cap)
++			ml_data->u.basic.eml_caps = *(u16 *)mle_pos;
+ 		mle_pos += 2;
+ 		len -= 2;
+ 	}
+ 
+ 	if (ml_data->control.presence & MLE_MLD_CAP_PRESENT) {
+-		/* TODO MLD caps */
++		ml_data->u.basic.mld_caps = *(u16 *)mle_pos;
+ 		mle_pos += 2;
+ 		len -= 2;
+ 	}
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -122,6 +122,8 @@ struct ml_sta_info {
+ 	u8 addr[6];
+ 	u8 num_links;
+ 	enum ml_sta_state state;
++	u16 eml_cap;
++	u16 mld_cap;
+ };
+ 
+ struct sta_info {
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2470,6 +2470,8 @@ struct hostapd_sta_add_params {
+ 	u16 ru_punct_bitmap;
+ 	int link_id; /* Link id of the ML STA */
+ 	const u8 *mld_addr; /* MLD MAC address */
++	u16 eml_cap;
++	u16 mld_cap;
+ 	const struct ieee80211_240mhz_vendor_oper *eht_240mhz_capab;
+ 	size_t eht_240mhz_len;
+ };
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5908,6 +5908,20 @@ static int wpa_driver_nl80211_sta_add(vo
+ 			goto fail;
+ 	}
+ 
++	if (params->eml_cap) {
++		wpa_printf(MSG_DEBUG, "  * eml_cap =%u", params->eml_cap);
++		if (nla_put_u16(msg, NL80211_ATTR_EML_CAPABILITY,
++				params->eml_cap))
++			goto fail;
++	}
++
++	if (params->mld_cap) {
++		wpa_printf(MSG_DEBUG, "  * mld_cap=%u", params->mld_cap);
++		if (nla_put_u16(msg, NL80211_ATTR_MLD_CAPA_AND_OPS,
++				params->mld_cap))
++			goto fail;
++	}
++
+ 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL);
+ 	msg = NULL;
+ 	if (ret)
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1793,10 +1793,14 @@ int ap_sta_re_add(struct hostapd_data *h
+ 	u8 *mld_addr = NULL;
+ 	int link_id = -1;
+ 	u8 *link_addr = sta->addr;
++	u16 eml_cap = 0;
++	u16 mld_cap = 0;
+ 
+ 	if (sta->ml_sta) {
+ 		mld_addr = sta->addr;
+ 		link_addr = sta->link_addr;
++		eml_cap = sta->ml_sta->eml_cap;
++		mld_cap = sta->ml_sta->mld_cap;
+ 	}
+ 
+ 	if (hapd->mld)
+@@ -1817,7 +1821,8 @@ int ap_sta_re_add(struct hostapd_data *h
+ 			    sta->supported_rates,
+ 			    sta->supported_rates_len,
+ 			    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
+-			    sta->flags, 0, 0, 0, 0, false, link_id, mld_addr, NULL, 0)) {
++			    sta->flags, 0, 0, 0, 0, false, link_id, mld_addr,
++			    eml_cap, mld_cap, NULL, 0)) {
+ 		hostapd_logger(hapd, sta->addr,
+ 			       HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_NOTICE,
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4751,6 +4751,8 @@ static int hostapd_config_fill(struct ho
+ #ifdef CONFIG_IEEE80211BE
+ 	} else if (os_strcmp(buf, "mlo") == 0) {
+ 		conf->mlo = atoi(pos);
++	} else if (os_strcmp(buf, "disable_eml_cap") == 0) {
++		conf->disable_eml_cap = atoi(pos);
+ #endif
+ 	} else {
+ 		wpa_printf(MSG_ERROR,
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1181,6 +1181,7 @@ struct hostapd_config {
+ 	int use_ru_puncture_dfs;
+ #ifdef CONFIG_IEEE80211BE
+ 	u8 mlo;
++	u8 disable_eml_cap;
+ #endif
+ 	int ccfs;
+ };
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -1076,6 +1076,10 @@ wmm_ac_vo_acm=0
+ # Default is 0, indicates that ACS algorithm should not puncture any channel.
+ #ru_punct_acs_threshold=75
+ 
++#disable_eml_cap: Boolean(0/1) to disable eml capabilities
++# advertising in management frame.
++#disable_eml_cap=1
++
+ ##### IEEE 802.1X-2004 related configuration ##################################
+ 
+ # Require IEEE 802.1X authorization
