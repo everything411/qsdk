@@ -343,9 +343,8 @@
 			reg = <0x0 0x40000000 0x0 0x01000000>;
 		};
 
-		tzapp:tzapp@49B00000 {  /* TZAPPS */
+		tzapp: tzapp@49B00000 {  /* TZAPPS */
 			no-map;
-			reg = <0x0 0x49B00000 0x0 0x00600000>;
 		};
 
 		uboot@4A100000 {
@@ -363,24 +362,24 @@
 			reg = <0x0 0x4A600000 0x0 0x00400000>;
 		};
 
-		smem_region: smem@4AA00000 {
+		smem_region:smem@4AA00000 {
 			no-map;
 			reg = <0x0 0x4AA00000 0x0 0x00100000>;
 		};
 
 		q6_region: wcnss@4ab00000 {
 			no-map;
-			reg = <0x0 0x4ab00000 0x0 0x05500000>;
+			reg = <0x0 0x4ab00000 0x0 0xA00000>;
 		};
 
 		q6_etr_region: q6_etr_dump@1 {
 			no-map;
-			reg = <0x0 0x50000000 0x0 0x100000>;
+			reg = <0x0 0x4b500000 0x0 0x100000>;
 		};
 
-		m3_dump@50100000 {
+		m3_dump@4b600000 {
 			no-map;
-			reg = <0x0 0x50100000 0x0 0x100000>;
+			reg = <0x0 0x4b600000 0x0 0x100000>;
 		};
 
 		rpm_msg_ram: rpm_msg_ram@0x60000 {
