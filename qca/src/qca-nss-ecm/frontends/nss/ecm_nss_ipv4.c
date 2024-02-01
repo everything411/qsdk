@@ -700,7 +700,7 @@ static void ecm_nss_ipv4_stats_sync_req_work(struct work_struct *work)
 	}
 	spin_unlock_bh(&ecm_nss_ipv4_lock);
 
-	usleep_range(ECM_NSS_IPV4_STATS_SYNC_UDELAY - 100, ECM_NSS_IPV4_STATS_SYNC_UDELAY);
+	msleep_interruptible(ECM_NSS_IPV4_STATS_SYNC_UDELAY / 1000);
 
 	/*
 	 * If index is 0, we are starting a new round, but if we still have time remain
@@ -714,7 +714,7 @@ static void ecm_nss_ipv4_stats_sync_req_work(struct work_struct *work)
 		}
 
 		if (time_after(ecm_nss_ipv4_next_req_time, current_jiffies)) {
-			msleep(jiffies_to_msecs(ecm_nss_ipv4_next_req_time - current_jiffies));
+			msleep_interruptible(jiffies_to_msecs(ecm_nss_ipv4_next_req_time - current_jiffies));
 		}
 		ecm_nss_ipv4_roll_check_jiffies = jiffies;
 		ecm_nss_ipv4_next_req_time = ecm_nss_ipv4_roll_check_jiffies + ECM_NSS_IPV4_STATS_SYNC_PERIOD;
