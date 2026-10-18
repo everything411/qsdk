@@ -1,0 +1,94 @@
+From 2dfd3bb3836e7aeefc30341ce4660ac91e5279dd Mon Sep 17 00:00:00 2001
+From: Badhrinath S <badhrina@qti.qualcomm.com>
+Date: Fri, 19 Jun 2026 17:33:54 +0530
+Subject: [PATCH] driver: qcom: Enable pinctrl and clk for IPQ5610
+
+This patch adds clock and pinctrl driver support for IPQ5610 chipset
+
+Change-Id: Id64644084b8e8c83c0117f0e8a53fbab45a0b95f
+Signed-off-by: Badhrinath S <badhrina@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile         | 2 ++
+ drivers/clk/qcom/Kconfig      | 8 ++++++++
+ drivers/clk/qcom/Makefile     | 1 +
+ drivers/pinctrl/qcom/Kconfig  | 7 +++++++
+ drivers/pinctrl/qcom/Makefile | 1 +
+ 5 files changed, 19 insertions(+)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index f5152504a49..c52b0f44538 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -37,6 +37,8 @@ dtb-$(CONFIG_TARGET_IPQ9650) += ipq9650-emulation.dtb \
+ 				ipq9650-db-ju01-c1.dtb \
+ 				ipq9650-db-ju02.dtb
+ 
++dtb-$(CONFIG_TARGET_IPQ5610) += ipq5610-emulation.dtb
++
+ dtb-$(CONFIG_TARGET_SMARTWEB) += at91sam9260-smartweb.dtb
+ dtb-$(CONFIG_TARGET_TAURUS) += at91sam9g20-taurus.dtb
+ dtb-$(CONFIG_TARGET_CORVUS) += at91sam9g45-corvus.dtb
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index 5f337517897..a355ffe6c7e 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -85,6 +85,14 @@ config CLK_QCOM_IPQ5210
+ 	  on the Snapdragon IPQ5210 SoC. This driver supports the clocks
+ 	  and resets exposed by the GCC hardware block.
+ 
++config CLK_QCOM_IPQ5610
++	bool "Qualcomm IPQ5610 GCC"
++	select CLK_QCOM
++	help
++	  Say Y here to enable support for the Global Clock Controller
++	  on the Snapdragon IPQ5610 SoC. This driver supports the clocks
++	  and resets exposed by the GCC hardware block.
++
+ config CLK_QCOM_IPQ9650
+ 	bool "Qualcomm IPQ9650 GCC"
+ 	select CLK_QCOM
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index efe393ebac6..be9a9eaff3c 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -13,6 +13,7 @@ obj-$(CONFIG_CLK_QCOM_IPQ5332) += clock-ipq5332.o
+ obj-$(CONFIG_CLK_QCOM_IPQ5424) += clock-ipq5424.o
+ obj-$(CONFIG_CLK_QCOM_NSSCC_QCE2204) += nsscc-qce2204.o
+ obj-$(CONFIG_CLK_QCOM_IPQ5210) += clock-ipq5210.o
++obj-$(CONFIG_CLK_QCOM_IPQ5610) += clock-ipq5610.o
+ obj-$(CONFIG_CLK_QCOM_IPQ9574) += clock-ipq9574.o
+ obj-$(CONFIG_CLK_QCOM_IPQ9650) += clock-ipq9650.o
+ obj-$(CONFIG_CLK_QCOM_QCM2290) += clock-qcm2290.o
+diff --git a/drivers/pinctrl/qcom/Kconfig b/drivers/pinctrl/qcom/Kconfig
+index aec3593ce01..c119d736ccd 100644
+--- a/drivers/pinctrl/qcom/Kconfig
++++ b/drivers/pinctrl/qcom/Kconfig
+@@ -48,6 +48,13 @@ config PINCTRL_QCOM_IPQ5210
+ 	  Say Y here to enable support for pinctrl on the IPQ5210 SoC,
+ 	  as well as the associated GPIO driver.
+ 
++config PINCTRL_QCOM_IPQ5610
++	bool "Qualcomm IPQ5610 GCC"
++	select PINCTRL_QCOM
++	help
++	  Say Y here to enable support for pinctrl on the IPQ5610 SoC,
++	  as well as the associated GPIO driver.
++
+ config PINCTRL_QCOM_IPQ9650
+ 	bool "Qualcomm IPQ9650 GCC"
+ 	select PINCTRL_QCOM
+diff --git a/drivers/pinctrl/qcom/Makefile b/drivers/pinctrl/qcom/Makefile
+index 069a4c37219..edbafa8ef05 100644
+--- a/drivers/pinctrl/qcom/Makefile
++++ b/drivers/pinctrl/qcom/Makefile
+@@ -8,6 +8,7 @@ obj-$(CONFIG_PINCTRL_QCOM_IPQ4019) += pinctrl-ipq4019.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5210) += pinctrl-ipq5210.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5332) += pinctrl-ipq5332.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5424) += pinctrl-ipq5424.o
++obj-$(CONFIG_PINCTRL_QCOM_IPQ5610) += pinctrl-ipq5610.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ9574) += pinctrl-ipq9574.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ9650) += pinctrl-ipq9650.o
+ obj-$(CONFIG_PINCTRL_QCOM_APQ8096) += pinctrl-apq8096.o
+-- 
+2.34.1
+

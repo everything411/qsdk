@@ -1,0 +1,41 @@
+From 08301d558912198cc077cf91aaa851897abd70d5 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Tue, 20 May 2025 23:52:02 +0530
+Subject: [PATCH] clk: qcom: Add RCGR_ROOT_EN bit support
+
+Change-Id: I41948aacbe1484d80382a7e2eec63ffc6678c52d
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/clk/qcom/clock-qcom.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/clk/qcom/clock-qcom.c b/drivers/clk/qcom/clock-qcom.c
+index ddc8ed11b3e..c61648ebdc5 100644
+--- a/drivers/clk/qcom/clock-qcom.c
++++ b/drivers/clk/qcom/clock-qcom.c
+@@ -79,11 +79,13 @@ void clk_enable_vote_clk(phys_addr_t base, const struct vote_clk *vclk)
+ }
+ 
+ #define APPS_CMD_RCGR_UPDATE BIT(0)
++#define APPS_CMD_RCGR_ROOT_EN BIT(1)
+ 
+ /* Update clock command via CMD_RCGR */
+ void clk_bcr_update(phys_addr_t apps_cmd_rcgr)
+ {
+ 	u32 count;
++
+ 	setbits_le32(apps_cmd_rcgr, APPS_CMD_RCGR_UPDATE);
+ 
+ 	/* Wait for frequency to be updated. */
+@@ -94,6 +96,8 @@ void clk_bcr_update(phys_addr_t apps_cmd_rcgr)
+ 	}
+ 	WARN(count == 50000, "WARNING: RCG @ %pa [%#010x] stuck at off\n",
+ 	     (void *)&apps_cmd_rcgr, readl(apps_cmd_rcgr));
++
++	setbits_le32(apps_cmd_rcgr, APPS_CMD_RCGR_ROOT_EN);
+ }
+ 
+ #define CFG_MASK		0x3FFF
+-- 
+2.34.1
+

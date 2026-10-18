@@ -1,0 +1,63 @@
+From f884001a735891aadde328d594cec66142edb479 Mon Sep 17 00:00:00 2001
+From: Alok Singh <aloksing@qti.qualcomm.com>
+Date: Fri, 27 Feb 2026 10:42:15 +0530
+Subject: [PATCH] UPSTREAM: PROTOCOL: sigma_dut: Restrict fwtest 63 1000 usage
+ and remove Flexi-TWT handling in EHT
+
+The ath11k-fwtest "-v 0 63 1000" command was originally intended to run
+only for UL-OFDMA testcases. During the Flexi-TWT integration, this
+command was gated solely on the flexiTWT configuration, which caused it
+to run for all testcases whenever Flexi-TWT was enabled. This resulted
+in unintended behavior in non-UL-OFDMA scenarios.
+
+This change removes Flexi-TWT handling from EHT and aligns the behavior
+with the original intent so that the fwtest command is applied only to
+the appropriate UL-OFDMA cases.
+
+Issue:
+    AP sends broadcast triggers to all four stations later than the
+    expected frame count in EHT.
+
+Patch-dependency: I5bd9fbede9f90784bd1ca8c8ce4b843c66eb1a4f
+
+Signed-off-by: Alok Singh <aloksing@qti.qualcomm.com>
+---
+ ap.c | 15 +++++++--------
+ 1 file changed, 7 insertions(+), 8 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 09a8754..da33c82 100644
+--- a/ap.c
++++ b/ap.c
+@@ -9878,10 +9878,13 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 2 1", ifname);
+ 	}
+ 
+-	if (dut->ap_flextwt == VALUE_ENABLED)
+-		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1800", ifname);
+-	else
+-		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000", ifname);
++	if (dut->ap_twtresp == VALUE_ENABLED || dut->device_type == AP_dut ||
++	    (dut->ap_btwt == VALUE_ENABLED && dut->device_type == AP_testbed)) {
++		if (dut->ap_flextwt == VALUE_ENABLED)
++			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1800", ifname);
++		else
++			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000", ifname);
++	}
+ }
+ 
+ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+@@ -10050,10 +10053,6 @@ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 2 1", ifname, link_id);
+ 	}
+ 
+-	if (dut->ap_flextwt == VALUE_ENABLED)
+-		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 63 1800", ifname, link_id);
+-	else
+-		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000", ifname, link_id);
+ 	/* Enable mix bw */
+ 	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 141 1", ifname, link_id);
+ }
+-- 
+2.34.1
+

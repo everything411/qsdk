@@ -1,0 +1,152 @@
+From 806bf626c69b2c394e1f0043d3db59f8bd84c145 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Wed, 24 Jan 2024 17:22:44 +0530
+Subject: [PATCH] sigma_dut: Add support for chnum_band for 2 GHz
+
+Currently channel switch support is available for
+5/6 GHz. Added support to channel switch command
+in 2 GHz
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c | 59 +++++++++++++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 51 insertions(+), 8 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -8482,12 +8482,16 @@ static int check_channel(struct sigma_du
+ 			       137, 141, 145, 149, 153, 157, 161, 165, 169, 173,
+ 			       177, 181, 185, 189, 193, 197, 201, 205, 209, 213,
+ 			       217, 221, 225, 229, 233 };
++	int chan_list_2g[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
+ 	int num_chan, *chan_list;
+ 	int i;
+ 
+ 	if (check_band(dut, BAND_6G, second_iface)) {
+ 		num_chan = ARRAY_SIZE(chan_list_6g);
+ 		chan_list = chan_list_6g;
++	} else if (check_band(dut, BAND_2G, second_iface)) {
++		num_chan = ARRAY_SIZE(chan_list_2g);
++		chan_list = chan_list_2g;
+ 	} else {
+ 		num_chan = ARRAY_SIZE(channel_list);
+ 		chan_list = channel_list;
+@@ -8557,6 +8561,18 @@ static int get_oper_centr_freq_seq_idx(s
+ 	if (check_channel(dut, channel, second_iface) < 0)
+ 		return -1;
+ 
++	if (check_band(dut, BAND_2G, second_iface)) {
++		if (chwidth == 40) {
++			if (channel < 7)
++				return channel + 2;
++			else
++				return channel - 2;
++		} else {
++			return channel;
++		}
++	}
++
++
+ 	if (check_band(dut, BAND_6G, second_iface))
+ 		return get_oper_center_freq_6g(chwidth, channel);
+ 
+@@ -8593,6 +8609,10 @@ static int get_5g_channel_freq(int chan)
+ 	return 5000 + chan * 5;
+ }
+ 
++static int get_2g_channel_freq(int chan)
++{
++	return 2407 + 5 * chan;
++}
+ 
+ static const char * hostapd_cipher_name(enum ap_cipher cipher)
+ {
+@@ -16090,18 +16110,19 @@ static enum sigma_cmd_result wcn_ap_set_
+ }
+ 
+ 
+-static int mac80211_vht_chnum_band(struct sigma_dut *dut, const char *ifname,
++static int mac80211_chnum_band(struct sigma_dut *dut, const char *ifname,
+ 				   const char *val, int link_id)
+ {
+ 	char *token, *result;
+-	int channel = 36, chwidth = 80, center_freq_idx, center_freq,
+-		channel_freq;
++	int channel = 36, chwidth = 80, center_freq_idx, center_freq = 0,
++		channel_freq = 0, sec_ch_offset = 0;
+ 	char buf[256];
+ 	char mode[10];
+ 	char *saveptr;
+ 	char link_param[10];
+ 	int res;
+ 	bool link_set = false;
++	int link = 0;
+ 
+ 	/* Extract the channel info */
+ 	token = strdup(val);
+@@ -16116,14 +16137,41 @@ static int mac80211_vht_chnum_band(struc
+ 	if (result)
+ 		chwidth = atoi(result);
+ 
+-	center_freq_idx = get_oper_centr_freq_seq_idx(dut, chwidth, channel, 0);
++	if (dut->num_links > 1) {
++		if (link_id == 0)
++			link = 1;
++		else
++			link = 0;
++
++		center_freq_idx = get_oper_centr_freq_seq_idx(dut, chwidth, channel, link);
++	} else {
++		center_freq_idx = get_oper_centr_freq_seq_idx(dut, chwidth, channel, 0);
++	}
++
+ 	if (center_freq_idx < 0) {
+ 		free(token);
+ 		return -1;
+ 	}
+ 
+-	center_freq = get_5g_channel_freq(center_freq_idx);
+-	channel_freq = get_5g_channel_freq(channel);
++	if (chwidth == 20)
++		sec_ch_offset = 0;
++	else
++		sec_ch_offset = 1;
++
++	if (check_band(dut, BAND_2G, link)) {
++		if (chwidth == 40) {
++			if (channel < 7)
++				sec_ch_offset = 1;
++			else
++				sec_ch_offset = -1;
++		}
++		center_freq = get_2g_channel_freq(center_freq_idx);
++		channel_freq = get_2g_channel_freq(channel);
++	} else {
++		center_freq = get_5g_channel_freq(center_freq_idx);
++		channel_freq = get_5g_channel_freq(channel);
++	}
++
+ 
+ 	if (dut->program == PROGRAM_EHT) {
+ 		snprintf(mode, sizeof(mode), "eht");
+@@ -16136,9 +16184,9 @@ static int mac80211_vht_chnum_band(struc
+ 
+ 	/* Issue the channel switch command */
+ 	res = snprintf(buf, sizeof(buf),
+-		       " -i %s %s chan_switch 10 %d sec_channel_offset=1 center_freq1=%d bandwidth=%d blocktx %s",
++		       " -i %s %s chan_switch 10 %d sec_channel_offset=%d center_freq1=%d bandwidth=%d blocktx %s",
+ 		       ifname, link_set? link_param: "", channel_freq,
+-		       center_freq, chwidth, mode);
++		       sec_ch_offset, center_freq, chwidth, mode);
+ 	if (res < 0 || res >= sizeof(buf) || run_hostapd_cli(dut, buf) != 0) {
+ 		sigma_dut_print(dut, DUT_MSG_ERROR,
+ 				"hostapd_cli chan_switch failed");
+@@ -16894,7 +16942,7 @@ static enum sigma_cmd_result mac80211_ap
+ 		mac80211_config_rts_force(dut, ifname, val, link_id);
+ 
+ 	val = get_param(cmd, "chnum_band");
+-	if (val && mac80211_vht_chnum_band(dut, ifname, val, link_id) < 0)
++	if (val && mac80211_chnum_band(dut, ifname, val, link_id) < 0)
+ 		return -1;
+ 
+ 	mac80211_set_nebor(dut, ifname, cmd);

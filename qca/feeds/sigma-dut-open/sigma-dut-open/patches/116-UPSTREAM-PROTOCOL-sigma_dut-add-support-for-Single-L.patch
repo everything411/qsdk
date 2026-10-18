@@ -1,0 +1,84 @@
+From 4fc035ca2a9985a51491bc5a1a8e39c13cab05cb Mon Sep 17 00:00:00 2001
+From: Muna Sinada <muna.sinada@oss.qualcomm.com>
+Date: Thu, 12 Feb 2026 16:08:21 -0800
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: add support for Single Link
+ eMLSR
+
+Add support for Single Link eMLSR. Accept "EMLSR_OneLink_Support"
+parameter as part of ap_set_wireless. Take value of
+"EMLSR_OneLink_Support", which is either enable or disable, and
+store in new single_link_emlsr member that is a part of
+struct sigma_dut.
+
+During ap_config_commit, if single_link_emlsr is enabled, then
+enable feature in hostapd configuration file.
+
+Patch-dependency: I8cc28b7a1 (UPSTREAM:CP:hostapd: add config file param for single link eMLSR)
+
+Patch-work: None
+
+Fixes: None
+
+Signed-off-by: Muna Sinada <muna.sinada@oss.qualcomm.com>
+---
+ ap.c        | 17 +++++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 18 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 8e45e92..be7760b 100644
+--- a/ap.c
++++ b/ap.c
+@@ -3119,6 +3119,19 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "EMLSR_OneLink_Support");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0) {
++			dut->single_link_emlsr = VALUE_ENABLED;
++		} else if (strcasecmp(val, "disable") == 0) {
++			dut->single_link_emlsr = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported single link eMLSR");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -12157,6 +12170,9 @@ skip_vht_parameters_set:
+ 		if (dut->ap_ttlm == VALUE_ENABLED)
+ 			fprintf(f, "ttlm_enable=1\n");
+ 
++		if (dut->single_link_emlsr == VALUE_ENABLED)
++			fprintf(f, "single_link_emlsr=1\n");
++
+ 		fclose(f);
+ 	}
+ 
+@@ -13685,6 +13701,7 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 		dut->mbo_self_ap_tuple.ap_ne_op_ch = -1;
+ 		dut->ap_btmreq_bss_term_tsf = 0;
+ 		dut->ap_assoc_delay = 0;
++		dut->single_link_emlsr = VALUE_DISABLED;
+ 	}
+ 
+ 	dut->ap_oper_chn = 0;
+diff --git a/sigma_dut.h b/sigma_dut.h
+index a7a5950..bb99eb2 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1497,6 +1497,7 @@ struct sigma_dut {
+ 	enum value_not_set_enabled_disabled ap_epcs;
+ 	enum value_not_set_enabled_disabled ap_ttlm;
+ 	enum value_not_set_enabled_disabled ap_linkreconfig;
++	enum value_not_set_enabled_disabled single_link_emlsr;
+ };
+ 
+ #ifdef NL80211_SUPPORT
+-- 
+2.34.1
+

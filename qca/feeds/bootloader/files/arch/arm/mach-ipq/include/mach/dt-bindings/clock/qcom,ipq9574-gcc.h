@@ -1,0 +1,64 @@
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
+/*
+ * Copyright (c) 2018-2023 The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#ifndef _DT_BINDINGS_CLOCK_IPQ_GCC_MACH_IPQ9574_H
+#define _DT_BINDINGS_CLOCK_IPQ_GCC_MACH_IPQ9574_H
+
+#define GCC_MEM_NOC_SNOC_AXI_CLK			214
+#define NSS_CC_NSS_CSR_CLK				215
+#define NSS_CC_NSSNOC_NSS_CSR_CLK			216
+#define NSS_CC_PORT1_MAC_CLK				217
+#define NSS_CC_PORT2_MAC_CLK				218
+#define NSS_CC_PORT3_MAC_CLK				219
+#define NSS_CC_PORT4_MAC_CLK				220
+#define NSS_CC_PORT5_MAC_CLK				221
+#define NSS_CC_PORT6_MAC_CLK				222
+#define NSS_CC_PPE_SWITCH_IPE_CLK			223
+#define NSS_CC_PPE_SWITCH_CLK				224
+#define NSS_CC_PPE_SWITCH_CFG_CLK			225
+#define NSS_CC_PPE_EDMA_CLK				226
+#define NSS_CC_PPE_EDMA_CFG_CLK				227
+#define NSS_CC_CRYPTO_PPE_CLK				228
+#define NSS_CC_NSSNOC_PPE_CLK				229
+#define NSS_CC_NSSNOC_PPE_CFG_CLK			230
+#define NSS_CC_PPE_SWITCH_BTQ_CLK			231
+#define NSS_CC_PORT1_RX_CLK				232
+#define NSS_CC_PORT1_TX_CLK				233
+#define NSS_CC_PORT2_RX_CLK				234
+#define NSS_CC_PORT2_TX_CLK				235
+#define NSS_CC_PORT3_RX_CLK				236
+#define NSS_CC_PORT3_TX_CLK				237
+#define NSS_CC_PORT4_RX_CLK				238
+#define NSS_CC_PORT4_TX_CLK				239
+#define NSS_CC_PORT5_RX_CLK				240
+#define NSS_CC_PORT5_TX_CLK				241
+#define NSS_CC_PORT6_RX_CLK				242
+#define NSS_CC_PORT6_TX_CLK				243
+#define NSS_CC_UNIPHY_PORT1_RX_CLK			244
+#define NSS_CC_UNIPHY_PORT1_TX_CLK			245
+#define NSS_CC_UNIPHY_PORT2_RX_CLK			246
+#define NSS_CC_UNIPHY_PORT2_TX_CLK			247
+#define NSS_CC_UNIPHY_PORT3_RX_CLK			248
+#define NSS_CC_UNIPHY_PORT3_TX_CLK			249
+#define NSS_CC_UNIPHY_PORT4_RX_CLK			250
+#define NSS_CC_UNIPHY_PORT4_TX_CLK			251
+#define NSS_CC_UNIPHY_PORT5_RX_CLK			252
+#define NSS_CC_UNIPHY_PORT5_TX_CLK			253
+#define NSS_CC_UNIPHY_PORT6_RX_CLK			254
+#define NSS_CC_UNIPHY_PORT6_TX_CLK			255
+#define UNIPHY0_NSS_RX_CLK				256
+#define UNIPHY0_NSS_TX_CLK				257
+#define UNIPHY1_NSS_RX_CLK				258
+#define UNIPHY1_NSS_TX_CLK				259
+#define UNIPHY2_NSS_RX_CLK				260
+#define UNIPHY2_NSS_TX_CLK				261
+#define GCC_UNIPHY_SYS_CLK				262
+#define GCC_PCNOC_BFDCD_CLK				263
+#define GCC_SYSTEM_NOC_BFDCD_CLK			264
+#define GCC_NSSNOC_MEMNOC_BFDCD_CLK			265
+#define NSS_CC_CFG_CLK					266
+#define NSS_CC_PPE_CLK					267
+#endif

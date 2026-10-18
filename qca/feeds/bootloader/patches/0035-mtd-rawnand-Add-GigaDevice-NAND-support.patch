@@ -1,0 +1,31 @@
+From c1000c8e9dc2aaf8dc9aecdf2c7980fef7e39ef0 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 28 May 2025 22:50:29 +0530
+Subject: [PATCH] mtd: rawnand: Add GigaDevice NAND support
+
+This patch adds support for GigaDevice raw NAND flash chips
+to the MTD subsystem. It includes device ID recognition and
+basic parameter setup to enable detection and initialization
+of supported GigaDevice NAND parts.
+
+Change-Id: Ic0964b4ee9517bf95016872e5726ee85f8867100
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ include/linux/mtd/rawnand.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/linux/mtd/rawnand.h b/include/linux/mtd/rawnand.h
+index 2d85b392465..4f8c896922c 100644
+--- a/include/linux/mtd/rawnand.h
++++ b/include/linux/mtd/rawnand.h
+@@ -1049,6 +1049,7 @@ static inline void *nand_get_manufacturer_data(struct nand_chip *chip)
+ #define NAND_MFR_SANDISK	0x45
+ #define NAND_MFR_INTEL		0x89
+ #define NAND_MFR_ATO		0x9b
++#define NAND_MFR_GIGADEVICE	0xc8
+ 
+ /* The maximum expected count of bytes in the NAND ID sequence */
+ #define NAND_MAX_ID_LEN 8
+-- 
+2.34.1
+

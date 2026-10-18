@@ -1,0 +1,83 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#ifndef _QCA808X_PHY_H_
+#define _QCA808X_PHY_H_
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif				/* __cplusplus */
+/*PHY debug registers*/
+#define QCA8084_PHY_DEBUG_AFE25_CMN_6_MII		0x380
+#define QCA8084_PHY_DEBUG_AFE25_CMN_2_MII		0x180
+
+/*PHY MMD1 registers*/
+#define QCA808X_PHY_MMD1_FIFO_REST_REG		0x9072
+
+/*MMD3 registers*/
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL3		0x8074
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL4		0x8075
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL5		0x8076
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL6		0x8077
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL7		0x8078
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL9		0x807a
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL13		0x807e
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL14		0x807f
+
+/*PHY debug registers field*/
+#define QCA8084_PHY_DEBUG_1588_P2_EN		0x2
+#define QCA8084_PHY_DEBUG_AFE25_PLL_EN		0x8000
+#define QCA8084_PHY_DEBUG_AFE25_LDO_EN		0x2000
+
+/*MII register field*/
+#define QCA808X_PHY_INTR_FAST_LINK_DOWN_10M		0x0040
+#define QCA808X_PHY_INTR_SG_LINK_FAIL		0x0100
+#define QCA808X_PHY_INTR_SG_LINK_SUCCESS		0x0080
+#define QCA808X_PHY_INTR_MASK		\
+	(QCA808X_PHY_INTR_FAST_LINK_DOWN_10M |\
+	QCA808X_PHY_INTR_SG_LINK_FAIL |\
+	QCA808X_PHY_INTR_SG_LINK_SUCCESS)
+
+/*PHY MMD1 registers field*/
+#define QCA808X_PHY_MMD1_FIFO_RESET		0
+#define QCA808X_PHY_MMD1_FIFO_RELEASE		0x800
+
+/*MMD3 register field*/
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL3_VAL		0xc040
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL4_VAL		0xa060
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL5_VAL		0xc040
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL6_VAL		0xa060
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL7_VAL		0xc050
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL9_VAL		0xc060
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL13_VAL		0xb060
+#define QCA8084_PHY_MMD3_CDT_THRESH_CTRL14_VAL		0x1eb0
+
+/*PHY soc address*/
+#define QCA8084_SOC_EPHY_CFG		0xC90F018
+#define QCA8084_SOC_EPHY3_ADDR_BOFFSET		15
+#define QCA8084_SOC_EPHY2_ADDR_BOFFSET		10
+#define QCA8084_SOC_EPHY1_ADDR_BOFFSET		5
+#define QCA8084_SOC_EPHY0_ADDR_BOFFSET		0
+
+#define QCA8084_SOC_GLOBAL_INTR_ENABLE		0xC90F008
+#define QCA8084_SOC_GLOBAL_INTR_ENABLE_PHY0_BOFFSET		7
+#define QCA8084_SOC_WOL_INTR_ENABLE		0xC90F010
+
+enum qca808x_phy_addr_offset {
+	QCA808X_SERDES_ADDR_OFFSET = 1,
+};
+
+int qca808x_phy_ops_init(struct nss_phy_ops *ops);
+int qca8084_phy_fixup(struct nss_phy_device *nss_phydev);
+
+/* PPM offset clock frequency divisors for QCA808X (NAPA) */
+#define QCA808X_PPM_DIV_1G		(384ULL << 18)
+#define QCA808X_PPM_DIV_2_5G		(1ULL << 26)
+
+#ifdef __cplusplus
+}
+#endif				/* __cplusplus */
+#endif				/* _qca808x_PHY_H_ */

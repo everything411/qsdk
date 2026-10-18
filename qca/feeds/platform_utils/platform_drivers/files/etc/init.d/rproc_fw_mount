@@ -1,0 +1,286 @@
+#!/bin/sh /etc/rc.common
+#
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: ISC
+#
+# Remote Processor Firmware Mount Script for IPQ9650
+# Mounts CDSP and Prime firmware partitions
+
+START=00
+STOP=95
+
+# get_partname_new() - determines partition to mount based on the booted bank.
+get_partname_new() {
+	local partlabel
+	partlabel=$(cat /proc/cmdline 2>/dev/null | grep -o 'PARTLABEL=[^ ]*' | cut -d= -f2)
+	case "$partlabel" in
+		rootfs-inactive) echo "1" ;;
+		*)               echo "" ;;
+	esac
+}
+
+mount_cdsp_fw() {
+	local arch=$1
+	local emmc_part=""
+	local nand_part=""
+	local part_name="0:CDSPFW"
+	local ubi_part_name="rootfs"
+
+	# Check if already mounted
+	if mount | grep -q CDSP_FW; then
+		echo "CDSP FW already mounted" > /dev/console 2>&1
+		return 0
+	fi
+
+	# ipq52xx/ipq96xx: use DT booted-bank info to select partition for mount
+	local index=$(get_partname_new)
+	if [ "$index" == "1" ]; then
+		part_name=${part_name}_${index}
+		ubi_part_name=${ubi_part_name}_${index}
+	fi
+
+	# Detect partition based on flashtype
+	emmc_part=$(find_mmc_part $part_name 2> /dev/null)
+	nand_part=$(find_mtd_part $ubi_part_name 2> /dev/null)
+	if [ -n "$nand_part" ]; then
+		emmc_part=""
+	fi
+
+	# Create mount point
+	mkdir -p /lib/firmware/$arch/CDSP_FW
+
+	if [ -n "$emmc_part" ]; then
+		# Mount eMMC partition
+		/bin/mount -t squashfs $emmc_part /lib/firmware/$arch/CDSP_FW > /dev/kmsg 2>&1
+		if [ $? -eq 0 ]; then
+			echo "CDSP FW mount from eMMC successful" > /dev/console 2>&1
+		else
+			echo "CDSP FW mount from eMMC failed" > /dev/console 2>&1
+			return 1
+		fi
+	elif [ -n "$nand_part" ]; then
+		# Mount NAND/UBI partition
+		local PART=$(grep -w "$ubi_part_name" /proc/mtd | awk -F: '{print $1}')
+		# Attach UBI device if not already attached (suppress error if already attached)
+		ubiattach -p /dev/$PART 2>/dev/null || true
+		sync
+		local ubi_part=$(find_mtd_part cdsp_fw 2> /dev/null)
+		if [ -n "$ubi_part" ]; then
+			/bin/mount -t squashfs $ubi_part /lib/firmware/$arch/CDSP_FW > /dev/kmsg 2>&1
+			if [ $? -ne 0 ]; then
+				echo "CDSP FW mount failed, retry after 1 sec" > /dev/console 2>&1
+				sleep 1
+				/bin/mount -t squashfs $ubi_part /lib/firmware/$arch/CDSP_FW > /dev/kmsg 2>&1
+				if [ $? -ne 0 ]; then
+					echo "CRITICAL: CDSP FW mount failed after retry" > /dev/console 2>&1
+					return 1
+				fi
+			fi
+			echo "CDSP FW mount from NAND successful" > /dev/console 2>&1
+		else
+			echo "CDSP UBI volume not found" > /dev/console 2>&1
+			return 1
+		fi
+	else
+		echo "No CDSP FW partition found" > /dev/console 2>&1
+		return 1
+	fi
+
+	# Verify critical firmware files exist
+	if [ -f /lib/firmware/$arch/CDSP_FW/cdsp.mbn ] && [ -f /lib/firmware/$arch/CDSP_FW/cdsp_dtb.mbn ]; then
+		echo "CDSP FW files verified successfully" > /dev/console 2>&1
+	else
+		echo "WARNING: CDSP FW files not found" > /dev/console 2>&1
+	fi
+
+	# Create symbolic links
+	cd /lib/firmware
+	ln -sf /lib/firmware/$arch/CDSP_FW/cdsp.mbn .
+	ln -sf /lib/firmware/$arch/CDSP_FW/cdsp_dtb.mbn .
+	ln -sf /lib/firmware/$arch/CDSP_FW/cdspr.jsn .
+	mkdir -p /usr/lib/dsp/
+	cd /usr/lib/dsp/
+	ln -sf /lib/firmware/$arch/CDSP_FW/fastrpc* .
+	ln -sf /lib/firmware/$arch/CDSP_FW/lib* .
+}
+
+mount_prime_fw() {
+	local arch=$1
+	local emmc_part=""
+	local nand_part=""
+	local part_name="0:PRIMEFW"
+	local ubi_part_name="rootfs"
+
+	# Check if already mounted
+	if mount | grep -q PRIME_FW; then
+		echo "Prime FW already mounted" > /dev/console 2>&1
+		return 0
+	fi
+
+	# ipq52xx/ipq96xx: use DT booted-bank info to select partition for mount
+	local index=$(get_partname_new)
+	if [ "$index" == "1" ]; then
+		part_name=${part_name}_${index}
+		ubi_part_name=${ubi_part_name}_${index}
+	fi
+	# Detect partition type based on flash
+	emmc_part=$(find_mmc_part $part_name 2> /dev/null)
+	nand_part=$(find_mtd_part $ubi_part_name 2> /dev/null)
+	if [ -n "$nand_part" ]; then
+		emmc_part=""
+	fi
+
+	# Create mount point
+	mkdir -p /lib/firmware/$arch/PRIME_FW
+
+	if [ -n "$emmc_part" ]; then
+		# Mount eMMC partition
+		/bin/mount -t squashfs $emmc_part /lib/firmware/$arch/PRIME_FW > /dev/kmsg 2>&1
+		if [ $? -eq 0 ]; then
+			echo "Prime FW mount from eMMC successful" > /dev/console 2>&1
+		else
+			echo "Prime FW mount from eMMC failed" > /dev/console 2>&1
+			return 1
+		fi
+	elif [ -n "$nand_part" ]; then
+		# Mount NAND/UBI partition
+		local PART=$(grep -w "$ubi_part_name" /proc/mtd | awk -F: '{print $1}')
+		# Attach UBI device if not already attached (suppress error if already attached)
+		ubiattach -p /dev/$PART 2>/dev/null || true
+		sync
+		local ubi_part=$(find_mtd_part prime_fw 2> /dev/null)
+		if [ -n "$ubi_part" ]; then
+			/bin/mount -t squashfs $ubi_part /lib/firmware/$arch/PRIME_FW > /dev/kmsg 2>&1
+			if [ $? -ne 0 ]; then
+				echo "Prime FW mount failed, retry after 1 sec" > /dev/console 2>&1
+				sleep 1
+				/bin/mount -t squashfs $ubi_part /lib/firmware/$arch/PRIME_FW > /dev/kmsg 2>&1
+				if [ $? -ne 0 ]; then
+					echo "CRITICAL: Prime FW mount failed after retry" > /dev/console 2>&1
+					return 1
+				fi
+			fi
+			echo "Prime FW mount from NAND successful" > /dev/console 2>&1
+		else
+			echo "Prime UBI volume not found" > /dev/console 2>&1
+			return 1
+		fi
+	else
+		echo "No Prime FW partition found" > /dev/console 2>&1
+		return 1
+	fi
+
+	# Verify critical firmware file exists
+	if [ -f /lib/firmware/$arch/PRIME_FW/qcom_prime_ipq.elf ]; then
+		echo "Prime FW file verified successfully" > /dev/console 2>&1
+	else
+		echo "WARNING: Prime FW file not found" > /dev/console 2>&1
+	fi
+
+	# Create symbolic link
+	cd /lib/firmware
+	ln -sf /lib/firmware/$arch/PRIME_FW/qcom_prime_ipq.elf .
+}
+
+stop_cdsp_fw() {
+	local arch=$1
+	local emmc_part=""
+	local nand_part=""
+	local part_name="0:CDSPFW"
+	local ubi_part_name="rootfs"
+
+	# ipq52xx/ipq96xx: use DT booted-bank info to select partition for mount
+	local index=$(get_partname_new)
+	if [ "$index" == "1" ]; then
+		part_name=${part_name}_${index}
+		ubi_part_name=${ubi_part_name}_${index}
+	fi
+
+	emmc_part=$(find_mmc_part $part_name 2> /dev/null)
+	nand_part=$(find_mtd_part $ubi_part_name 2> /dev/null)
+
+	if [ -n "$emmc_part" ] || [ -n "$nand_part" ]; then
+		umount /lib/firmware/$arch/CDSP_FW 2>/dev/null
+		if [ $? -eq 0 ]; then
+			echo "CDSP FW umount successful" > /dev/console 2>&1
+		fi
+	fi
+
+	# Remove symbolic links
+	rm -f /lib/firmware/cdsp.mbn
+	rm -f /lib/firmware/cdsp_dtb.mbn
+}
+
+stop_prime_fw() {
+	local arch=$1
+	local emmc_part=""
+	local nand_part=""
+	local part_name="0:PRIMEFW"
+	local ubi_part_name="rootfs"
+
+	# ipq52xx/ipq96xx: use DT booted-bank info to select partition for mount
+	local index=$(get_partname_new)
+	if [ "$index" == "1" ]; then
+		part_name=${part_name}_${index}
+		ubi_part_name=${ubi_part_name}_${index}
+	fi
+
+	emmc_part=$(find_mmc_part $part_name 2> /dev/null)
+	nand_part=$(find_mtd_part $ubi_part_name 2> /dev/null)
+
+	if [ -n "$emmc_part" ] || [ -n "$nand_part" ]; then
+		umount /lib/firmware/$arch/PRIME_FW 2>/dev/null
+		if [ $? -eq 0 ]; then
+			echo "Prime FW umount successful" > /dev/console 2>&1
+		fi
+	fi
+
+	# Remove symbolic link
+	rm -f /lib/firmware/qcom_prime_ipq.elf
+}
+
+boot() {
+	. /lib/functions/system.sh
+	local platform=$(grep -o "IPQ.*" /proc/device-tree/model | awk -F[' '/] '{print $1}')
+
+	if [[ "$platform" == *IPQ9650* ]]; then
+		mount_prime_fw "IPQ9650"
+
+		mount_cdsp_fw "IPQ9650"
+		if [ $? -eq 0 ]; then
+			# Start CDSP remoteproc only on 64-bit (aarch64) builds
+			local build_arch=$(grep -o "aarch64\|arm" /proc/version | head -1)
+			if [ "$build_arch" = "aarch64" ]; then
+				# Find the remoteproc whose firmware is cdsp.mbn
+				local cdsp_rproc=""
+				for rproc in /sys/class/remoteproc/remoteproc*; do
+					local fw=$(cat $rproc/firmware 2>/dev/null)
+					if [ "$fw" = "cdsp.mbn" ]; then
+						cdsp_rproc=$(basename $rproc)
+						break
+					fi
+				done
+
+				if [ -n "$cdsp_rproc" ]; then
+					echo "Booting CDSP" > /dev/console 2>&1
+					echo start > /sys/class/remoteproc/$cdsp_rproc/state
+					echo "Starting RFS for CDSP" > /dev/console 2>&1
+					tftp_server &
+				else
+					echo "CDSP remoteproc not found in /sys/class/remoteproc/" > /dev/console 2>&1
+				fi
+			fi
+		else
+			echo "Skipping CDSP boot due to mount failure" > /dev/console 2>&1
+		fi
+	fi
+}
+
+stop() {
+	local platform=$(grep -o "IPQ.*" /proc/device-tree/model | awk -F[' '/] '{print $1}')
+
+	if [[ "$platform" == *IPQ9650* ]]; then
+		stop_cdsp_fw "IPQ9650"
+		stop_prime_fw "IPQ9650"
+	fi
+}

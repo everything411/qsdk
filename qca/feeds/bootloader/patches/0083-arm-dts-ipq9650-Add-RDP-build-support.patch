@@ -1,0 +1,33 @@
+From bd4f69b489126efd4da959df0a207b86a39c8aa3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=5BB=1B=5BB=1B=5BB=1B=5BB=1B=5BB=1B=5BB?=
+ <badhrina@qti.qualcomm.com>
+Date: Wed, 18 Feb 2026 12:05:11 +0530
+Subject: [PATCH] arm: dts: ipq9650: Add RDP build support
+
+This change adds the build support for the following RDP's:
+db-ju01, db-ju02
+
+Change-Id: Ib7823973ba8e829b0b5af071a3271356ddd33d6a
+Signed-off-by: Badhrinath S <badhrina@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index c03fd2e04cf..4c5d509be1f 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -15,7 +15,9 @@ dtb-$(CONFIG_TARGET_IPQ5210) += ipq5210-emulation.dtb \
+ dtb-$(CONFIG_TARGET_IPQ9650) += ipq9650-emulation.dtb \
+                                 ipq9650-rdp488.dtb \
+                                 ipq9650-rdp489.dtb \
+-                                ipq9650-rdp506.dtb
++                                ipq9650-rdp506.dtb \
++				ipq9650-db-ju01.dtb \
++				ipq9650-db-ju02.dtb
+ 
+ dtb-$(CONFIG_TARGET_SMARTWEB) += at91sam9260-smartweb.dtb
+ dtb-$(CONFIG_TARGET_TAURUS) += at91sam9g20-taurus.dtb
+-- 
+2.34.1
+

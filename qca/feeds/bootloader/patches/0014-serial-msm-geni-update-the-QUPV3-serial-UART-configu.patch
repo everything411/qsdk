@@ -1,0 +1,200 @@
+From dccba734e78466525adbbd8c219d679617bd22d1 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Mon, 19 May 2025 12:52:49 +0530
+Subject: [PATCH] serial: msm-geni: update the QUPV3 serial UART configuration
+
+The TX FIFO depth is changed based on the QUPV3 version
+
+The 1.8MHz clock is added in the frequency list
+
+The below existing file is included
+	-> include/soc/qcom/geni-se.h
+
+Change-Id: I51af1069040edf916e586734f0f661c24219b2d0
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/serial/serial_msm_geni.c | 78 +++++++++++---------------------
+ 1 file changed, 26 insertions(+), 52 deletions(-)
+
+diff --git a/drivers/serial/serial_msm_geni.c b/drivers/serial/serial_msm_geni.c
+index bbc38cb38d4..b49e953dc7e 100644
+--- a/drivers/serial/serial_msm_geni.c
++++ b/drivers/serial/serial_msm_geni.c
+@@ -17,6 +17,7 @@
+ #include <linux/time.h>
+ #include <misc.h>
+ #include <serial.h>
++#include <soc/qcom/geni-se.h>
+ 
+ #define UART_OVERSAMPLING	32
+ #define STALE_TIMEOUT	160
+@@ -24,8 +25,6 @@
+ /* Registers*/
+ #define GENI_FORCE_DEFAULT_REG	0x20
+ #define GENI_SER_M_CLK_CFG	0x48
+-#define GENI_SER_S_CLK_CFG	0x4C
+-#define SE_HW_PARAM_0	0xE24
+ #define SE_GENI_STATUS	0x40
+ #define SE_GENI_S_CMD0	0x630
+ #define SE_GENI_S_CMD_CTRL_REG	0x634
+@@ -41,7 +40,6 @@
+ #define SE_GENI_RX_FIFOn	0x780
+ #define SE_GENI_TX_FIFO_STATUS	0x800
+ #define SE_GENI_RX_FIFO_STATUS	0x804
+-#define SE_GENI_TX_WATERMARK_REG	0x80C
+ #define SE_GENI_TX_PACKING_CFG0	0x260
+ #define SE_GENI_TX_PACKING_CFG1	0x264
+ #define SE_GENI_RX_PACKING_CFG0	0x284
+@@ -56,64 +54,27 @@
+ #define SE_UART_RX_TRANS_CFG	0x280
+ #define SE_UART_RX_PARITY_CFG	0x2a8
+ 
+-#define M_TX_FIFO_WATERMARK_EN	(BIT(30))
+ #define DEF_TX_WM	2
+-/* GENI_FORCE_DEFAULT_REG fields */
+-#define FORCE_DEFAULT	(BIT(0))
+-
+-#define S_CMD_ABORT_EN	(BIT(5))
+ 
+ #define UART_START_READ	0x1
+ 
+-/* GENI_M_CMD_CTRL_REG */
+-#define M_GENI_CMD_CANCEL	(BIT(2))
+-#define M_GENI_CMD_ABORT	(BIT(1))
+-#define M_GENI_DISABLE	(BIT(0))
+-
+-#define M_CMD_ABORT_EN	(BIT(5))
+-#define M_CMD_DONE_EN	(BIT(0))
+-#define M_CMD_DONE_DISABLE_MASK	(~M_CMD_DONE_EN)
+-
+-#define S_GENI_CMD_ABORT	(BIT(1))
+-
+-/* GENI_S_CMD0 fields */
+-#define S_OPCODE_MSK	(GENMASK(31, 27))
+-#define S_PARAMS_MSK	(GENMASK(26, 0))
+-
+-/* GENI_STATUS fields */
+-#define M_GENI_CMD_ACTIVE	(BIT(0))
+-#define S_GENI_CMD_ACTIVE	(BIT(12))
+-#define M_CMD_DONE_EN	(BIT(0))
+-#define S_CMD_DONE_EN	(BIT(0))
+-
+ #define M_OPCODE_SHIFT	27
+ #define S_OPCODE_SHIFT	27
+-#define M_TX_FIFO_WATERMARK_EN	(BIT(30))
+ #define UART_START_TX	0x1
+ #define UART_CTS_MASK	(BIT(1))
+-#define M_SEC_IRQ_EN	(BIT(31))
+ #define TX_FIFO_WC_MSK	(GENMASK(27, 0))
+-#define RX_FIFO_WC_MSK	(GENMASK(24, 0))
+-
+-#define S_RX_FIFO_WATERMARK_EN	(BIT(26))
+-#define S_RX_FIFO_LAST_EN	(BIT(27))
+-#define M_RX_FIFO_WATERMARK_EN	(BIT(26))
+-#define M_RX_FIFO_LAST_EN	(BIT(27))
+ 
+ /* GENI_SER_M_CLK_CFG/GENI_SER_S_CLK_CFG */
+-#define SER_CLK_EN	(BIT(0))
+-#define CLK_DIV_MSK	(GENMASK(15, 4))
+ #define CLK_DIV_SHFT	4
+ 
+ /* SE_HW_PARAM_0 fields */
+-#define TX_FIFO_WIDTH_MSK	(GENMASK(29, 24))
+ #define TX_FIFO_WIDTH_SHFT	24
+-#define TX_FIFO_DEPTH_MSK	(GENMASK(21, 16))
+ #define TX_FIFO_DEPTH_SHFT	16
+ 
+ /* GENI SE QUP Registers */
+ #define QUP_HW_VER_REG		0x4
+ #define  QUP_SE_VERSION_2_5	0x20050000
++#define  QUP_SE_VERSION_3_10	0x300A0000
+ 
+ /*
+  * Predefined packing configuration of the serial engine (CFG0, CFG1 regs)
+@@ -133,9 +94,11 @@ struct msm_serial_data {
+ 	phys_addr_t base;
+ 	u32 baud;
+ 	u32 oversampling;
++	u32 geni_se_version;
++	struct clk *clk;
+ };
+ 
+-unsigned long root_freq[] = {7372800,  14745600, 19200000, 29491200,
++unsigned long root_freq[] = {1843200, 7372800,  14745600, 19200000, 29491200,
+ 			     32000000, 48000000, 64000000, 80000000,
+ 			     96000000, 100000000};
+ 
+@@ -185,14 +148,10 @@ static int get_clk_div_rate(u32 baud, u64 sampling_rate, u32 *clk_div)
+ 
+ static int geni_serial_set_clock_rate(struct udevice *dev, u64 rate)
+ {
+-	struct clk *clk;
++	struct msm_serial_data *priv = dev_get_priv(dev);
+ 	int ret;
+ 
+-	clk = devm_clk_get(dev, NULL);
+-	if (IS_ERR(clk))
+-		return PTR_ERR(clk);
+-
+-	ret = clk_set_rate(clk, rate);
++	ret = clk_set_rate(priv->clk, rate);
+ 	return ret;
+ }
+ 
+@@ -205,12 +164,18 @@ static int geni_serial_set_clock_rate(struct udevice *dev, u64 rate)
+  *
+  * Return: TX fifo depth in units of FIFO words.
+  */
+-static inline u32 geni_se_get_tx_fifo_depth(long base)
++static inline u32 geni_se_get_tx_fifo_depth(const struct udevice *dev)
+ {
++	struct msm_serial_data *priv = dev_get_priv(dev);
+ 	u32 tx_fifo_depth;
++	u32 tx_fifo_depth_msk = TX_FIFO_DEPTH_MSK;
+ 
+-	tx_fifo_depth = ((readl(base + SE_HW_PARAM_0) & TX_FIFO_DEPTH_MSK) >>
+-			 TX_FIFO_DEPTH_SHFT);
++	if (priv->geni_se_version >= QUP_SE_VERSION_3_10)
++		tx_fifo_depth_msk = TX_FIFO_DEPTH_MSK_256_BYTES;
++
++	tx_fifo_depth = ((readl(priv->base + SE_HW_PARAM_0) &
++			  tx_fifo_depth_msk) >>
++			  TX_FIFO_DEPTH_SHFT);
+ 	return tx_fifo_depth;
+ }
+ 
+@@ -294,7 +259,7 @@ static bool qcom_geni_serial_poll_bit(const struct udevice *dev, int offset,
+ 		baud = priv->baud;
+ 		if (!baud)
+ 			baud = 115200;
+-		tx_fifo_depth = geni_se_get_tx_fifo_depth(priv->base);
++		tx_fifo_depth = geni_se_get_tx_fifo_depth(dev);
+ 		tx_fifo_width = geni_se_get_tx_fifo_width(priv->base);
+ 		fifo_bits = tx_fifo_depth * tx_fifo_width;
+ 		/*
+@@ -513,6 +478,7 @@ static int geni_set_oversampling(struct udevice *dev)
+ 	/* Read the HW_VER register relative to the parents address space */
+ 	addr = ofnode_get_addr(parent_node);
+ 	geni_se_version = readl(addr + QUP_HW_VER_REG);
++	priv->geni_se_version = geni_se_version;
+ 
+ 	if (geni_se_version >= QUP_SE_VERSION_2_5)
+ 		priv->oversampling /= 2;
+@@ -566,6 +532,14 @@ static int msm_serial_probe(struct udevice *dev)
+ 	struct udevice *config = NULL;
+ 	int ret;
+ 
++	priv->clk = devm_clk_get(dev, "se");
++	if (IS_ERR(priv->clk))
++		return PTR_ERR(priv->clk);
++
++	ret = clk_enable(priv->clk);
++	if (ret)
++		return ret;
++
+ 	ret = geni_set_oversampling(dev);
+ 	if (ret < 0)
+ 		return ret;
+-- 
+2.34.1
+

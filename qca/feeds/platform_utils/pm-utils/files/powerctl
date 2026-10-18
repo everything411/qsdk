@@ -1,0 +1,107 @@
+#!/bin/sh /etc/rc.common
+
+START=98
+
+ipq9574_power_auto() {
+	# change scaling governor as ondemand to enable clock scaling based on system load
+	echo "ondemand" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+
+	# Change sampling rate for frequency scaling decisions to 1s, from 10 ms
+	echo "1000000" > /sys/devices/system/cpu/cpufreq/ondemand/sampling_rate
+
+	# Change sampling rate for frequency down scaling decision to 10s
+	echo 10 > /sys/devices/system/cpu/cpufreq/ondemand/sampling_down_factor
+
+	# Change the CPU load threshold above which frequency is up-scaled to
+	# turbo frequency,to 50%
+	echo 50 > /sys/devices/system/cpu/cpufreq/ondemand/up_threshold
+}
+
+ipq5210_power_auto() {
+	# change scaling governor as ondemand to enable clock scaling based on system load
+	echo "ondemand" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+
+	# Change sampling rate for frequency scaling decisions to 1s, from 10 ms
+	echo "1000000" > /sys/devices/system/cpu/cpufreq/ondemand/sampling_rate
+
+	# Change sampling rate for frequency down scaling decision to 10s
+	echo 10 > /sys/devices/system/cpu/cpufreq/ondemand/sampling_down_factor
+
+	# Change the CPU load threshold above which frequency is up-scaled to
+	# turbo frequency,to 50%
+	echo 50 > /sys/devices/system/cpu/cpufreq/ondemand/up_threshold
+}
+
+ipq5332_power_auto() {
+	# change scaling governor as ondemand to enable clock scaling based on system load
+	echo "ondemand" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+
+	# Change sampling rate for frequency scaling decisions to 1s, from 10 ms
+	echo "1000000" > /sys/devices/system/cpu/cpufreq/ondemand/sampling_rate
+
+	# Change sampling rate for frequency down scaling decision to 10s
+	echo 10 > /sys/devices/system/cpu/cpufreq/ondemand/sampling_down_factor
+
+	# Change the CPU load threshold above which frequency is up-scaled to
+	# turbo frequency,to 50%
+	echo 50 > /sys/devices/system/cpu/cpufreq/ondemand/up_threshold
+}
+
+ipq5424_power_auto() {
+	# change scaling governor as ondemand to enable clock scaling based on system load
+	echo "ondemand" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+
+	# Change sampling rate for frequency scaling decisions to 1s, from 10 ms
+	echo "1000000" > /sys/devices/system/cpu/cpufreq/ondemand/sampling_rate
+
+	# Change sampling rate for frequency down scaling decision to 10s
+	echo 10 > /sys/devices/system/cpu/cpufreq/ondemand/sampling_down_factor
+
+	# Change the CPU load threshold above which frequency is up-scaled to
+	# turbo frequency,to 50%
+	echo 50 > /sys/devices/system/cpu/cpufreq/ondemand/up_threshold
+}
+
+ipq9650_power_auto() {
+	# change scaling governor as ondemand to enable clock scaling based on system load for policy0
+	echo "ondemand" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+
+	# change scaling governor as ondemand to enable clock scaling based on system load for policy4
+	echo "ondemand" > /sys/devices/system/cpu/cpu4/cpufreq/scaling_governor
+
+	# Change sampling rate for frequency scaling decisions to 1s, from 10 ms
+	echo "1000000" > /sys/devices/system/cpu/cpufreq/ondemand/sampling_rate
+
+	# Change sampling rate for frequency down scaling decision to 10s
+	echo 10 > /sys/devices/system/cpu/cpufreq/ondemand/sampling_down_factor
+
+	# Change the CPU load threshold above which frequency is up-scaled to
+	# turbo frequency,to 50%
+	echo 50 > /sys/devices/system/cpu/cpufreq/ondemand/up_threshold
+}
+
+type ipq806x_board_name &>/dev/null  || ipq806x_board_name() {
+	local board="$(echo $(board_name) | sed 's/^\([^-]*-\)\{1\}//g')"
+	if [[ "$board" == *rdp* ]]; then
+		board=$(cat /tmp/sysinfo/board_name | awk -F, '{print$2}')
+	fi
+	echo "$board"
+}
+
+start() {
+	[ -e /lib/ipq806x.sh ] && . /lib/ipq806x.sh
+
+	local board=$(ipq806x_board_name)
+	case "$board" in
+	ap-al* | db-al*)
+		ipq9574_power_auto ;;
+	ap-emu* | ap-mi* | db-mi*)
+		ipq5332_power_auto ;;
+	ipq5424*)
+		ipq5424_power_auto ;;
+	ipq5210*)
+		ipq5210_power_auto ;;
+	ipq9650*)
+		ipq9650_power_auto ;;
+	esac
+}

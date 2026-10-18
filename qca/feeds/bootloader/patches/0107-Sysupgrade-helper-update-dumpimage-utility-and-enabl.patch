@@ -1,0 +1,89 @@
+From 57173ca5bcb63cf2f97eb8c77119510e0d562e22 Mon Sep 17 00:00:00 2001
+From: Vijay Balaji <vijbal@qti.qualcomm.com>
+Date: Wed, 29 Jul 2026 17:40:27 +0530
+Subject: [PATCH] Sysupgrade-helper: update dumpimage utility and enable
+ sysupgrade.c
+
+This change updates dumpimage utility parameters to align with upgrade
+feature and it also enables sysupgrade.c part of uboot-tools.
+
+Change-Id: I75af9f12d2d4b08d43ef86dea6c403523cb302b8
+Signed-off-by: Vijay Balaji <vijbal@qti.qualcomm.com>
+---
+ tools/Makefile    |  3 +++
+ tools/dumpimage.c | 24 +++++++++++++++++++++++-
+ 2 files changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/tools/Makefile b/tools/Makefile
+index 237fa900a24..82e82053b6a 100644
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -153,6 +153,9 @@ dumpimage-mkimage-objs := aisimage.o \
+ 			$(AES_OBJS-y)
+ 
+ dumpimage-objs := $(dumpimage-mkimage-objs) dumpimage.o
++ifdef CONFIG_SYSUPGRADE_HELPER
++dumpimage-objs += sysupgrade.o
++endif
+ mkimage-objs   := $(dumpimage-mkimage-objs) mkimage.o
+ fit_info-objs   := $(dumpimage-mkimage-objs) fit_info.o
+ fit_check_sign-objs   := $(dumpimage-mkimage-objs) fit_check_sign.o
+diff --git a/tools/dumpimage.c b/tools/dumpimage.c
+index 4791dd0dfe1..f44ad03664d 100644
+--- a/tools/dumpimage.c
++++ b/tools/dumpimage.c
+@@ -8,6 +8,7 @@
+ #include "dumpimage.h"
+ #include <image.h>
+ #include <version.h>
++#include "sysupgrade.h"
+ 
+ static void usage(void);
+ 
+@@ -72,7 +73,7 @@ int main(int argc, char **argv)
+ 
+ 	params.cmdname = *argv;
+ 
+-	while ((opt = getopt(argc, argv, "hlo:T:p:V")) != -1) {
++	while ((opt = getopt(argc, argv, "b:c:hlo:T:p:V")) != -1) {
+ 		switch (opt) {
+ 		case 'l':
+ 			params.lflag = 1;
+@@ -101,6 +102,19 @@ int main(int argc, char **argv)
+ 		case 'V':
+ 			printf("dumpimage version %s\n", PLAIN_VERSION);
+ 			exit(EXIT_SUCCESS);
++#ifdef CONFIG_SYSUPGRADE_HELPER
++		case 'c':
++			return do_board_upgrade_check(optarg);
++		case 'b':
++			if (argc > 4) {
++				fprintf(stderr, "Invalid arguments for -b option\n");
++				exit(EXIT_FAILURE);
++			} else if (optind < argc && argv[optind] != NULL) {
++				return update_bootconfig(argv[optind - 1], argv[optind]);
++			} else {
++				return invalidate_bootconfig(atoi(optarg));
++			}
++#endif
+ 		case 'h':
+ 		default:
+ 			usage();
+@@ -217,6 +231,14 @@ static void usage(void)
+ 	fprintf(stderr,
+ 		"       %s -V ==> print version information and exit\n",
+ 		params.cmdname);
++	fprintf(stderr,
++		"       %s -b ==> To update bootconfig entries\n"
++		"          Usage: -b [member-name] [value]\n",
++		params.cmdname);
++	fprintf(stderr,
++		"       %s -c image\n"
++		"          -c ==> do board upgrade check\n",
++		params.cmdname);
+ 
+ 	exit(EXIT_SUCCESS);
+ }
+-- 
+2.34.1
+

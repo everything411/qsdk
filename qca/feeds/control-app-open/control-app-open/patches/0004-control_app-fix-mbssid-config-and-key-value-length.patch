@@ -1,0 +1,65 @@
+From b1f1e81a898800907ea65ef9c270ecc17d26e11e Mon Sep 17 00:00:00 2001
+From: Mohan Kumar G <quic_mkumarg@quicinc.com>
+Date: Mon, 8 Jan 2024 11:04:16 +0530
+Subject: [PATCH] control_app: fix mbssid config and key value length
+
+Currently, the mbssid config is not given properly in the
+control_app.
+
+This is because the config is passed as multiple_bssid
+instead of mbssid to the config file and also the values
+fetched by control_app is missing the last byte.
+
+Fix this issue by changing the passed config as mbssid and
+adding one extra byte while using the strlcpy() function
+inside the get_key_value() function.
+
+Signed-off-by: Mohan Kumar G <quic_mkumarg@quicinc.com>
+---
+ indigo_api_callback_dut.c | 2 +-
+ indigo_api_callback_tp.c  | 2 +-
+ utils.c                   | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/indigo_api_callback_dut.c b/indigo_api_callback_dut.c
+index 40ad826..3a92bcc 100644
+--- a/indigo_api_callback_dut.c
++++ b/indigo_api_callback_dut.c
+@@ -643,7 +643,7 @@ static int generate_hostapd_config(char *output, int output_size, struct packet_
+ 
+ #if HOSTAPD_SUPPORT_MBSSID
+     if (wlanp->mbssid_enable && wlanp->transmitter) {
+-        strlcat(output, "multiple_bssid=1\n", output_size);
++        strlcat(output, "mbssid=1\n", output_size);
+     }
+ #endif
+ 
+diff --git a/indigo_api_callback_tp.c b/indigo_api_callback_tp.c
+index ab41666..1737e04 100644
+--- a/indigo_api_callback_tp.c
++++ b/indigo_api_callback_tp.c
+@@ -618,7 +618,7 @@ static int generate_hostapd_config(char *output, int output_size, struct packet_
+     }
+ #if HOSTAPD_SUPPORT_MBSSID
+     if (wlanp->mbssid_enable && wlanp->transmitter) {
+-        strlcat(output, "multiple_bssid=1\n", output_size);
++        strlcat(output, "mbssid=1\n", output_size);
+     }
+ #endif
+     if (enable_hs20) {
+diff --git a/utils.c b/utils.c
+index de2cfa3..71e1d34 100644
+--- a/utils.c
++++ b/utils.c
+@@ -1507,7 +1507,7 @@ int get_key_value(char *value, char *buffer, char *token) {
+     ptr += strlen(_token);
+     endptr = strstr(ptr, "\n");
+     if (endptr) {
+-        strlcpy(value, ptr, endptr - ptr);
++        strlcpy(value, ptr, endptr - ptr + 1);
+     } else {
+         strlcpy(value, ptr, S_BUFFER_LEN);
+     }
+-- 
+2.34.1
+

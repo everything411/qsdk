@@ -1,0 +1,53 @@
+From 2821d124ccbad95e293bcda22c8ceb6a36357fdc Mon Sep 17 00:00:00 2001
+From: Hari Chandrakanthan <quic_haric@quicinc.com>
+Date: Wed, 16 Nov 2022 18:28:58 +0530
+Subject: [PATCH] sigma_dut : fix bssid config in multi band case
+
+In multi-band case, the second band (5 GHz) interface gets the bssid
+of the first band (6 GHz) interface.
+
+Fix this by using proper interface name when setting the bssid
+config for each band.
+
+Signed-off-by: Hari Chandrakanthan <quic_haric@quicinc.com>
+---
+ ap.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index a1e29a4..5e6ad8c 100644
+--- a/ap.c
++++ b/ap.c
+@@ -8480,6 +8480,7 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 	enum sec_ch_offset offset;
+ 	int chan;
+ 	unsigned char main_bssid[6];
++	char ifname2[50];
+ 
+ 	drv = get_driver_type(dut);
+ 
+@@ -8697,7 +8698,6 @@ write_conf:
+ 	}
+ 
+ 	if (conf_counter == 1) {
+-		char ifname2[50];
+ 
+ 		if (dut->dual_ap_ifname)
+ 			snprintf(ifname2, sizeof(ifname2), "%s", dut->dual_ap_ifname);
+@@ -8742,7 +8742,12 @@ write_conf:
+ 		fprintf(f, "start_disabled=1\n");
+ 
+ 	/* add the bssid of the main iface before other bss are added to this conf */
+-	if (get_hwaddr(ifname, main_bssid)) {
++	if (conf_counter == 1) {
++		if (get_hwaddr(ifname2, main_bssid)) {
++			fclose(f);
++			return -2;
++		}
++	} else if (get_hwaddr(ifname, main_bssid)) {
+ 		fclose(f);
+ 		return -2;
+ 	}
+-- 
+2.7.4
+

@@ -1,0 +1,185 @@
+#!/bin/sh
+
+. /lib/functions/uci-defaults.sh
+
+MEM_PROFILE_JSON="/etc/mem-profile.json"
+
+init_json_file() {
+	json_init
+}
+
+dump_json_file() {
+	json_dump -i > "$MEM_PROFILE_JSON"
+	sync
+}
+
+setup_board_details() {
+	local board="$1"
+	local mem_mb="$2"
+
+	json_add_string  "board"           "$board"
+	json_add_int     "physical_ddr_mb" "$mem_mb"
+}
+
+setup_profile_details() {
+	# ── Static profile definitions ────────────────────────────────────
+	json_add_object  "profiles"
+
+	json_add_object  "optimized"
+	json_add_int     "level"               1
+	json_add_int     "threshold_mb"        256
+	json_add_int     "ipq_mem_profile"     256
+	json_add_string  "description"         "256 MB DDR — minimal memory footprint"
+	json_add_int     "required_wifi_bands" 2
+	json_close_object
+
+	json_add_object  "balanced"
+	json_add_int     "level"               2
+	json_add_int     "threshold_mb"        512
+	json_add_int     "ipq_mem_profile"     512
+	json_add_string  "description"         "512 MB DDR — balanced memory usage"
+	json_add_int     "required_wifi_bands" 3
+	json_close_object
+
+	json_add_object  "high"
+	json_add_int     "level"               3
+	json_add_int     "threshold_mb"        1024
+	json_add_int     "ipq_mem_profile"     0
+	json_add_string  "description"         "1 GB+ DDR — full feature set (catch-all)"
+	json_add_int     "required_wifi_bands" 3
+	json_close_object
+
+	json_close_object  # profiles
+}
+
+set_min_max_mem_profile() {
+	local min="${1}"
+	local max="${2:-high}"
+
+	# Board-specific supported profile range
+	json_add_object  "mem_profile"
+	json_add_string  "min"  "$min"
+	json_add_string  "max"  "$max"
+	json_close_object
+}
+
+# Physical DDR size in MB from device tree memory nodes.
+# Iterates all memory@* nodes and sums all size cells to get total DDR.
+# Each reg entry is a 32-byte cell: [addr_hi:8][addr_lo:8][size_hi:8][size_lo:8]
+# Falls back to /proc/meminfo MemTotal if DT nodes are unavailable.
+get_physical_ddr_mb() {
+	local total=0 found=0
+
+	for mem in /sys/firmware/devicetree/base/memory@*/reg; do
+		[ -e "$mem" ] || continue
+		found=1
+		local hex cell size_hi size_lo size
+		hex=$(hexdump -v -e '1/1 "%02x"' "$mem" 2>/dev/null)
+		while [ ${#hex} -ge 32 ]; do
+			cell=${hex:0:32}
+			size_hi=${cell:16:8}
+			size_lo=${cell:24:8}
+			size=$(( 0x${size_hi}${size_lo} ))
+			total=$(( total + size ))
+			hex=${hex:32}
+		done
+	done
+
+	if [ "$found" -eq 0 ]; then
+		log_warn "Memory DT node not found ... falling back to /proc/meminfo"
+		awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo
+		return
+	fi
+
+	echo $(( total / 1024 / 1024 ))
+}
+
+set_default_profile() {
+	mem_mb=$(get_physical_ddr_mb)
+	if [ "$mem_mb" -ge 1024 ]; then
+		set_min_max_mem_profile "balanced" "high"
+	elif [ "$mem_mb" -ge 512 ]; then
+		set_min_max_mem_profile "balanced" "balanced"
+	else
+		set_min_max_mem_profile "optimized" "optimized"
+	fi
+}
+
+# ── Determine board profile bounds and generate /etc/mem-profile.json ─────────
+# Resolves min/max profile for the given board, detects physical DDR,
+# then writes /etc/mem-profile.json in one step.
+ipq_setup_profile() {
+	local board="$1"
+	local min max mem_mb
+
+	mem_mb=$(get_physical_ddr_mb)
+	setup_board_details "$board" "$mem_mb"
+
+	case "$board" in
+
+	# ── 256 MB fixed-DDR boards ──────────────────────────────────────
+	# Only 'optimized' profile is valid; balanced/high are disallowed.
+	qcom,ipq96*)
+		set_min_max_mem_profile "optimized" "high"
+		;;
+
+	# ── Standard IPQ5332 boards (8-chain / JR / BR / HR) ────────────
+	# Minimum 512 MB DDR (balanced); high profile also allowed.
+	qcom,ipq5210-rdp498 |\
+	qcom,ipq5210-rdp499 |\
+	qcom,ipq5210-rdp500 |\
+	qcom,ipq5210-rdp501 |\
+	qcom,ipq5210-rdp502 |\
+	qcom,ipq5210-rdp511 |\
+	qcom,ipq5210-rdp512)
+		set_min_max_mem_profile "optimized" "high"
+		;;
+	qcom,ipq5210-rdp503 |\
+	qcom,ipq5210-rdp504)
+		set_min_max_mem_profile "balanced" "high"
+		;;
+	qcom,ipq5210-rdp505)
+		set_min_max_mem_profile "optimized" "balanced"
+		;;
+	qcom,ipq5210-rdp497)
+		set_min_max_mem_profile "optimized" "optimized"
+		;;
+
+	# ── Default: derive from physical DDR size ───────────────────────
+	*)
+		echo "mem-profile: board '${board}' — set default profile" >&2
+		set_default_profile
+		;;
+	esac
+
+	setup_profile_details
+}
+
+get_mem_profile_details() {
+	local JSON_FILE="$MEM_PROFILE_JSON"
+	local info_value
+
+	json_load_file "$JSON_FILE"
+
+	case $1 in
+		"min")
+			json_select mem_profile
+			json_get_var info_value min
+			info_value=${info_value##*/}
+			;;
+		"max")
+			json_select mem_profile
+			json_get_var info_value max
+			info_value=${info_value##*/}
+			;;
+		*)
+			json_get_var info_value $1
+			;;
+	esac
+	echo $info_value
+}
+
+board=$(board_name)
+init_json_file
+ipq_setup_profile "$board"
+dump_json_file

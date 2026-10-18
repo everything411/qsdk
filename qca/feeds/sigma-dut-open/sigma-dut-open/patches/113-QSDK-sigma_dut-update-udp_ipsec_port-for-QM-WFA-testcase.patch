@@ -1,0 +1,31 @@
+From 84910c83b75af6bccad12d8c773954bec56223a2 Mon Sep 17 00:00:00 2001
+From: Hari Chandrakanthan <haric@qti.qualcomm.com>
+Date: Fri, 5 Dec 2025 17:33:50 +0530
+Subject: [PATCH] QSDK:sigma_dut: update udp_ipsec_port for QM WFA testcase
+
+The udp port number for udp encap ipsec flows in WFA testcases is 5200.
+Overide the default udp ipsec port number in ecm emesh classifier
+for ecm to take actions on these flows.
+
+Signed-off-by: Hari Chandrakanthan <haric@qti.qualcomm.com>
+---
+ ap.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index a1cca98..0f34bad 100644
+--- a/ap.c
++++ b/ap.c
+@@ -12606,6 +12606,9 @@ hapd_started:
+ 			run_system_wrapper(dut,
+ 					   "echo 0 > /sys/kernel/debug/ecm/ecm_classifier_mscs/enabled");
+ 
++		run_system_wrapper(dut,
++				   "echo 5200 > /proc/sys/net/ecm/ecm_classifier_emesh/udp_ipsec_port");
++
+ 		/* 1. #926: Send UL triggers consistently irrespective of
+ 		 * station's QoS NULL frames
+ 		 * 2. #720: Add aggressive dl and ul scheduling of triggers,
+-- 
+2.34.1
+

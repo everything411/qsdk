@@ -1,0 +1,215 @@
+From 99a5534cf892f3810af72131256c0b9bc24b2252 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+Date: Tue, 10 Feb 2026 16:32:40 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigmadut: Add support for channel usage.
+
+Add support for ChnlUsagePresent and ChnlUsageParams CAPI commands
+
+Implement channel usage configuration for multi-band (2.4/5/6 GHz)
+testing.
+Parses ChnlUsageParams format (<mode>_<opClass>_<channel>) with band
+filtering
+and generates chan_usage_test_cmd with mode grouping.
+
+Signed-off-by: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+---
+ ap.c        | 135 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ sigma_dut.h |  15 ++++++
+ 2 files changed, 150 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 1f70257..b187978 100644
+--- a/ap.c
++++ b/ap.c
+@@ -3127,6 +3127,61 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "ChnlUsagePresent");
++	if (val)
++		dut->ap_chan_usage_present = atoi(val);
++
++	val = get_param(cmd, "ChnlUsageParams");
++	if (val && dut->ap_chan_usage_present) {
++		char *string = strdup(val);
++		char *token, *saveptr;
++		char *internal_token, *internal_saveptr;
++		char *chan_token, *chan_saveptr;
++
++		if (!string) {
++			sigma_dut_print(dut, DUT_MSG_ERROR,
++					"Failed to allocate memory for ChnlUsageParams");
++			return ERROR_SEND_STATUS;
++		}
++
++		dut->chan_usage.set_count = 0;
++		token = strtok_r(string, ";", &saveptr);
++
++		/* Parse format: UsageMode_OpClass_ColonSeparatedChannels
++		 * Only use FIRST channel from colon-separated list */
++		while (token && dut->chan_usage.set_count < MAX_CHAN_USAGE_SETS) {
++			int count = 0;
++
++			internal_token = strtok_r(token, "_", &internal_saveptr);
++			while (internal_token && count < 3) {
++				switch (count) {
++				case 0:
++					/* Usage Mode */
++					dut->chan_usage.set[dut->chan_usage.set_count].usageMode = atoi(internal_token);
++					break;
++				case 1:
++					/* Operating Class */
++					dut->chan_usage.set[dut->chan_usage.set_count].opClass = atoi(internal_token);
++					break;
++				case 2:
++					/* Channel list - take only FIRST channel */
++					chan_token = strtok_r(internal_token, ":", &chan_saveptr);
++					if (chan_token) {
++						dut->chan_usage.set[dut->chan_usage.set_count].channel = atoi(chan_token);
++					}
++					break;
++				}
++				count++;
++				internal_token = strtok_r(NULL, "_", &internal_saveptr);
++			}
++
++			if (count >= 3)
++				dut->chan_usage.set_count++;
++			token = strtok_r(NULL, ";", &saveptr);
++		}
++		free(string);
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -12729,6 +12784,84 @@ hapd_started:
+ 		sigma_dut_print(dut, DUT_MSG_INFO, "Started bridge");
+ 	}
+ 	dut->hostapd_running = 1;
++
++	if (dut->ap_chan_usage_present) {
++		char buf[500] = {0};
++		char temp[100] = {0};
++		int i, j;
++		int total_modes = 0;
++		int mode_entries[3] = {0}; /* num_entry for each mode */
++
++		/* Count entries per mode for configured interfaces */
++		for (i = 0; i < dut->chan_usage.set_count; i++) {
++			int opclass = dut->chan_usage.set[i].opClass;
++			int mode = dut->chan_usage.set[i].usageMode;
++			int include = 0;
++
++			/* Check if this set's band matches configured interfaces */
++			if (opclass >= 81 && opclass <= 84 && dut->ap_interface_2g)
++				include = 1;
++			else if (opclass >= 115 && opclass <= 130 && dut->ap_interface_5g)
++				include = 1;
++			else if (opclass >= 131 && opclass <= 136 && dut->ap_interface_6g)
++				include = 1;
++
++			if (include && mode >= 0 && mode <= 2) {
++				mode_entries[mode]++;
++			}
++		}
++
++		/* Count how many modes have entries */
++		for (i = 0; i < 3; i++) {
++			if (mode_entries[i] > 0)
++				total_modes++;
++		}
++
++		/* Build chan_usage_test_cmd parameters */
++		snprintf(buf, sizeof(buf), " set_channel_usage_element %d", total_modes);
++
++		/* Add entries for each mode that has data */
++		for (i = 0; i < 3; i++) {
++			if (mode_entries[i] == 0)
++				continue;
++
++			/* Add mode and num_entry */
++			snprintf(temp, sizeof(temp), " mode %d num_entry %d", i, mode_entries[i]);
++			strlcat(buf, temp, sizeof(buf));
++
++			/* Add all opClass/channel pairs for this mode */
++			for (j = 0; j < dut->chan_usage.set_count; j++) {
++				int opclass = dut->chan_usage.set[j].opClass;
++				int mode = dut->chan_usage.set[j].usageMode;
++				int include = 0;
++
++				if (mode != i)
++					continue;
++
++				/* Check if this set's band matches configured interfaces */
++				if (opclass >= 81 && opclass <= 84 && dut->ap_interface_2g)
++					include = 1;
++				else if (opclass >= 115 && opclass <= 130 && dut->ap_interface_5g)
++					include = 1;
++				else if (opclass >= 131 && opclass <= 136 && dut->ap_interface_6g)
++					include = 1;
++
++				if (include) {
++					snprintf(temp, sizeof(temp), " %d %d",
++						 dut->chan_usage.set[j].opClass,
++						 dut->chan_usage.set[j].channel);
++					strlcat(buf, temp, sizeof(buf));
++				}
++			}
++		}
++
++		sigma_dut_print(dut, DUT_MSG_INFO,
++				"Channel usage parameters: %s", buf);
++
++		/* Execute the command using hostap_cli infrastructure */
++		run_hostapd_cli(dut, buf);
++	}
++
+ 	return 1;
+ }
+ 
+@@ -13804,6 +13937,8 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 	dut->eht_omctrl = VALUE_NOT_SET;
+ 	dut->eht_txemlomn = VALUE_NOT_SET;
+ 	dut->ap_ehtmcs_map = 0;
++	dut->ap_chan_usage_present = 0;
++	memset(&dut->chan_usage, 0, sizeof(dut->chan_usage));
+ 
+ 	if (is_60g_sigma_dut(dut)) {
+ 		dut->ap_mode = AP_11ad;
+diff --git a/sigma_dut.h b/sigma_dut.h
+index 2c8ab05..c575729 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -373,6 +373,19 @@ struct btm_ap {
+ 	int num_of_bss;
+ };
+ 
++#define MAX_CHAN_USAGE_SETS (6)
++
++struct chan_usage_set {
++	int usageMode;
++	int opClass;
++	int channel;  /* Only first channel from colon-separated list */
++};
++
++struct chan_usage_params {
++	int set_count;
++	struct chan_usage_set set[MAX_CHAN_USAGE_SETS];
++};
++
+ #ifdef NL80211_SUPPORT
+ #define SOCK_BUF_SIZE (32 * 1024)
+ struct nl80211_ctx {
+@@ -1099,6 +1112,8 @@ struct sigma_dut {
+ 	u8 ap_transition_disable;
+ 	int ap_80plus80;
+ 	int ap_oper_chn;
++	int ap_chan_usage_present;
++	struct chan_usage_params chan_usage;
+ 
+ 	struct mbo_pref_ap mbo_pref_aps[MBO_MAX_PREF_BSSIDS];
+ 	struct mbo_pref_ap mbo_self_ap_tuple;
+-- 
+2.34.1
+

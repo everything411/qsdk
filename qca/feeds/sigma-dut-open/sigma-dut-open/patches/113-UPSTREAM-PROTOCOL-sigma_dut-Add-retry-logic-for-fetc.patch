@@ -1,0 +1,121 @@
+From 205a64184db89eb83e293a865bdb9a50f8529b71 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 8 Jan 2026 14:37:05 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Add retry logic for fetching MAC
+ address and fix get_interface_handler crashes
+
+Split PHY RDPs, exhibits a delay in initializing interfaces after
+starting hostapd. Attempting to fetch the MAC address during the delay
+results in failures. Add a retry mechanism to `fetch_ap_mac_address_nl`
+to allow up to 3 attempts with a delay to accommodate this
+initialization latency.
+
+Additionally, prevent crashes in `get_interface_handler()` caused by
+incomplete Netlink attributes in these scenarios by adding validity
+checks for all required attributes.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 49 ++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 34 insertions(+), 15 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -15783,13 +15783,18 @@ static int get_interface_handler(struct
+ 
+ 	if (info->attr == NL80211_ATTR_WIPHY_FREQ &&
+ 	    !(tb_msg[NL80211_ATTR_MLO_LINKS] && info->value != BAND_UNKNOWN)) {
+-		memcpy(info->addr, nla_data(tb_msg[NL80211_ATTR_MAC]), ETH_ALEN);
+-		return 0;
++		if (tb_msg[NL80211_ATTR_MAC]) {
++			memcpy(info->addr, nla_data(tb_msg[NL80211_ATTR_MAC]),
++			       ETH_ALEN);
++			return 0;
++		}
++		return -1;
+ 	}
+ 
+ 	nla_for_each_nested(attrs, tb_msg[NL80211_ATTR_MLO_LINKS], ret) {
+ 		nla_parse_nested(link, NL80211_ATTR_MAX, attrs, NULL);
+-		if (link[NL80211_ATTR_MLO_LINK_ID]) {
++		if (link[NL80211_ATTR_MLO_LINK_ID] &&
++		    link[NL80211_ATTR_WIPHY_FREQ]) {
+ 			freq = nla_get_u32(link[NL80211_ATTR_WIPHY_FREQ]);
+ 			band = get_band(freq);
+ 			link_id = nla_get_u8(link[NL80211_ATTR_MLO_LINK_ID]);
+@@ -15819,24 +15824,37 @@ static int fetch_ap_mac_address_nl(struc
+ 	int flags = NLM_F_DUMP;
+ 	struct nl_msg *msg;
+ 	struct get_mac_addr_info arg;
++	int iter;
+ 
+ 	arg.ifname = (char *)ifname;
+ 	arg.attr = attr;
+ 	arg.value = value;
+ 	arg.addr = addr;
+ 
+-	if (!(msg = nl80211_drv_msg(dut, dut->nl_ctx, if_nametoindex(ifname), flags,
+-				    NL80211_CMD_GET_INTERFACE))) {
+-		snprintf(resp, resp_len,
+-			 "errorCode,Could not find interface %s", ifname);
+-		send_resp(dut, conn, SIGMA_ERROR, resp);
+-		return -1;
++	for (iter = 0; iter < FETCH_MAC_ADDRESS_MAX_RETRIES; iter++) {
++		if (!(msg = nl80211_drv_msg(dut, dut->nl_ctx, if_nametoindex(ifname), flags,
++					    NL80211_CMD_GET_INTERFACE))) {
++			snprintf(resp, resp_len,
++				 "errorCode,Could not find interface %s", ifname);
++			send_resp(dut, conn, SIGMA_ERROR, resp);
++			return -1;
++		} else if (!send_and_recv_msgs(dut, dut->nl_ctx, msg, get_interface_handler, &arg)) {
++			if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 &&
++			    addr[3] == 0 && addr[4] == 0 && addr[5] == 0) {
++				sigma_dut_print(dut, DUT_MSG_ERROR,
++						"Invalid mac address: Retrying(%d)\n", iter);
++			} else {
++				break;
++			}
++		} else {
++			nlmsg_free(msg);
++		}
++		sleep(1);
+ 	}
+ 
+-	if (send_and_recv_msgs(dut, dut->nl_ctx, msg, get_interface_handler, &arg)) {
+-		snprintf(resp, resp_len, "get mac address failed");
++	if (iter == FETCH_MAC_ADDRESS_MAX_RETRIES) {
++		snprintf(resp, resp_len, "errorcode,get mac address failed");
+ 		send_resp(dut, conn, SIGMA_ERROR, resp);
+-		nlmsg_free(msg);
+ 		return -1;
+ 	}
+ 
+@@ -16041,15 +16059,8 @@ static enum sigma_cmd_result cmd_ap_get_
+ 			return -1;
+ 	}
+ 
+-	if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 &&
+-	    addr[3] == 0 && addr[4] == 0 && addr[5] == 0) {
+-		send_resp(dut, conn, SIGMA_ERROR,
+-			  "errorCode,Could not find interface");
+-		return STATUS_SENT_ERROR;
+-	} else {
+-		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
+-		 	 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+-	}
++	snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
++	 	 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+ #else
+ 	if (fetch_ap_mac_address(dut, conn, ifname, addr, resp, sizeof(resp)) < 0)
+ 		return -1;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -123,6 +123,8 @@ struct sigma_dut;
+  */
+ #define AP_DEFAULT_MAX_INACTIVITY (5 * 60)
+ 
++#define FETCH_MAC_ADDRESS_MAX_RETRIES	(3)
++
+ typedef unsigned int u32;
+ typedef uint16_t u16;
+ typedef unsigned char u8;

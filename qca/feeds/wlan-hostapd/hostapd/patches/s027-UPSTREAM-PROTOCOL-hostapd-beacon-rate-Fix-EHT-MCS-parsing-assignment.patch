@@ -1,0 +1,87 @@
+From: Raja Mani <raja.mani@oss.qualcomm.com>
+Date: Tue, 28 Oct 2025 15:32:59 +0530
+Subject: [PATCH] hostapd: Fix EHT MCS parsing and flag assignment for beacon
+ TX rate
+
+Previous patches introduced support for configuring beacon transmission rate
+using EHT MCS:
+
+  1) q02-021-nl80211-check-driver-capabilities-for-beacon-rates.patch
+  2) q02-022-eht-configuration-option-for-beacon-rates.patch
+  3) q02-023-nl80211-pass-EHT-beacon-rate-configuration-to-kernel.patch
+
+However, the implementation had two below bugs. This is corrected now.
+
+  1) In hostapd_config_fill(), the string comparison for "eht:" incorrectly used
+     3 characters instead of 4.
+  2) The macro `WPA_DRIVER_FLAGS2_BEACON_RATE_EHT` was not assigned a unique value,
+     causing conflicts.
+
+Note:
+This patch should be squashed into the original patches listed above when
+submitting to the upstream.
+
+Tested-by: Prasath Rao Loganathan <prasathr@qti.qualcomm.com>
+Signed-off-by: Raja Mani <raja.mani@oss.qualcomm.com>
+Signed-off-by: prasathr <prasathr@qti.qualcomm.com>
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 6028909..c1f93ca 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3302,8 +3302,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 			}
+ 			conf->rate_type = BEACON_RATE_HE;
+ 			conf->beacon_rate = val;
+-		} else if (os_strncmp(pos, "eht:", 3) == 0) {
+-			val = atoi(pos + 3);
++		} else if (os_strncmp(pos, "eht:", 4) == 0) {
++			val = atoi(pos + 4);
+ 			if (val < 0 || val > 15) {
+ 				wpa_printf(MSG_ERROR,
+ 					   "Line %d: invalid beacon_rate EHT-MCS %d",
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 9ccbfaf..6cff89c 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -305,7 +305,7 @@ beacon_tx_mode=1
+ #    beacon_rate=vht:<VHT MCS>
+ # HE:
+ #    beacon_rate=he:<HE MCS>
+-## EHT:
++# EHT:
+ #    beacon_rate=eht:<EHT MCS>
+ #
+ # For example, beacon_rate=10 for 1 Mbps or beacon_rate=60 for 6 Mbps (OFDM).
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 2e8ea4e..3b63ff6 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2768,7 +2768,6 @@ struct wpa_driver_capa {
+  * frames in STA mode
+  */
+ #define WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA	0x0000000000002000ULL
+-#define WPA_DRIVER_FLAGS2_BEACON_RATE_EHT	0x0000000000004000ULL
+ /** Driver supports MLO in station/AP mode */
+ #define WPA_DRIVER_FLAGS2_MLO			0x0000000000004000ULL
+ /** Driver support ML reconfigure link removal offload */
+@@ -2799,6 +2798,8 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE	0x0000000004000000ULL
+ /** Driver supports TTLM beacon offload */
+ #define WPA_DRIVER_FLAGS2_TTLM_BEACON_OFFLOAD	0x0000000008000000ULL
++/** Driver supports Beacon frame TX rate configuration (EHT rates) */
++#define WPA_DRIVER_FLAGS2_BEACON_RATE_EHT       0x0000000010000000ULL
+ 	u64 flags2;
+ 
+ #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
+diff --git a/src/drivers/driver_common.c b/src/drivers/driver_common.c
+index 6fa7f87..aa04422 100644
+--- a/src/drivers/driver_common.c
++++ b/src/drivers/driver_common.c
+@@ -389,6 +389,7 @@ const char * driver_flag2_to_string(u64 flag2)
+ 	DF2S(SCAN_MIN_PREQ);
+ 	DF2S(SAE_OFFLOAD_STA);
+ 	DF2S(SPP_AMSDU);
++	DF2S(BEACON_RATE_EHT);
+ 	}
+ 	return "UNKNOWN";
+ #undef DF2S

@@ -1,0 +1,73 @@
+From 336e9052d267c9f966fd336dc7d5626d48adca61 Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <hprem@qti.qualcomm.com>
+Date: Thu, 13 Nov 2025 11:24:27 +0530
+Subject: [PATCH] QSDK:PROTOCOL:HOSTAPD: Renumber the non-upstreamed nl80211
+ commands
+
+Currently, every non-upstreamed commands has to be renumbered every
+time during upgrade. In order to avoid repeated renumbering,
+move the private nl80211 commands and attributes to different
+series.
+
+Signed-off-by: Harshitha Prem <hprem@qti.qualcomm.com>
+Signed-off-by: Roopni Devanathan <rdevanat@qti.qualcomm.com>
+---
+ src/common/qca-vendor.h    | 25 +++++++++++++++++--------
+ src/drivers/nl80211_copy.h |  2 ++
+ 2 files changed, 19 insertions(+), 8 deletions(-)
+
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -3531,6 +3531,8 @@ enum nl80211_attrs {
+ 	NL80211_ATTR_MLO_RECONF_REM_LINKS,
+ 	NL80211_ATTR_EPCS,
+ 
++	NL80211_ATTR_ASSOC_MLD_EXT_CAPA_OPS,
++
+ 	NL80211_ATTR_WIPHY_RADIO_INDEX,
+ 
+ 	NL80211_ATTR_WIPHY_ANTENNA_GAIN,
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -1593,12 +1593,26 @@ enum qca_nl80211_vendor_subcmds {
+ 	/* 255 - reserved for QCA */
+ 	QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE = 256,
+ 	QCA_NL80211_VENDOR_SUBCMD_PERIODIC_PROBE_RSP_CFG = 257,
+-	QCA_NL80211_VENDOR_SUBCMD_SET_6GHZ_POWER_MODE = 258,
+-	QCA_NL80211_VENDOR_SUBCMD_POWER_MODE_CHANGE_COMPLETED = 259,
+-	QCA_NL80211_VENDOR_SUBCMD_ATF_OFFLOAD_OPS = 261,
+-	QCA_NL80211_VENDOR_SUBCMD_AFC_CLEAR_PAYLOAD = 264,
+-	QCA_NL80211_VENDOR_SUBCMD_AFC_RESET = 265,
+-	QCA_NL80211_VENDOR_SUBCMD_IFACE_RELOAD = 267
++	QCA_NL80211_VENDOR_SUBCMD_ATF_OFFLOAD_OPS = 268,
++
++	/* These are non-upstreamed commands maintained in QSDK. As and when
++	 * these commands are upstreamed, the numbering should change and so
++	 * should the offset. To make this more dynamic, we are starting from
++	 * range - 500. This way, we can use a single API to extend numbering
++	 * of non-upstreamed commands.
++	 */
++	QCA_NL80211_VENDOR_SUBCMD_SET_6GHZ_POWER_MODE = 500,
++	QCA_NL80211_VENDOR_SUBCMD_POWER_MODE_CHANGE_COMPLETED = 501,
++	QCA_NL80211_VENDOR_SUBCMD_AFC_CLEAR_PAYLOAD = 502,
++	QCA_NL80211_VENDOR_SUBCMD_AFC_RESET = 503,
++	QCA_NL80211_VENDOR_SUBCMD_IFACE_RELOAD = 504,
++	QCA_NL80211_VENDOR_SUBCMD_SET_WIPHY_CONFIGURATION = 505,
++	QCA_NL80211_VENDOR_SUBCMD_GET_WIPHY_CONFIGURATION = 506,
++	QCA_NL80211_VENDOR_SUBCMD_AFC_GET_REG_EIRP = 507,
++	QCA_NL80211_VENDOR_SUBCMD_240MHZ_INFO = 508,
++	QCA_NL80211_VENDOR_SUBCMD_DCS_WLAN_INTERFERENCE_COMPUTE = 509,
++	QCA_NL80211_VENDOR_SUBCMD_AFC_FETCH_POWER_EVENT = 510,
++	QCA_NL80211_VENDOR_SUBCMD_DERIVE_LINK_BSS_ADDR = 512,
+ };
+ 
+ /* Compatibility defines for previously used subcmd names.
+@@ -3905,7 +3918,7 @@ enum qca_wlan_vendor_attr_config {
+ 	 * %QCA_NL80211_VENDOR_SUBCMD_GET_WIPHY_CONFIGURATION subcmds to
+ 	 * specify a particular Radio of the wiphy device.
+ 	 */
+-	QCA_WLAN_VENDOR_ATTR_CONFIG_RADIO_INDEX = 135,
++	QCA_WLAN_VENDOR_ATTR_CONFIG_RADIO_INDEX = 150,
+ 
+ 
+ 	/* keep last */

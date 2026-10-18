@@ -1,0 +1,42 @@
+From b99aa16b8682965f6dfa610058186a71576256cd Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Wed, 4 Mar 2026 11:40:07 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Restrict MU-BAR fwtest command
+ to 6G interface
+
+The fwtest command (-m 0x47 -v 0 670 1) to enable MU-BAR was configured
+for all HE program testcases with DL_OFDMA and MU_PPDU. However, FW
+has indicated that this command is required only for 6G interface
+testcases. Add a band check using check_band() before executing the
+MU-BAR fwtest command in fwtest_set_he_params() to restrict it to
+6G interfaces only.
+
+Patch-dependency: 079-sigma-dut-Enable-required-fwtest-commands-for-OFDMA.patch
+Fixes: I02295ee25 (sigma_dut: Enable MU-BAR for DL OFDMA)
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index c4b8223..2aac516 100644
+--- a/ap.c
++++ b/ap.c
+@@ -9795,9 +9795,11 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 427 0", ifname);
+ 		/* Enable to sort RU allocation */
+ 		fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 2 1", ifname);
+-		/*Enable MU-BAR for DL OFDMA*/
+-		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 670 1", ifname);
+ 
++		if (check_band(dut, BAND_6G, link_id)) {
++			/*Enable MU-BAR for DL OFDMA*/
++			fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 670 1", ifname);
++		}
+ 	}
+ 
+ 	if (dut->ap_txBF) {
+-- 
+2.34.1
+

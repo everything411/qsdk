@@ -1,0 +1,1108 @@
+if ARCH_IPQ
+
+config SYS_SOC
+	default "ipq"
+
+config SYS_VENDOR
+	string "IPQ board vendor"
+	default "qualcomm"
+	help
+	  Allows to specify vendor for the IPQ SoCs based boards.
+	  Based on this option board/<CONFIG_SYS_VENDOR>/<CONFIG_SYS_BOARD>
+	  will be used as the custom board directory.
+
+config SYS_BOARD
+	string "IPQ SoCs based board"
+	help
+	  Allows to specify the IPQ SoCs based board name.
+	  Based on this option board/<CONFIG_SYS_VENDOR>/<CONFIG_SYS_BOARD>
+	  will be used as the custom board directory.
+
+config SYS_CONFIG_NAME
+	string "Board configuration name"
+	default SYS_BOARD if SYS_BOARD != ""
+	default "qcom"
+	help
+	  This option contains information about board configuration name.
+	  Based on this option include/configs/<CONFIG_SYS_CONFIG_NAME>.h header
+	  will be used for board configuration.
+
+config SYS_MALLOC_LEN
+	default 0x100000
+	help
+	  This specifies the size of DRAM reserved for malloc() use.
+
+config SYS_MALLOC_F_LEN
+	default 0x10000
+	help
+	  This specifies the size of the malloc() pool for use before relocation.
+
+config TEXT_SIZE
+	hex "Define Size of u-boot text size in DDR region"
+	default 0x1C0000 if TARGET_IPQ9574
+	default 0x180000 if TARGET_IPQ5332 || TARGET_IPQ5424
+	help
+	  This option defines the size of the u-boot text in DDR region.
+
+config SPL_TEXT_SIZE
+	hex "Define Size of u-boot SPL text size in SRAM region"
+	default 0x4B000
+	depends on SPL
+	help
+	  This option defines the size of the u-boot SPL text in SRAM region.
+
+config SPL_RDP_IMAGE_GENERATION
+	bool "Generate SPL RDP variant images"
+	depends on SPL
+	depends on SPL_REMAKE_ELF
+	default n
+	help
+	  Enable generation of per-RDP SPL image variants for Qualcomm IPQ
+	  platforms. When enabled, the SPL build discovers matching RDP device
+	  trees, prunes them to SPL nodes and emits the corresponding SPL ELF
+	  outputs.
+
+config SPL_DDR2_MEM_BASE
+       bool "Enable DDR2 memory region for SPL"
+       depends on SPL
+       default n
+       help
+         This option enables a second DDR memory region in the SPL memory map.
+         When enabled, the SPL will configure MMU mappings for an additional
+         DDR region at a higher address space (0x800000000). This is useful
+         for platforms with extended memory configurations that require
+         access to memory beyond the primary DDR region.
+
+config ARCH_32BIT_SUPPORT
+	bool "IPQSOC 32-bit support"
+	select CPU_V7A
+	select SYS_ARCH_TIMER
+	select SYS_THUMB_BUILD
+	default n
+	help
+	  This config provides support for 32-bit IPQSOC.
+
+config IPQ_I2C
+        bool "Enable I2C support in IPQ SOC"
+        select I2C
+        select DM_I2C
+        select SYS_I2C_GENI if (TARGET_IPQ5424 || TARGET_IPQ5210 || TARGET_IPQ9650)
+	select SYS_I2C_QUP if (TARGET_IPQ5332 || TARGET_IPQ9574)
+        select CMD_I2C
+
+config SPL_QCOM_FUSE_VOLTAGE_CONTROL
+	bool "Qualcomm fuse based voltage control in SPL"
+	depends on SPL
+	depends on SPL_DM
+	depends on SPL_DRIVERS_MISC
+	depends on SPL_DM_REGULATOR
+	help
+	  Enable the Qualcomm fuse based voltage-control driver in SPL.
+	  This lets early boot code read CPR fuse values, compute the
+	  requested rail voltage and program the configured regulator before
+	  DDR initialization starts.
+
+config SPL_MP8899_REGULATOR
+	bool "MP8899 I2C regulator in SPL"
+	depends on SPL
+	depends on SPL_DM
+	depends on SPL_DM_I2C
+	depends on SPL_DM_REGULATOR
+	help
+	  Enable the MP8899 I2C regulator backend used by Qualcomm fuse
+	  voltage control in SPL.
+
+config ARCH_64BIT_SUPPORT
+	bool "IPQSOC 64-bit support"
+	select ARM64
+	default n
+	help
+	  This config provides support for 64-bit IPQSOC.
+
+config RAM_NUM_PART_ENTRIES
+	int "Number of RAM partition entries which are usable by APPS"
+	default 32
+	help
+	  This config gives the number of RAM partition entries which are usable by APPS.
+
+config NUM_ALT_PARTITION
+	int
+	default 16
+	help
+	  This config gives the number of alternate partition.
+
+config RAM_PART_NAME_LENGTH
+	int "Max length of ram partition name"
+	default 16
+	help
+	  This specifies the maximum length of the alternate partition.
+
+config NOR_BLK_SIZE
+	int "Block size for SPI Nor BLK device"
+	depends on NOR_BLK
+	default 4096
+	help
+	  This config specifies the block size for SPI Nor BLK device.
+
+config SECONDARY_UART_INDEX
+	int "Access secondary UART via cli"
+	default 2
+	help
+	  This specifies the id inorder to access the secondary UART via cli.
+
+config SYS_BOOTM_LEN
+	hex "Maximum size of a decompresed OS image"
+	default 0xC800000 if ARM64
+	default 0x4000000
+	help
+	  This is the maximum size of the buffer that is used to decompress the OS
+	  image in to if attempting to boot a compressed image.
+
+config RUNTIME_SF_ENV_UPDATE
+	bool "ENV update in GPT based nor flash"
+	default n
+	help
+	  This config helps to override the env offset given in defconfig
+
+config PHY_ANEG_TIMEOUT
+	int "PHY auto-negotiation timeout"
+	default 100
+	help
+	  Default PHY auto-negotiation timeout.
+
+config IPQ_NAND
+	bool "Enable NAND flash support in IPQ SOC"
+	select MTD
+	select DM_MTD
+	select CMD_MTD
+	select NAND_QTI
+	select MTD_RAW_NAND
+	select MTD_UBI
+	select UBI_WRITE
+	select CMD_NAND
+	select CMD_UBI
+	help
+	  Enables support for QPIC NAND controller and its dependent drivers.
+	  This option is required to use NAND flash devices connected via the
+	  QPIC interface on supported platforms.
+
+config IPQ_ART_UBI_SUPPORT
+	bool "Support UBI-formatted ART partition"
+	depends on IPQ_NAND
+	default y if TARGET_IPQ5210
+        default y if TARGET_IPQ9650
+	default n
+	help
+	  Enables runtime detection of a UBI-formatted ART partition in
+	  ipq_get_partition_data(). When the ART partition is UBI-formatted,
+	  reads are dispatched through ubi_volume_read() instead of the raw
+	  nand_read() path. Detection is done by validating the UBI erase
+	  counter header (magic + CRC32) at the partition's first PEB, so
+	  raw ART partitions are unaffected and continue to use the existing
+	  raw NAND read path.
+
+	  Only enable this on platforms where the ART partition may be
+	  provisioned as a UBI volume.
+
+config SPL_SYS_NAND_SELF_INIT
+		bool "use self init nand"
+		depends on !SPL_NAND_SIMPLE
+		depends on SPL
+		help
+		  This option, if enabled, provides more flexible and linux-like
+		  NAND initialization process, in SPL.
+
+config SPL_NAND_INIT
+		bool "use nand init from nand.c"
+		depends on SPL
+		help
+		  This option, if enabled, uses the standard nand_init function from
+		  nand.c in SPL. This provides a consistent NAND initialization process
+		  between SPL and the main U-Boot, ensuring proper NAND device setup.
+
+config SPL_NAND_QTI
+		bool "support SPL QTI NAND controller"
+		depends on SPL
+		select SPL_SYS_NAND_SELF_INIT
+		help
+		  Enable this driver for NAND flash in ipq platform
+
+config IPQ_SPI_NOR
+	bool "Enable SPI NOR flash support in IPQ SOC"
+	select MTD
+	select SPI
+	select MISC
+	select SPI_QUP if TARGET_IPQ9574 || TARGET_IPQ5332
+	select MSM_GENI_SPI if TARGET_IPQ5424 || TARGET_IPQ5210 || TARGET_IPQ9650
+	select DM_SPI
+	select DM_SPI_FLASH
+	select SPI_FLASH_STMICRO
+	select SPI_FLASH_GIGADEVICE
+	select SPI_FLASH_MACRONIX
+	select SPI_FLASH_WINBOND
+	select SPI_FLASH_SPANSION
+	select SPI_FLASH_MTD if ENV_IS_IN_SPI_FLASH
+	help
+	  This config helps in enabling SPI NOR flash support in IPQ SOC.
+
+config IPQ_NET
+	bool "Enable default Network Configurations for IPQ SOC"
+	select ETH
+	select DM_MDIO
+	select MDIO_IPQ4019
+	imply MDIO_QCOM_I2C if IPQ_I2C
+	select PHYLIB
+	select CMD_NET
+	select CMD_MDIO
+	select CMD_MII
+	select CMD_PING
+	select CMD_TFTPPUT
+	select CMD_DHCP
+	select TFTP_PORT
+	imply ETH_SKIP_INIT_R
+	help
+	  This config will enable the Ethernet support in IPQSOC.
+
+config ETH_MAX_UNIPHY
+	int "Maximum number of uniphy available"
+	default 3 if TARGET_IPQ9650
+	default 2
+	help
+	  This gives the maximum number of uniphy available.
+
+config IPQ_QCN9224_FUSING
+	depends on IPQ_PCIE
+	bool "Enable QCN9224 Fusing"
+	help
+	  This config is to enable QCN9224 Fusing.
+
+config IPQ_SMP_CMD_SUPPORT
+	bool "IPQ SMP command support"
+	depends on ARCH_32BIT_SUPPORT
+	default n
+	help
+	  This config is to support IPQ SMP command.
+
+config IPQ_SMP64_CMD_SUPPORT
+	bool "IPQ SMP64 command support"
+	depends on ARCH_64BIT_SUPPORT
+	default n
+	help
+	  This config is to support IPQ SMP64 command.
+
+config CMD_AES_256
+	bool "AES 256 command support"
+	default n
+	help
+	  This is to support AES 256 command.
+
+config AES_256_DERIVE_KEY
+	bool "AES 256 derive key support"
+	depends on CMD_AES_256
+	default n
+	help
+	  This provides support for AES 256 derive key.
+
+config IPQ_USB
+	bool "Enable USB support in IPQ SOC"
+	select USB
+	select MISC
+	select USB_HOST
+	select USB_DWC3
+	select USB_DWC3_GENERIC
+	select USB_STORAGE
+	select USB_XHCI_HCD
+	select DM_USB
+	select CMD_USB
+	select CMD_FAT
+	select FAT_WRITE
+
+config IPQ_TINY
+	bool "IPQ Tiny bootloader config"
+	imply ETH_LOW_MEM
+	default n
+	help
+	  This configuration helps to enable tiny profile related configurations
+
+config IPQ_MMC
+	bool "Enable eMMC support in IPQ SOC"
+	select MMC_SDHCI
+	select MMC_SDHCI_MSM
+	select MMC_SDHCI_ADMA
+	select CMD_MMC
+	imply EFI_PARTITION
+	help
+	  This helps in enabling support for eMMC in IPQ SOC.
+
+config SOC_HW_VERSION_REG
+	hex "Define SoC HW version register"
+	default 0x194D000
+	help
+	  This config defines the SoC HW version register.
+
+config SHARED_IPC_INTERRUPT_REG
+	hex "Shared IPC interrupt register"
+	default 0xF40000C if TARGET_IPQ5424
+	default 0xF40000C if TARGET_IPQ9650
+	default 0xB111008 if TARGET_IPQ5210
+	default 0
+	help
+	  This config defines the Shared IPC interrupt register.
+
+config ETH_MAX_MAC
+	hex "Define Maximum MAC support in SoC"
+	default 2 if TARGET_IPQ5332
+	default 6 if (TARGET_IPQ5210 || TARGET_IPQ9574 || TARGET_IPQ9650)
+	default 3 if TARGET_IPQ5424
+	help
+	  This config gives the maximum MAC support in SoC.
+
+config SKIP_RESET
+	bool "skip reset"
+	default n
+	help
+	  This configuration helps to skip reset after crashdump collection.
+
+config FAILSAFE
+	bool "Enable failsafe mechanism"
+	default n
+	help
+	   This configuration option enables the failsafe mechanism
+	   within the system. When activated, the system is capable
+	   of booting from an alternative valid bank if the primary bank
+	   fails. This ensures continuous operation and reliability
+	   by providing a backup boot source, thereby minimizin
+	   downtime and enhancing system robustness.
+
+config BOOTCONFIG_V2
+	bool "Enable Boot Configuration Version 2"
+	imply FAILSAFE
+	default n
+	help
+	   This configuration option enables Boot Configuration
+	   Version 2 (BOOTCONFIG_V2).
+
+config BOOTCONFIG_V3
+	bool "Enable Boot Configuration Version 3"
+	imply FAILSAFE
+	default n
+	help
+	   This configuration option enables Boot Configuration
+	   Version 3 (BOOTCONFIG_V3).
+
+config FAILSAFE_V2
+	bool "Enable Failsafe Version 2 with boot counter and force inactive support"
+	default n
+	help
+	  This configuration enables Failsafe Version 2 which adds:
+	  - Boot counter tracking in IMEM
+	  - try_mode_inprogress support from SMEM
+	  - Force boot from inactive partition capability (value 2)
+	  - Automatic boot counter reset on cold reset
+	  This provides enhanced failsafe mechanisms for reliable boot
+	  recovery and partition management.
+
+config CRC32_BE
+	bool "Enable CRC32 calculation in big-endian format"
+	default y if FAILSAFE
+	help
+	   This configuration option enables support for CRC32
+	   calculations in a big-endian format.
+
+config SCM
+	bool "Add scm call support"
+	help
+	  This config is to add support for SCM calls.
+
+config SCM_V1
+	bool "SCM framework version 1"
+	select SCM
+	default n
+	help
+	  This config provides support for SCM framework version 1 (SCM_V1).
+
+config SCM_V2
+	bool "SCM framework version 2"
+	select SCM
+	default n
+	help
+	  This config provides support for SCM framework version 2 (SCM_V2).
+
+config SECURE_AUTH_V1
+	bool "Secure authentication command"
+	default n
+	help
+	  This config provides support to authenticate secure images
+
+config SECURE_AUTH_V2
+	bool "Secure authentication command"
+	default n
+	help
+	  This config provides support to authenticate secure images
+
+config SECURE_AUTH_V3
+	bool "Secure authentication command"
+	default n
+	help
+	  This config provides support to authenticate secure images
+
+config FUSE_IPQ
+	bool "Enable fuseipq command support"
+	depends on IPQ_SECURE
+	default n
+	help
+	  This config provides support for fuseipq command.
+
+config FUSEIPQ_V1
+	bool "Enable fuseipq command support with version 1"
+	default n
+	help
+	  This config provides support for fuseipq command version 1.
+
+config FUSEIPQ_V2
+	bool "Enable fuseipq command support with version 2"
+	default n
+	help
+	  This config provides support for fuseipq command version 2.
+
+config FUSEIPQ_V3
+	bool "Enable fuseipq command support with version 3"
+	default n
+	help
+	  This config provides support for fuseipq command version 3.
+
+config LIST_FUSE
+	bool "Enable list_fuse command"
+	default n
+	help
+	  This option supports in enabling list_fuse command.
+
+config LIST_FUSE_V1
+        bool "Enable list_fuse command with version 1"
+        default n
+	help
+	  This config supports to dump fuse sense register
+
+config LIST_FUSE_V2
+        bool "Enable list_fuse command with version 2"
+        default n
+	help
+	  This config supports to dump fuse sense register
+
+config IPQ_ROOTFS_AUTH
+	bool "Rootfs authentication support"
+	depends on IPQ_SECURE && (TARGET_IPQ9574 || TARGET_IPQ5332)
+	default n
+	help
+	    This configuration option enables the Rootfs authentication support
+	    in IPQ9574 & IPQ5332 only.
+
+config IPQ_ELF_AUTH
+	bool "IPQSOC elf image authentication"
+	default n
+	help
+	   This configuration option enables the authentication method via
+	   elf based.
+
+config IPQ_MVEW
+	bool "MVEW (Multi-Version ELF Wrapper) outer wrapper support"
+	depends on IPQ_ELF_AUTH && TARGET_IPQ5210
+	default y if TARGET_IPQ5210
+	help
+	  This configuration option enables the entire MVEW (Multi-Version
+	  ELF Wrapper) outer-wrapper mechanism: detecting the MVEW-tagged
+	  outer wrapper, parsing its kernel/.itb/rootfs metadata program
+	  headers, selecting between MBN header version 7 and version 8,
+	  relocating the selected metadata alongside the kernel in DRAM,
+	  and carrying rootfs authentication metadata inside the same
+	  wrapper. This is needed only on IPQ5210 hardware variants that
+	  require different MBN header versions based on a fused SoC
+	  version. All other targets neither compile nor use any of this
+	  MVEW code and always boot the legacy single-version image format.
+
+config IPQ_SPL_LOAD_ELF_IMG
+	bool "IPQSOC SPL elf image load support"
+	default n
+	help
+	  The IPQ_SPL_LOAD_ELF_IMG enables support for loading ELF images during
+	  the Secondary Program Loader (SPL) stage on Qualcomm IPQ platforms.
+	  When this option is selected, the SPL is capable of parsing and
+	  loading ELF-formatted binaries, which are commonly used for bootloaders.
+
+config VERSION_ROLLBACK_PARTITION_INFO
+	bool "IPSOC Anti roll-back support"
+	default n
+	help
+	  This configuration add support to enable anti-rollback version feature,
+	  once the image is upgraded to newer version, it cannot be downgraded
+
+config DPR_VER_1_0
+	bool "DPR Version 1.0 support"
+	default n
+	help
+	  This option provides support for DPR Version 1.0
+	  It helps in executing dpr_execute in u-boot.
+
+config DPR_VER_2_0
+	bool "DPR Version 2.0 support"
+	default n
+        help
+          This option provides support for DPR Version 2.0
+          It helps in executing dpr_execute in u-boot.
+
+config DPR_VER_3_0
+	bool "DPR Version 3.0 support"
+	default n
+        help
+          This option provides support for DPR Version 3.0
+          It helps in executing dpr_execute in u-boot.
+
+config DPR_VERSION
+	int "Current DPR version"
+	default 1 if DPR_VER_1_0
+	default 2 if DPR_VER_2_0
+	default 3 if DPR_VER_3_0
+	default 0
+	help
+	  This gives the current DPR version.
+	  It helps in executing dpr_execute in u-boot.
+
+config EDL_SUPPORT
+	bool "Enable EDL reset support"
+	default n
+	help
+	  This configuration option enables Emergency Download (EDL)
+	  mode reset support. When enabled, provides the edl_reset
+	  command to reset the device into EDL mode.
+
+config IPQ_SECURE
+	bool "IPQSOC secure call support"
+	imply IPQ_ELF_AUTH
+	default n
+	help
+	   This configuration option enables secure boot support,
+	   where the kernel and optionally the root filesystem are
+	   authenticated before booting.
+
+config MMC_FLASH_PARTITION_WRITE_PROTECT
+	bool "This enable wrtie protect in EMMC flash type"
+	depends on IPQ_MMC
+	default y
+
+config IPQ_CRASHDUMP
+	bool "IPQ Crashdump collection support"
+	depends on USE_PREBOOT
+	default n
+
+config IPQ_MINIDUMP
+	bool "IPQ Minidump collection support"
+	depends on IPQ_CRASHDUMP
+	default n
+
+config IPQ_COMPRESSED_CRASHDUMP
+	bool "IPQ Compressed (GZIP) Crashdump support"
+	depends on IPQ_CRASHDUMP
+	select CMD_ZIP
+	default n
+
+config IPQ_CRASHDUMP_TO_USB
+	bool "IPQ Collect Crashdump over USB"
+	depends on IPQ_CRASHDUMP && IPQ_USB
+	default n
+
+config IPQ_CRASHDUMP_TO_MEMORY
+	bool "IPQ Collect Crashdump over DDR Memory"
+	depends on IPQ_CRASHDUMP
+	default n
+
+config IPQ_CRASHDUMP_TO_NVMEMORY
+	bool "IPQ Collect Crashdump over Non-Volatile Memory (eMMC / NAND)"
+	depends on IPQ_CRASHDUMP
+	default n
+
+config IPQ_CRASHDUMP_TO_FLASH
+	bool "IPQ Collect Crashdump over FLASH"
+	depends on IPQ_CRASHDUMP && IPQ_MINIDUMP
+	default n
+
+config IPQ_CRASHDUMP_TO_EMMC
+	bool "IPQ Collect Crashdump over EMMC"
+	depends on IPQ_CRASHDUMP && IPQ_COMPRESSED_CRASHDUMP && IPQ_MMC
+	imply CMD_EXT4
+	imply CMD_EXT4_WRITE
+	default n
+
+config IPQ_INLINE_ENCRYPTION
+	bool "IPQ Inline Crypto Engine (ICE) support"
+	depends on IPQ_CRASHDUMP_TO_EMMC
+	default n
+	help
+	Enable support for Qualcomm Inline Crypto Engine (ICE) for
+	hardware-accelerated encryption/decryption during crashdump
+	operations to eMMC storage.
+
+config IPQ_MINIDUMP_VERSION_V2
+	bool "Enable Minidump Version 2 with Crash-Type-Based Dumping"
+	depends on IPQ_CRASHDUMP && IPQ_MINIDUMP
+	default n
+	help
+	   Enable support for Minidump Version 2, which allows selective
+	   dumping of segments based on the crash type
+
+config IPQ_PCIE
+	bool "Enable PCIE support in IPQ SOC"
+	select PCI
+	select PCIE_DW_QCOM
+	select PHY_QCOM_QMP_PCIE if TARGET_IPQ9574 || TARGET_IPQ5424 || TARGET_IPQ5210 || TARGET_IPQ9650
+	select PHY_QCOM_UNIPHY_PCIE if TARGET_IPQ5332
+	select CMD_PCI
+	select PHY
+	help
+	   This configuration option enables PCIE support in IPQ SoC's.
+
+config IPQ_MAX_PCIE
+	int "Max PCIE supported in IPQSOC"
+	depends on PCI
+	default 2 if TARGET_IPQ5210
+	default 3 if TARGET_IPQ5332
+	default 4 if TARGET_IPQ9574
+	default 4 if TARGET_IPQ5424
+	default 5 if TARGET_IPQ9650
+	help
+	   This config declare maximum PCIE in SoC.
+
+config IPQ_STOP_WDT
+	bool "Stop WDT if autoboot abort"
+	depends on WDT
+	default y
+	help
+	   This config stop watchdog if autoboot abort.
+
+config GPT_UPDATE_PARAMS
+	bool "Update GPT parameters"
+	depends on IPQ_MMC || NOR_BLK
+	default n
+	help
+	   Enable this option to update the backup GPT location in the GPT
+	   header based on the actual device size, if required.
+
+config DEFAULT_MMC_FLASH_SIZE
+	int "Default MMC flash size (in MB)"
+	default 15269888
+	help
+	   Specifies the default MMC flash size used when generating GPT
+	   partitions via GPT tools.
+
+config DEFAULT_NOR_FLASH_SIZE
+	int "Default NOR flash size (in MB) multiple of 4Kb block"
+	default 4096 if TARGET_IPQ5210
+	default 8192
+	help
+	   Specifies the default SPI-NOR flash size used when generating GPT
+	   partitions via GPT tools
+
+config MTDPARTS_MAXLEN
+	int "mdtparts string maximum length"
+	depends on CMD_MTDPARTS
+	default 1024
+	help
+	  This configuration helps to set maximum mtdpart string length
+
+config BASE_CPU_64BIT_BOOTUP
+	bool "Base CPU 64-bit boot up"
+	default n
+
+config STANDALONE_GPIO
+	bool "NOP driver for pincntrl configuration"
+	default n
+
+config SDX_ATTACH_SUPPORT
+	bool "enable SDX support"
+	imply STANDALONE_GPIO
+	default n
+
+config IPQ_EARLY_WDT
+	bool "Enable non-secure watchdog during low level init"
+	depends on WDT && WDT_QCOM
+	default y
+
+config IPQ_TMEL_IPC_SUPPORT
+	bool "Enable TMEL IPC Support"
+	select DM_MAILBOX
+	select QCOM_TMEL_QMP
+	select QCOM_TMELCOM
+	default n
+
+config IPQ_TMEL_PRNG_IPC_SUPPORT
+	bool "Enable TMEL PRNG IPC Support"
+	depends on IPQ_TMEL_IPC_SUPPORT
+	default n
+	help
+	  Enable support for getting random data from TME PRNG (Pseudo Random
+	  Number Generator) via TMEL IPC. This feature allows the bootloader
+	  to request cryptographically secure random data from the TME-L
+	  firmware during the boot process.
+
+config IPQ_LCP_DARE
+       bool "Enable LCP DARE Key Support"
+       depends on IPQ_TMEL_PRNG_IPC_SUPPORT
+       default n
+       help
+         Enable support for retrieving LCP-DARE keys via TMEL IPC.
+         This feature allows the bootloader to obtain encryption keys for
+         LCP DARE operations during the boot process. The keys are stored
+         in the QCLib interface table for use by subsequent boot stages.
+config IPQ_SOFTSKU_SUPPORT
+	bool "Enable SoftSKU License Support"
+	depends on IPQ_TMEL_IPC_SUPPORT
+	depends on SPL
+	default n
+	help
+	  Enable support for SoftSKU license management via TME-L IPC.
+	  This allows dynamic feature enablement based on installed licenses,
+	  including hardware feature enforcement and DDR limitation for
+	  entry-level SKUs.
+
+config IPQ_DYNAMIC_RELOCATION
+	bool "Enable dynamic U-Boot relocation"
+	default n
+	help
+	  When enabled, U-Boot performs normal relocation to the top of RAM
+	  on standard boot. It runs in-place only when a crashdump path is
+	  detected at runtime. This replaces the unconditional relocation skip.
+
+config IPQ_BOARD_DEFAULT
+	bool "Enable default config for all SoC"
+	default y
+	imply BOARD_TYPES
+	imply BOARD_LATE_INIT
+	imply CMD_MEMTEST
+	imply CMD_MTDPARTS if MTD
+	imply CMD_WDT
+	imply DM_WARN
+	imply FDT_FIXUP_PARTITIONS if MTD
+	imply HUSH_PARSER
+	imply OF_BOARD_SETUP
+	imply STACKPROTECTOR
+	imply SYS_DEVICE_NULLDEV
+	imply IPQ_CRASHDUMP
+	imply IPQ_MINIDUMP
+	imply IPQ_COMPRESSED_CRASHDUMP
+	imply IPQ_CRASHDUMP_TO_USB
+	imply IPQ_CRASHDUMP_TO_MEMORY
+	imply IPQ_CRASHDUMP_TO_NVMEMORY
+	imply IPQ_CRASHDUMP_TO_FLASH
+	imply IPQ_CRASHDUMP_TO_EMMC
+	imply IPQ_MINIDUMP_VERSION_V2
+	imply LZMA
+	imply WDT
+	imply WDT_QCOM
+	help
+	  This config enables default configuration support for all SoCs.
+
+config CB_CALIB
+	bool "Enable cold boot calibration"
+	depends on IPQ_PCIE
+	default n
+	help
+	  Enable starting of coldboot calibration for QCN9224 PCIe EP
+	  from U-boot.
+
+config PRPL_MMC_LABEL
+	bool "Enable PRPL MMC partition label changes"
+	depends on IPQ_MMC
+	default n
+	help
+	  Enable updated partition labels for MMC devices only.
+	  This changes partition labels from legacy format to new format:
+	  - "0:HLOS" → "kernel-active"
+	  - "0:HLOS_1" → "kernel-inactive"
+	  - "rootfs" → "rootfs-active"
+	  - "rootfs_1" → "rootfs-inactive"
+
+config BOOT_BANK_FIXUP
+	bool "Enable the fixup of booted bank information"
+	default n
+	help
+	  Enable this config to fixup u-boot and kernel device tree with
+	  booted bank information.
+
+config BOOT_BANK_IMEM_READ
+	bool "Read booted bank information from IMEM"
+	depends on BOOT_BANK_FIXUP
+	default n
+
+config BOOT_BANK_SMEM_READ
+	bool "Read booted bank information from SMEM"
+	depends on BOOT_BANK_FIXUP
+	default n
+
+choice
+	prompt "IPQ board select"
+
+config TARGET_IPQ5332
+	bool "QCOM IPQ5332 SOC"
+	imply DMA
+	imply DMA_CHANNELS
+	imply BOOTCONFIG_V2
+	imply SCM_V1
+	imply IPQ_SECURE
+	select BAM_DMA if DMA
+	select IPQ_NET
+	select QCOM_NSS_SWITCH
+	imply PHY_QCA_8X8X
+	imply PHY_QCA_81XX
+	imply PHY_QCA_8081
+	imply PHY_QCA_8033
+	imply PHY_AQUANTIA
+	imply PHY_QCE_1204
+	imply PHY_QCE_2204
+	imply CLK_QCOM_NSSCC_QCE2204
+	select CMD_CACHE
+	imply IPQ_I2C
+	imply FUSE_IPQ
+	imply LIST_FUSE
+	imply SECURE_AUTH_V1 if IPQ_SECURE && SCM_V1
+	imply FUSEIPQ_V1 if IPQ_SECURE && SCM_V1
+	imply LIST_FUSE_V2 if IPQ_SECURE && SCM_V1
+	imply VERSION_ROLLBACK_PARTITION_INFO if IPQ_SECURE
+	imply IPQ_QCN9224_FUSING
+	imply DPR_VER_2_0
+	imply IPQ_SMP_CMD_SUPPORT
+	imply IPQ_SMP64_CMD_SUPPORT
+	imply CMD_AES_256
+	imply MMC
+	imply SUPPORT_EMMC_BOOT
+	imply AES_256_DERIVE_KEY
+	imply IPQ_PCIE
+	imply IPQ_USB
+	imply PHY if IPQ_USB
+	imply PHY_QCOM_USB_HS_M31 if IPQ_USB
+	imply PHY_QCOM_UNI_SSPHY if IPQ_USB
+	imply CB_CALIB
+	help
+	  Support for the IPQ53XX SoC.
+	  - Board Open Platform Specifications.
+	  - Quad Cores A53, Nom@1.2G ,Turbo@1.5G, L1@32KB L2@512KB
+	  - DDR3L/DDR4
+	  - QSPI NAND / NOR / eMMC
+	  - USB 3.0/I2C/UART/PCIe Gen3 2Lane
+	  - 1G/2.5G/10G Ethernet Ports
+
+config TARGET_IPQ9574
+	bool "QCOM IPQ9574 SOC"
+	imply DMA
+	imply DMA_CHANNELS
+	imply BOOTCONFIG_V2
+	imply SCM_V1
+	imply IPQ_SECURE
+	select BAM_DMA if DMA
+	select IPQ_NET
+	select QCOM_NSS_SWITCH
+	imply PHY_QCA_8X8X
+	imply PHY_QCA_81XX
+	imply PHY_QCA_8075
+	imply PHY_QCA_8081
+	imply PHY_AQUANTIA
+	imply PHY_QCE_1204
+	imply CLK_QCOM_NSSCC_QCE2204
+	select CMD_CACHE
+	imply IPQ_I2C
+	imply FUSE_IPQ
+	imply SECURE_AUTH_V1 if IPQ_SECURE && SCM_V1
+	imply FUSEIPQ_V1 if IPQ_SECURE && SCM_V1
+	imply LIST_FUSE_V1 if IPQ_SECURE && SCM_V1
+	imply LIST_FUSE
+	imply VERSION_ROLLBACK_PARTITION_INFO if IPQ_SECURE
+	imply IPQ_QCN9224_FUSING
+	imply DPR_VER_1_0
+	imply IPQ_SMP_CMD_SUPPORT
+	imply IPQ_SMP64_CMD_SUPPORT
+	imply CMD_AES_256
+	select QSPI_LAYOUT_SWITCH if IPQ_NAND
+	imply MMC
+	imply SUPPORT_EMMC_BOOT
+	imply AES_256_DERIVE_KEY
+	imply IPQ_PCIE
+	imply IPQ_USB
+	imply PHY if IPQ_USB
+	imply PHY_QCOM_QUSB2 if IPQ_USB
+	imply PHY_QCOM_QMP_USB3 if IPQ_USB
+	imply SDX_ATTACH_SUPPORT
+	imply CB_CALIB
+	imply BOOT_BANK_FIXUP
+	select BOOT_BANK_IMEM_READ
+	help
+	  Support for IPQ95xx SoC.
+	  - Board Open Platform Specifications.
+	  - Quad Cores A73, max@2.2G, L1@32KB L2@512KB
+	  - DDR3L/DDR4
+	  - QSPI NAND / NOR / eMMC
+	  - USB 3.0/I2C/UART/PCIe Gen3 2Lane
+	  - 1G/2.5G/10G Ethernet Ports
+
+config TARGET_IPQ5424
+	bool "QCOM IPQ5424"
+	select BASE_CPU_64BIT_BOOTUP
+	imply NOR_BLK
+	imply BOOTCONFIG_V3
+	imply SCM_V2
+	imply IPQ_SECURE
+	imply SHA384
+	select IPQ_NET
+	select QCOM_NSS_SWITCH
+	imply PHY_QCA_8X8X
+	imply PHY_QCA_81XX
+	imply PHY_QCA_8081
+	imply PHY_AQUANTIA
+	imply PHY_QCE_1204
+	imply PHY_QCE_2204
+	imply CLK_QCOM_NSSCC_QCE2204 if !SPL
+	select CMD_CACHE
+	imply IPQ_I2C
+	imply QCOM_GENI_SE
+	imply FUSE_IPQ
+	imply SECURE_AUTH_V2 if IPQ_SECURE && SCM_V2
+	imply FUSEIPQ_V2 if IPQ_SECURE && SCM_V2
+	imply LIST_FUSE_V2 if IPQ_SECURE && SCM_V2
+	imply LIST_FUSE
+	imply IPQ_QCN9224_FUSING
+	imply DPR_VER_3_0
+	imply IPQ_SMP_CMD_SUPPORT
+	imply IPQ_SMP64_CMD_SUPPORT
+	imply CMD_AES_256
+	imply MMC
+	imply SUPPORT_EMMC_BOOT
+	imply AES_256_DERIVE_KEY
+	imply IPQ_PCIE
+	imply GPT_UPDATE_PARAMS
+	imply IPQ_USB
+	imply PHY if IPQ_USB
+	imply PHY_QCOM_QUSB2 if IPQ_USB
+	imply PHY_QCOM_QMP_USB3 if IPQ_USB
+	imply RUNTIME_SF_ENV_UPDATE if ENV_IS_IN_SPI_FLASH
+	imply SDX_ATTACH_SUPPORT
+	imply CB_CALIB
+	imply EDL_SUPPORT
+	help
+	  Support for IPQ5424 SoC.
+	  - Board Open Platform Specifications.
+	  - Quad Cores A55, Nom@1.4G, Turbo@1.8G, L1@32KB L2@512KB, L3@1MB
+	  - DDR3L/DDR4
+	  - QSPI NAND / NOR / eMMC
+	  - USB 3.0/I2C/UART/PCIe Gen3 2Lane
+	  - 2.5G/10G Ethernet Ports
+
+config TARGET_IPQ5210
+	bool "QTI IPQ5210"
+	imply QCOM_GENI_SE
+	imply IPQ_MULTI_DTB_SUPPORT
+	imply NOR_BLK
+	select CMD_CACHE
+	imply DMA
+	imply DMA_CHANNELS
+	select BAM_DMA if DMA
+	imply IPQ_USB
+	imply PHY if IPQ_USB
+	imply PHY_QCOM_QUSB2 if IPQ_USB
+	imply PHY_QCOM_QMP_USB3 if IPQ_USB
+	imply EDL_SUPPORT
+	imply GPT_UPDATE_PARAMS
+	imply IPQ_I2C
+	imply IPQ_PCIE
+	imply IPQ_QCN9224_FUSING
+	imply LIST_FUSE
+	imply IPQ_TMEL_IPC_SUPPORT
+	imply SHA384
+	imply SCM_V2
+	imply CMD_AES_256
+	imply AES_256_DERIVE_KEY
+	imply IPQ_SECURE
+	imply LIST_FUSE_V2 if IPQ_SECURE && SCM_V2 || IPQ_TMEL_IPC_SUPPORT
+	imply SECURE_AUTH_V2 if IPQ_SECURE && SCM_V2 || IPQ_TMEL_IPC_SUPPORT
+	imply RUNTIME_SF_ENV_UPDATE if ENV_IS_IN_SPI_FLASH
+	imply IPQ_NET if !SPL
+	imply QCOM_NSS_SWITCH_V2 if !SPL
+	imply NSS_PPE_V4 if !SPL
+	imply PHY_QCA_81XX if !SPL
+	imply PHY_QCA_8075 if !SPL
+	imply PHY_QCA_8081 if !SPL
+	imply PHY_QCA_8033 if !SPL
+	imply PHY_QCE_1204 if !SPL
+	imply PHY_QCE_2204 if !SPL
+	imply CLK_QCOM_NSSCC_QCE2204 if !SPL
+	imply MDIO_AHB
+	select TEE
+	select OPTEE
+	imply FUSE_IPQ
+	imply FUSEIPQ_V3 if IPQ_SECURE && SCM_V2
+	imply FAILSAFE_V2
+	imply BOOT_BANK_FIXUP
+	select BOOT_BANK_SMEM_READ
+
+	help
+	  Support for IPQ5210 SoC.
+	  - Board Open Platform Specifications.
+	  - Quad Cores A53, Nom@1.2G, L1@32KB L2@512KB
+	  - DDR3L/DDR4
+	  - QSPI NAND / NOR / eMMC
+	  - USB 3.0/I2C/UART/PCIe Gen3 2Lane
+	  - 2.5G/10G Ethernet Ports
+
+config TARGET_IPQ9650
+	bool "QTI IPQ9650"
+	imply QCOM_GENI_SE
+	imply IPQ_MULTI_DTB_SUPPORT
+	imply NOR_BLK
+	select CMD_CACHE
+	imply MISC
+	imply IPQ_BOARD_DEFAULT
+	imply GPT_UPDATE_PARAMS
+	imply DMA
+	imply DMA_CHANNELS
+	imply IPQ_USB
+	imply PHY if IPQ_USB
+	imply PHY_QCOM_USB_FEMTO if IPQ_USB
+	imply PHY_QCOM_QMP_USB3 if IPQ_USB
+	imply IPQ_PCIE
+	imply IPQ_QCN9224_FUSING
+	imply EDL_SUPPORT
+	imply LIST_FUSE
+	imply IPQ_TMEL_IPC_SUPPORT
+	imply LIST_FUSE_V2 if IPQ_SECURE && SCM_V2 || IPQ_TMEL_IPC_SUPPORT
+	imply IPQ_I2C
+	imply SCM_V2
+	imply IPQ_SECURE
+	imply CMD_AES_256
+	imply AES_256_DERIVE_KEY
+	imply SECURE_AUTH_V3 if IPQ_SECURE && SCM_V2 || IPQ_TMEL_IPC_SUPPORT
+	imply RUNTIME_SF_ENV_UPDATE if ENV_IS_IN_SPI_FLASH
+	imply IPQ_NET if !SPL
+	imply QCOM_NSS_SWITCH_V2 if !SPL
+	imply NSS_PPE_V4 if !SPL
+	imply PHY_QCA_81XX if !SPL
+	imply PHY_QCE_1204 if !SPL
+	imply PHY_QCE_2204 if !SPL
+	imply CLK_QCOM_NSSCC_QCE2204 if !SPL
+	imply CLK_QCOM_CMN_PLL if !SPL
+        select TEE
+        select OPTEE
+        imply FUSE_IPQ
+        imply FUSEIPQ_V3 if IPQ_SECURE && SCM_V2
+	imply FAILSAFE_V2
+	imply BOOT_BANK_FIXUP
+	select BOOT_BANK_SMEM_READ
+
+	help
+	  Support for IPQ9650 SoC.
+	  - Board Open Platform Specifications.
+	  - Quad Cores A55, Nom@1.9G + Single core A78, Nom@2.05G
+	  - L1@32KB L2@512KB
+	  - DDR3L/DDR4
+	  - QSPI NAND / NOR / eMMC
+	  - USB 3.0/I2C/UART/PCIe Gen3 2Lane
+	  - 2.5G/10G Ethernet Ports
+
+endchoice
+
+endif

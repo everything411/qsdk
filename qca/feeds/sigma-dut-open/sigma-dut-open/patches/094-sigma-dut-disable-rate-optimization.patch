@@ -1,0 +1,45 @@
+From 6d3dce6b8ddc298c6ef7e3b88f48bb3f68733193 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Thu, 26 Sep 2024 16:41:01 +0530
+Subject: [PATCH] sigma-dut: disable rate optimization
+
+Ping traffic is not going beyond MCS-7 due to firmware change for rate
+optimisation. Hence disabling the rate optimization while running the
+sigma dut testcases by adding the corresponding firmware test commands.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -9639,6 +9639,9 @@ static void fwtest_set_eht_params(struct
+ 		}
+ 	}
+ 
++	/* Disable Rate optimizations */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 925 0", ifname, link_id);
++
+ 	if (dut->ap_mu_edca == VALUE_ENABLED && dut->ap_he_ulofdma == VALUE_ENABLED &&
+ 	    dut->ap_he_ppdu == PPDU_MU && dut->ap_scs == VALUE_ENABLED) {
+ 		/* the disablement of deterministic basic trigger based upon
+@@ -12129,6 +12132,9 @@ hapd_started:
+ 			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 838 0", ifname);
+ 		}
+ 
++		/* Disable Rate optimizations */
++		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 925 0", ifname);
++
+ 		for (i = 0; i < dut->mbss.num_non_tx_bss; i++) {
+ 			char ifname2[50];
+ 			snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, i+1);
+@@ -12138,6 +12144,8 @@ hapd_started:
+ 
+ 			if (dut->ap_he_ulofdma == VALUE_ENABLED || dut->ap_he_dlofdma == VALUE_ENABLED)
+ 				fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 838 0", ifname2);
++
++			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 925 0", ifname);
+ 		}
+ 
+ 		if (dut->ap_mu_edca == VALUE_ENABLED && dut->ap_he_ulofdma == VALUE_ENABLED &&

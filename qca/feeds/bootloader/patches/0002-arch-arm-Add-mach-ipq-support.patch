@@ -1,0 +1,374 @@
+From 123474c699d63f094d0efaa2663d4ed2c06f4182 Mon Sep 17 00:00:00 2001
+From: Ram Kumar D <quic_ramd@quicinc.com>
+Date: Thu, 23 Jan 2025 16:02:38 +0530
+Subject: [PATCH] arch: arm: Add mach-ipq support
+
+These updates introduce support for mach-ipq SoCs
+within the ARM architecture, including modifications
+to the Makefile and Kconfig.
+
+Additionally, they add support for the clock,
+eMMC, UART, SMEM, and pinctrl drivers for the
+IPQ5332, IPQ9574, and IPQ5424 SoCs.
+
+The updates also include a list of bug fixes
+for the 32-bit build in the serial_msm_geni driver
+and clock-qcom.c.
+
+Change-Id: I2e339faa57b1be578744c84af816bdf95d4f07eb
+Signed-off-by: Ram Kumar D <quic_ramd@quicinc.com>
+Signed-off-by: Vandhiadevan Karunamoorthy <quic_vkarunam@quicinc.com>
+---
+ arch/arm/Kconfig                 | 18 ++++++++++++++++++
+ arch/arm/Makefile                |  1 +
+ drivers/clk/qcom/Kconfig         | 26 +++++++++++++++++++++++++-
+ drivers/clk/qcom/Makefile        |  3 +++
+ drivers/clk/qcom/clock-qcom.c    |  5 +++--
+ drivers/clk/qcom/clock-qcom.h    |  2 ++
+ drivers/mmc/msm_sdhci.c          | 15 +++++++++++++++
+ drivers/pinctrl/qcom/Kconfig     | 23 ++++++++++++++++++++++-
+ drivers/pinctrl/qcom/Makefile    |  3 +++
+ drivers/serial/serial_msm_geni.c |  9 +++++----
+ drivers/smem/Kconfig             |  2 +-
+ drivers/smem/msm_smem.c          |  2 ++
+ include/compiler.h               |  2 ++
+ 13 files changed, 102 insertions(+), 9 deletions(-)
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index da6f1174934..581e2342eea 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -789,6 +789,22 @@ config ARCH_IPQ40XX
+ 	imply CMD_DM
+ 	imply OF_UPSTREAM
+ 
++config ARCH_IPQ
++	bool "Qualcomm IPQ SoCs"
++	select DM
++	select DM_GPIO
++	select DM_SERIAL
++	select DM_RESET
++	select POWER_DOMAIN
++	select GPIO_EXTRA_HEADER
++	select PINCTRL
++	select CLK
++	select OF_CONTROL
++	select SMEM
++	select MSM_SMEM
++	imply OF_UPSTREAM
++	imply CMD_DM
++
+ config ARCH_KEYSTONE
+ 	bool "TI Keystone"
+ 	select CMD_DDR3
+@@ -2277,6 +2293,8 @@ source "arch/arm/mach-integrator/Kconfig"
+ 
+ source "arch/arm/mach-ipq40xx/Kconfig"
+ 
++source "arch/arm/mach-ipq/Kconfig"
++
+ source "arch/arm/mach-k3/Kconfig"
+ 
+ source "arch/arm/mach-keystone/Kconfig"
+diff --git a/arch/arm/Makefile b/arch/arm/Makefile
+index 7334e79965f..befce234e65 100644
+--- a/arch/arm/Makefile
++++ b/arch/arm/Makefile
+@@ -63,6 +63,7 @@ machine-$(CONFIG_ARCH_GXP)		+= hpe
+ machine-$(CONFIG_ARCH_HIGHBANK)		+= highbank
+ machine-$(CONFIG_ARCH_HISTB)		+= histb
+ machine-$(CONFIG_ARCH_IPQ40XX)		+= ipq40xx
++machine-$(CONFIG_ARCH_IPQ)		+= ipq
+ machine-$(CONFIG_ARCH_K3)		+= k3
+ machine-$(CONFIG_ARCH_KEYSTONE)		+= keystone
+ machine-$(CONFIG_ARCH_KIRKWOOD)		+= kirkwood
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index cb867acc48c..80c12287a04 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -1,4 +1,4 @@
+-if ARCH_SNAPDRAGON || ARCH_IPQ40XX
++if ARCH_SNAPDRAGON || ARCH_IPQ40XX || ARCH_IPQ
+ 
+ config CLK_QCOM
+ 	bool
+@@ -31,6 +31,30 @@ config CLK_QCOM_IPQ4019
+ 	  on the Snapdragon IPQ4019 SoC. This driver supports the clocks
+ 	  and resets exposed by the GCC hardware block.
+ 
++config CLK_QCOM_IPQ5332
++	bool "Qualcomm IPQ5332 GCC"
++	select CLK_QCOM
++	help
++	  Say Y here to enable support for the Global Clock Controller
++	  on the Snapdragon IPQ5332 SoC. This driver supports the clocks
++	  and resets exposed by the GCC hardware block.
++
++config CLK_QCOM_IPQ5424
++	bool "Qualcomm IPQ5424 GCC"
++	select CLK_QCOM
++	help
++	  Say Y here to enable support for the Global Clock Controller
++	  on the Snapdragon IPQ5424 SoC. This driver supports the clocks
++	  and resets exposed by the GCC hardware block.
++
++config CLK_QCOM_IPQ9574
++	bool "Qualcomm IPQ9574 GCC"
++	select CLK_QCOM
++	help
++	  Say Y here to enable support for the Global Clock Controller
++	  on the Snapdragon IPQ9574 SoC. This driver supports the clocks
++	  and resets exposed by the GCC hardware block.
++
+ config CLK_QCOM_QCM2290
+ 	bool "Qualcomm QCM2290 GCC"
+ 	select CLK_QCOM
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index 1bc0f15005b..3c0e7cdc0b2 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -7,6 +7,9 @@ obj-$(CONFIG_CLK_QCOM_SDM845) += clock-sdm845.o
+ obj-$(CONFIG_CLK_QCOM_APQ8016) += clock-apq8016.o
+ obj-$(CONFIG_CLK_QCOM_APQ8096) += clock-apq8096.o
+ obj-$(CONFIG_CLK_QCOM_IPQ4019) += clock-ipq4019.o
++obj-$(CONFIG_CLK_QCOM_IPQ5332) += clock-ipq5332.o
++obj-$(CONFIG_CLK_QCOM_IPQ5424) += clock-ipq5424.o
++obj-$(CONFIG_CLK_QCOM_IPQ9574) += clock-ipq9574.o
+ obj-$(CONFIG_CLK_QCOM_QCM2290) += clock-qcm2290.o
+ obj-$(CONFIG_CLK_QCOM_QCS404) += clock-qcs404.o
+ obj-$(CONFIG_CLK_QCOM_SA8775P) += clock-sa8775p.o
+diff --git a/drivers/clk/qcom/clock-qcom.c b/drivers/clk/qcom/clock-qcom.c
+index 7687bbe6a23..4c70c71cb35 100644
+--- a/drivers/clk/qcom/clock-qcom.c
++++ b/drivers/clk/qcom/clock-qcom.c
+@@ -8,6 +8,7 @@
+  *     Author: Robert Marko <robert.marko@sartura.hr>
+  * (C) Copyright 2022 Linaro Ltd. (reset driver)
+  *     Author: Sumit Garg <sumit.garg@linaro.org>
++ * Copyright (c) 2025, Qualcomm Innovation Center,Inc.All rights reserved.
+  *
+  * Based on Little Kernel driver, simplified
+  */
+@@ -88,8 +89,8 @@ void clk_bcr_update(phys_addr_t apps_cmd_rcgr)
+ 			break;
+ 		udelay(1);
+ 	}
+-	WARN(count == 50000, "WARNING: RCG @ %#llx [%#010x] stuck at off\n",
+-	     apps_cmd_rcgr, readl(apps_cmd_rcgr));
++	WARN(count == 50000, "WARNING: RCG @ %pa [%#010x] stuck at off\n",
++	     (void *)&apps_cmd_rcgr, readl(apps_cmd_rcgr));
+ }
+ 
+ #define CFG_SRC_DIV_MASK	0b11111
+diff --git a/drivers/clk/qcom/clock-qcom.h b/drivers/clk/qcom/clock-qcom.h
+index ff336dea39c..74dd5435ef4 100644
+--- a/drivers/clk/qcom/clock-qcom.h
++++ b/drivers/clk/qcom/clock-qcom.h
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0+ */
+ /*
+  * (C) Copyright 2017 Jorge Ramirez-Ortiz <jorge.ramirez-ortiz@linaro.org>
++ * Copyright (c) 2025, Qualcomm Innovation Center,Inc.All rights reserved.
+  */
+ #ifndef _CLOCK_QCOM_H
+ #define _CLOCK_QCOM_H
+@@ -10,6 +11,7 @@
+ 
+ #define CFG_CLK_SRC_CXO   (0 << 8)
+ #define CFG_CLK_SRC_GPLL0 (1 << 8)
++#define CFG_CLK_SRC_GPLL2 (2 << 8)
+ #define CFG_CLK_SRC_GPLL0_AUX2 (2 << 8)
+ #define CFG_CLK_SRC_GPLL9 (2 << 8)
+ #define CFG_CLK_SRC_GPLL0_ODD (3 << 8)
+diff --git a/drivers/mmc/msm_sdhci.c b/drivers/mmc/msm_sdhci.c
+index 27bb7052fca..c04081e5368 100644
+--- a/drivers/mmc/msm_sdhci.c
++++ b/drivers/mmc/msm_sdhci.c
+@@ -3,11 +3,13 @@
+  * Qualcomm SDHCI driver - SD/eMMC controller
+  *
+  * (C) Copyright 2015 Mateusz Kulikowski <mateusz.kulikowski@gmail.com>
++ * Copyright (c) 2025, Qualcomm Innovation Center,Inc.All rights reserved.
+  *
+  * Based on Linux driver
+  */
+ 
+ #include <clk.h>
++#include <reset.h>
+ #include <dm.h>
+ #include <malloc.h>
+ #include <sdhci.h>
+@@ -45,6 +47,7 @@ struct msm_sdhc {
+ 	void *base;
+ 	struct clk_bulk clks;
+ 	struct udevice *vqmmc;
++	struct reset_ctl bcr_rst;
+ };
+ 
+ struct msm_sdhc_variant_info {
+@@ -67,6 +70,18 @@ static int msm_sdc_clk_init(struct udevice *dev)
+ 
+ 	var_info = (void *)dev_get_driver_data(dev);
+ 
++	ret = reset_get_by_name(dev, "bcr_rst", &prv->bcr_rst);
++	if (ret && ret != -ENOENT) {
++		log_warning("Couldn't get mmc bcr_rst: %d\n", ret);
++		return ret;
++	} else if (!ret) {
++		reset_assert(&prv->bcr_rst);
++		mdelay(10);
++
++		reset_deassert(&prv->bcr_rst);
++		mdelay(10);
++	}
++
+ 	ret = ofnode_read_u32(node, "clock-frequency", (uint *)(&clk_rate));
+ 	if (ret)
+ 		clk_rate = 201500000;
+diff --git a/drivers/pinctrl/qcom/Kconfig b/drivers/pinctrl/qcom/Kconfig
+index d3eb6998551..e9e34a0614c 100644
+--- a/drivers/pinctrl/qcom/Kconfig
++++ b/drivers/pinctrl/qcom/Kconfig
+@@ -1,4 +1,4 @@
+-if ARCH_SNAPDRAGON || ARCH_IPQ40XX
++if ARCH_SNAPDRAGON || ARCH_IPQ40XX || ARCH_IPQ
+ 
+ config PINCTRL_QCOM
+ 	depends on PINCTRL_GENERIC
+@@ -27,6 +27,27 @@ config PINCTRL_QCOM_IPQ4019
+ 	  Say Y here to enable support for pinctrl on the IPQ4019 SoC,
+ 	  as well as the associated GPIO driver.
+ 
++config PINCTRL_QCOM_IPQ5332
++	bool "Qualcomm IPQ5332 GCC"
++	select PINCTRL_QCOM
++	help
++	  Say Y here to enable support for pinctrl on the IPQ5332 SoC,
++	  as well as the associated GPIO driver.
++
++config PINCTRL_QCOM_IPQ5424
++	bool "Qualcomm IPQ5424 GCC"
++	select PINCTRL_QCOM
++	help
++	  Say Y here to enable support for pinctrl on the IPQ5424 SoC,
++	  as well as the associated GPIO driver.
++
++config PINCTRL_QCOM_IPQ9574
++	bool "Qualcomm IPQ9574 GCC"
++	select PINCTRL_QCOM
++	help
++	  Say Y here to enable support for pinctrl on the IPQ9574 SoC,
++	  as well as the associated GPIO driver.
++
+ config PINCTRL_QCOM_QCM2290
+ 	bool "Qualcomm QCM2290 GCC"
+ 	select PINCTRL_QCOM
+diff --git a/drivers/pinctrl/qcom/Makefile b/drivers/pinctrl/qcom/Makefile
+index 06d3c95f93a..131f2a5ebea 100644
+--- a/drivers/pinctrl/qcom/Makefile
++++ b/drivers/pinctrl/qcom/Makefile
+@@ -5,6 +5,9 @@
+ obj-$(CONFIG_PINCTRL_QCOM) += pinctrl-qcom.o
+ obj-$(CONFIG_PINCTRL_QCOM_APQ8016) += pinctrl-apq8016.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ4019) += pinctrl-ipq4019.o
++obj-$(CONFIG_PINCTRL_QCOM_IPQ5332) += pinctrl-ipq5332.o
++obj-$(CONFIG_PINCTRL_QCOM_IPQ5424) += pinctrl-ipq5424.o
++obj-$(CONFIG_PINCTRL_QCOM_IPQ9574) += pinctrl-ipq9574.o
+ obj-$(CONFIG_PINCTRL_QCOM_APQ8096) += pinctrl-apq8096.o
+ obj-$(CONFIG_PINCTRL_QCOM_QCM2290) += pinctrl-qcm2290.o
+ obj-$(CONFIG_PINCTRL_QCOM_QCS404) += pinctrl-qcs404.o
+diff --git a/drivers/serial/serial_msm_geni.c b/drivers/serial/serial_msm_geni.c
+index cb6c09fdd09..c940adac006 100644
+--- a/drivers/serial/serial_msm_geni.c
++++ b/drivers/serial/serial_msm_geni.c
+@@ -3,6 +3,7 @@
+  * Qualcomm GENI serial engine UART driver
+  *
+  * (C) Copyright 2021 Dzmitry Sankouski <dsankouski@gmail.com>
++ * Copyright (c) 2025, Qualcomm Innovation Center,Inc.All rights reserved.
+  *
+  * Based on Linux driver.
+  */
+@@ -313,7 +314,7 @@ static bool qcom_geni_serial_poll_bit(const struct udevice *dev, int offset,
+ 	return false;
+ }
+ 
+-static void qcom_geni_serial_setup_tx(u64 base, u32 xmit_size)
++static void qcom_geni_serial_setup_tx(uintptr_t base, u32 xmit_size)
+ {
+ 	u32 m_cmd;
+ 
+@@ -339,7 +340,7 @@ static inline void qcom_geni_serial_poll_tx_done(const struct udevice *dev)
+ 	writel(irq_clear, priv->base + SE_GENI_M_IRQ_CLEAR);
+ }
+ 
+-static u32 qcom_geni_serial_tx_empty(u64 base)
++static u32 qcom_geni_serial_tx_empty(uintptr_t base)
+ {
+ 	return !readl(base + SE_GENI_TX_FIFO_STATUS);
+ }
+@@ -353,7 +354,7 @@ static u32 qcom_geni_serial_tx_empty(u64 base)
+  * This function is used to configure the secondary sequencer with the
+  * command and its associated parameters.
+  */
+-static inline void geni_se_setup_s_cmd(u64 base, u32 cmd, u32 params)
++static inline void geni_se_setup_s_cmd(uintptr_t base, u32 cmd, u32 params)
+ {
+ 	u32 s_cmd;
+ 
+@@ -364,7 +365,7 @@ static inline void geni_se_setup_s_cmd(u64 base, u32 cmd, u32 params)
+ 	writel(s_cmd, base + SE_GENI_S_CMD0);
+ }
+ 
+-static void qcom_geni_serial_start_tx(u64 base)
++static void qcom_geni_serial_start_tx(uintptr_t base)
+ {
+ 	u32 irq_en;
+ 	u32 status;
+diff --git a/drivers/smem/Kconfig b/drivers/smem/Kconfig
+index 73d51b3a7a4..40465930c0c 100644
+--- a/drivers/smem/Kconfig
++++ b/drivers/smem/Kconfig
+@@ -15,7 +15,7 @@ config SANDBOX_SMEM
+ config MSM_SMEM
+     bool "Qualcomm Shared Memory Manager (SMEM)"
+     depends on DM
+-    depends on ARCH_SNAPDRAGON || ARCH_IPQ40XX
++    depends on ARCH_SNAPDRAGON || ARCH_IPQ40XX || ARCH_IPQ
+     help
+       Enable support for the Qualcomm Shared Memory Manager.
+       The driver provides an interface to items in a heap shared among all
+diff --git a/drivers/smem/msm_smem.c b/drivers/smem/msm_smem.c
+index ccd145f9afb..cfe38930bbe 100644
+--- a/drivers/smem/msm_smem.c
++++ b/drivers/smem/msm_smem.c
+@@ -3,6 +3,7 @@
+  * Copyright (c) 2015, Sony Mobile Communications AB.
+  * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+  * Copyright (c) 2018, Ramon Fried <ramon.fried@gmail.com>
++ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+  */
+ 
+ #include <errno.h>
+@@ -934,4 +935,5 @@ U_BOOT_DRIVER(qcom_smem) = {
+ 	.ops = &msm_smem_ops,
+ 	.probe = qcom_smem_probe,
+ 	.remove = qcom_smem_remove,
++	.flags = DM_FLAG_PRE_RELOC,
+ };
+diff --git a/include/compiler.h b/include/compiler.h
+index ef7b2cb1f7e..3dfdcb12ecb 100644
+--- a/include/compiler.h
++++ b/include/compiler.h
+@@ -44,6 +44,8 @@
+ 
+ #ifdef __linux__
+ # include <endian.h>
++/*__extension_keyword to suppress the warning */
++__extension__
+ # include <byteswap.h>
+ #elif defined(__MACH__) || defined(__FreeBSD__)
+ # include <machine/endian.h>
+-- 
+2.34.1
+

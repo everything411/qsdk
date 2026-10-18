@@ -1,0 +1,138 @@
+From 64af4eddfeed65399ad09c4ecb37dbd119233e6b Mon Sep 17 00:00:00 2001
+From: Maharaja Kennadyrajan <mkenna@qti.qualcomm.com>
+Date: Wed, 3 Dec 2025 22:35:35 +0530
+Subject: [PATCH 3/3] UPSTREAM:CP: wpa_cli: Add per-network set_bgscan_freq
+ command
+
+Introduce a new wpa_cli command 'set_bgscan_freq' to configure per-network
+wpa_supplicant configuration 'bgscan_freq' values via 'SET_NETWORK <id>
+bgscan_freq ...' and to clear the setting when needed.
+
+This allows users to fine-tune background scanning independently of active
+scan frequencies. Restricting bgscan to known channels can reduce scan
+overhead, improve roaming latency, and save power in managed RF
+environments.
+
+Usage:
+Syntax:
+wpa_cli -i <interface_name> set_bgscan_freq <network_id> <freq list|clear>
+
+Example:
+Set:
+wpa_cli -i wlan0 set_bgscan_freq 0 5955 5975 6055
+
+Clear:
+wpa_cli -i wlan0 set_bgscan_freq 0 clear
+
+Patch-work:none
+Patch-dependency:s38-UPSTREAM-CP-wpa_supplicant-bgscan-add-support-for-pe.patch
+
+Signed-off-by: Maharaja Kennadyrajan <mkenna@qti.qualcomm.com>
+---
+ wpa_supplicant/wpa_cli.c | 83 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 83 insertions(+)
+
+diff --git a/wpa_supplicant/wpa_cli.c b/wpa_supplicant/wpa_cli.c
+index c8fb8e4..5445a21 100644
+--- a/wpa_supplicant/wpa_cli.c
++++ b/wpa_supplicant/wpa_cli.c
+@@ -537,6 +537,86 @@ static int wpa_cli_cmd_set_scan_freq(struct wpa_ctrl *ctrl, int argc,
+ }
+ 
+ 
++static int wpa_cli_cmd_set_bgscan_freq(struct wpa_ctrl *ctrl, int argc,
++				       char *argv[])
++{
++	char cmd[2048];
++	int res;
++	size_t i;
++
++	if (argc < 2) {
++		printf("Invalid SET_BGSCAN_FREQ command: needs at least two arguments\n"
++		       "(network id and frequency list or 'clear')\n");
++		return -1;
++	}
++
++	/* Validate network contains only digits */
++	for (i = 0; argv[0][i] != '\0'; i++) {
++		if (!isdigit(argv[0][i])) {
++			printf("Invalid network id: must be numeric\n");
++			return -1;
++		}
++	}
++
++	if (os_strcmp(argv[1], "clear") == 0) {
++		res = os_snprintf(cmd, sizeof(cmd),
++				  "SET_NETWORK %s bgscan_freq \"\"",
++				  argv[0]);
++		if (os_snprintf_error(sizeof(cmd), res) ||
++		    res < 0 || (size_t)res >= sizeof(cmd)) {
++			printf("Too long SET_NETWORK command.\n");
++			return -1;
++		}
++		return wpa_ctrl_command(ctrl, cmd);
++	}
++
++	res = os_snprintf(cmd, sizeof(cmd),
++			  "SET_NETWORK %s bgscan_freq ", argv[0]);
++	if (os_snprintf_error(sizeof(cmd), res) ||
++	    res < 0 || (size_t)res >= sizeof(cmd)) {
++		printf("Too long SET_NETWORK command.\n");
++		return -1;
++	}
++
++	/* Build space-separated list */
++	for (i = 1; i < (size_t)argc; i++) {
++		char *end = NULL;
++		long freq = strtol(argv[i], &end, 10);
++
++		if (*end != '\0') {
++			printf("Invalid frequency value: %s (not numeric)\n",
++			       argv[i]);
++			return -1;
++		}
++
++		if (!is_valid_freq(freq)) {
++			printf("Invalid frequency: %ld MHz "
++			       "allowed ranges: 2.4GHz 2412–2484, 5GHz 5180–5885, 6GHz 5935–7115\n",
++			       freq);
++			return -1;
++		}
++
++		const char *prefix = (i > 1) ? " " : "";
++		size_t add, left;
++
++		left = sizeof(cmd) - (size_t)res;
++		if (res < 0 || (size_t)res >= sizeof(cmd) || left == 0) {
++			printf("Too long SET_NETWORK command.\n");
++			return -1;
++		}
++		add = os_snprintf(cmd + (size_t)res, sizeof(cmd) - (size_t)res,
++				  "%s%s", prefix, argv[i]);
++		if (os_snprintf_error(left, add)) {
++			printf("Too long SET_NETWORK command.\n");
++			return -1;
++		}
++		res += (int)add;
++	}
++
++	return wpa_ctrl_command(ctrl, cmd);
++}
++
++
+ static int wpa_cli_cmd_set(struct wpa_ctrl *ctrl, int argc, char *argv[])
+ {
+ 	char cmd[256];
+@@ -4252,6 +4332,9 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
+ 	{ "set_scan_freq", wpa_cli_cmd_set_scan_freq,
+ 	  wpa_cli_complete_network_id, cli_cmd_flag_none,
+ 	  "<network id> <freqs|clear> = set per-network scan_freq (e.g., 2412,2437 or 2412 2437)" },
++	{ "set_bgscan_freq", wpa_cli_cmd_set_bgscan_freq,
++	  wpa_cli_complete_network_id, cli_cmd_flag_none,
++	  "<network id> <freqs|clear> = set per-network bgscan_freq (e.g., 2412,2437 or 2412 2437)" },
+ 	{ NULL, NULL, NULL, cli_cmd_flag_none, NULL }
+ };
+ 
+-- 
+2.34.1
+

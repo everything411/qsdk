@@ -1,0 +1,29 @@
+config FS_EXT4
+	bool "Enable ext4 filesystem support"
+	help
+	  This provides support for reading images from the ext4 filesystem.
+	  ext4 is a widely used general-purpose filesystem for Linux.
+	  You can also enable CMD_EXT4 to get access to ext4 commands.
+
+config EXT4_WRITE
+	bool "Enable ext4 filesystem write support"
+	depends on FS_EXT4
+	help
+	  This provides support for creating and writing new files to an
+	  existing ext4 filesystem partition.
+
+config FS_CRASHDUMP_ENCRYPTED
+	bool "Enable crashdump filesystem hardware encryption support"
+	depends on EXT4_WRITE
+	help
+	  This provides support for hardware-accelerated encryption during
+	  crashdump file writes. When enabled, it automatically separates
+	  file data (encrypted) from filesystem metadata (unencrypted) using
+	  ICE (Inline Crypto Engine) hardware.
+	  
+	  The encryption system tracks Data Unit Numbers (DUN) for sector-level
+	  encryption and provides hooks in ext4_write.c to enable/disable
+	  encryption at the appropriate times.
+	  
+	  This is typically used in embedded systems with hardware crypto
+	  acceleration for secure crashdump collection.

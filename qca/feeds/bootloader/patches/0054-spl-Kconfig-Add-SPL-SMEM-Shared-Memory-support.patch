@@ -1,0 +1,38 @@
+From 68ee1fbf89c518af56e36b93b04afaf0a8831e33 Mon Sep 17 00:00:00 2001
+From: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+Date: Tue, 8 Jul 2025 12:01:12 +0530
+Subject: [PATCH] spl: Kconfig: Add SPL SMEM (Shared Memory) support
+
+This commit adds configuration support for SPL SMEM. The new option
+enables platforms to initialize and use shared memory during the
+SPL phase, which is required for early-stage communication and data
+exchange between processors or boot stages.
+
+Change-Id: I8b266f031881141d983714f798ecaebb5e857cd7
+Signed-off-by: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+---
+ common/spl/Kconfig | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/common/spl/Kconfig b/common/spl/Kconfig
+index 94e118f8465..e7858284b06 100644
+--- a/common/spl/Kconfig
++++ b/common/spl/Kconfig
+@@ -1285,6 +1285,14 @@ config SPL_RAM_DEVICE
+ 	  be already in memory when SPL takes over, e.g. loaded by the boot
+ 	  ROM.
+ 
++config SPL_SMEM
++	bool "Support SMEM (Shared Memory manger)"
++	depends on SMEM
++	help
++	  Enable support for the Shared Memory Manager. The driver provides an
++	  interface to items in a heap shared among all processors. This enables
++	  the drivers in drivers/smem as part of an SPL build.
++
+ config SPL_REMOTEPROC
+ 	bool "Support REMOTEPROCS"
+ 	help
+-- 
+2.34.1
+

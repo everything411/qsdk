@@ -1,0 +1,32 @@
+From 34234f707c6c14b52145b6dfbac4c64c8395d959 Mon Sep 17 00:00:00 2001
+From: Karthik M <quic_karm@quicinc.com>
+Date: Tue, 19 Mar 2024 15:44:15 +0530
+Subject: [PATCH] sigma-dut: ap_get_mac_address support for WPA3 program
+
+New WFA test program named WPA3 has been added to test suite.
+
+Hence add support for getting mac address for WPA3 program
+in 11be mode.
+
+Signed-off-by: Karthik M <quic_karm@quicinc.com>
+---
+ ap.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index 225f169..558442f 100644
+--- a/ap.c
++++ b/ap.c
+@@ -13901,7 +13901,8 @@ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 			 addr[0], addr[1], addr[2], addr[3], addr[4]-1,
+ 			 addr[5]);
+ 	} else if (get_driver_type(dut) == DRIVER_MAC80211 &&
+-	    dut->program == PROGRAM_EHT && link_id > 0) {
++	    (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) &&
++		link_id > 0) {
+ 		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
+ 			 addr[0], addr[1], addr[2], addr[3], addr[4] - 1,
+ 			 addr[5] - 1);
+-- 
+2.17.1
+

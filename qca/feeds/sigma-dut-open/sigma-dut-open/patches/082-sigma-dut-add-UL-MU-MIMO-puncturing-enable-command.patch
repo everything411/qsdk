@@ -1,0 +1,28 @@
+From 68ce64bbf4cfccf720287a5c241c67171ed844d9 Mon Sep 17 00:00:00 2001
+From: Mohan Kumar G <quic_mkumarg@quicinc.com>
+Date: Tue, 30 Apr 2024 16:29:49 +0530
+Subject: [PATCH] sigma-dut: add UL MU MIMO puncturing enable command
+
+Add the FW test command to enable UL MU MIMO puncturing
+in all the links.
+
+Signed-off-by: Mohan Kumar G <quic_mkumarg@quicinc.com>
+---
+ ap.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -11335,8 +11335,11 @@ hapd_started:
+ 
+ 		for (i = 0; i < dut->num_links; i++) {
+ 			if ((dut->device_type == AP_dut) && (dut->ap_mode == AP_11be)
+-			    && (dut->ap_he_mimo == MIMO_UL))
++			    && (dut->ap_he_mimo == MIMO_UL)) {
++				if (dut->ap_punct_bitmap)
++					fwtest_linkid_cmd_wrapper(dut, "-m 10 -v 0 86 1", ifname, i);
+ 				continue;
++			}
+ 			fwtest_set_eht_params(dut, ifname, i);
+ 		}
+ 	}

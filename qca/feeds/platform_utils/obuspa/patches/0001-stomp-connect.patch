@@ -1,0 +1,24 @@
+From 2464fa1ad321028225586b078bea4e6e75d588ce Mon Sep 17 00:00:00 2001
+From: Atchaya R <quic_ratchaya@quicinc.com>
+Date: Wed, 15 Jun 2022 12:55:34 +0530
+Subject: [PATCH] stomp: Update stomp frame format to connect command
+
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+---
+ src/core/stomp.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/core/stomp.c b/src/core/stomp.c
+index 42d3f15..b594f03 100644
+--- a/src/core/stomp.c
++++ b/src/core/stomp.c
+@@ -3250,7 +3250,7 @@ int StartSendingFrame_STOMP(stomp_connection_t *sc)
+         LogNoPasswordWarning(sc);
+     }
+ 
+-    #define STOMP_FRAME_FORMAT  "STOMP\n" \
++    #define STOMP_FRAME_FORMAT  "CONNECT\n" \
+                                 "accept-version:1.2\n" \
+                                 "host:%s\n"  \
+                                 "%s"  \
+

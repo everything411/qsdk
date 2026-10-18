@@ -1,0 +1,610 @@
+From 64a39e6b2e5f755e44530f410543bbc4f676877d Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Tue, 21 Feb 2023 23:33:46 -0800
+Subject: [PATCH] sigma-dut: adding link id to commands for ath12k
+
+Adding link id parameter to commands for ath12k. Setting parameters for AP using
+fwtest, hostapd_cli and iw commands now need link id parameter.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c        | 337 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++----
+ sigma_dut.h |   3 +
+ 2 files changed, 318 insertions(+), 22 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -123,7 +123,7 @@ static void ath_ap_set_params(struct sig
+ static int kill_process(struct sigma_dut *dut, char *proc_name,
+ 			unsigned char is_proc_instance_one, int sig);
+ static void mac80211_set_mu_brp_commands(struct sigma_dut *dut, const char *ifname);
+-static bool check_band(struct sigma_dut *dut, enum if_band band, bool second_iface);
++static bool check_band(struct sigma_dut *dut, enum if_band band, int second_iface);
+ 
+ 
+ static int fwtest_cmd_wrapper(struct sigma_dut *dut, const char *arg,
+@@ -139,6 +139,19 @@ static int fwtest_cmd_wrapper(struct sig
+ 	return ret;
+ }
+ 
++static int fwtest_linkid_cmd_wrapper(struct sigma_dut *dut, const char *arg,
++				     const char *ifname, const int link_id)
++{
++	int ret = -1;
++
++	if (strncmp(dut->device_driver, "ath12k", 6) == 0) {
++		ret = run_system_wrapper(dut, "ath11k-fwtest -i %s -l %d %s",
++					 ifname, link_id, arg);
++	}
++
++	return ret;
++}
++
+ static int ap_ft_enabled(struct sigma_dut *dut)
+ {
+ 	return dut->ap_ft_oa == 1 ||
+@@ -240,7 +253,6 @@ int get_hwaddr(const char *ifname, unsig
+ 	return 0;
+ }
+ 
+-
+ static void ath_ap_set_group_id(struct sigma_dut *dut, const char *ifname,
+ 				const char *val)
+ {
+@@ -455,11 +467,12 @@ static int wcn_config_ap_fils_dscv(struc
+ 
+ 
+ static void mac80211_config_rts_force(struct sigma_dut *dut, const char *ifname,
+-				      const char *val)
++				      const char *val, int link_id)
+ {
+ 	char buf[60];
+ 	char fname[128], path[128], *pos;
+ 	ssize_t res;
++	int mode = dut->program;
+ 
+ 	res = snprintf(fname, sizeof(fname), "/sys/class/net/%s/phy80211",
+ 		       ifname);
+@@ -482,14 +495,36 @@ static void mac80211_config_rts_force(st
+ 
+ 	if (strcasecmp(val, "enable") == 0) {
+ 		dut->ap_sig_rts = VALUE_ENABLED;
+-		res = snprintf(buf, sizeof(buf), "iw %s set rts 64", pos);
++
++		switch (mode) {
++		case PROGRAM_EHT:
++			res = snprintf(buf, sizeof(buf), "iw %s set rts -l %d 64", ifname, link_id);
++			break;
++		default:
++			if (strncmp(dut->device_driver, "ath12k", 6) == 0)
++				res = snprintf(buf, sizeof(buf), "iw %s set rts 64", ifname);
++			else
++				res = snprintf(buf, sizeof(buf), "iw %s set rts 64", pos);
++		}
++
+ 		if (res < 0 || res >= sizeof(buf) || system(buf) != 0) {
+ 			sigma_dut_print(dut, DUT_MSG_ERROR,
+ 					"iw set rts 64 failed");
+ 		}
+ 	} else if (strcasecmp(val, "disable") == 0) {
+ 		dut->ap_sig_rts = VALUE_DISABLED;
+-		res = snprintf(buf, sizeof(buf), "iw %s set rts 2347", pos);
++
++		switch (mode) {
++		case PROGRAM_EHT:
++			res = snprintf(buf, sizeof(buf), "iw %s set rts -l %d 2347", ifname, link_id);
++			break;
++		default:
++			if (strncmp(dut->device_driver, "ath12k", 6) == 0)
++				res = snprintf(buf, sizeof(buf), "iw %s set rts 2347", ifname);
++			else
++				res = snprintf(buf, sizeof(buf), "iw %s set rts 2347", pos);
++		}
++
+ 		if (res < 0 || res >= sizeof(buf) || system(buf) != 0) {
+ 			sigma_dut_print(dut, DUT_MSG_ERROR,
+ 					"iw rts 2347 failed");
+@@ -1065,6 +1100,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	if (dut->ap_is_dual) {
+ 		if (!dut->dual_ap_ifname) {
+ 			dut->ap_is_mld = 1;
++			dut->num_links++;
+ 			/* CH width values need to be swapped in
+ 			 * order to correspond to correct config */
+ 			chwidth = dut->ap_chwidth;
+@@ -1733,7 +1769,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			}
+ 			break;
+ 		case DRIVER_MAC80211:
+-			mac80211_config_rts_force(dut, ifname, val);
++			mac80211_config_rts_force(dut, ifname, val, -1);
+ 			break;
+ 		default:
+ 			sigma_dut_print(dut, DUT_MSG_ERROR,
+@@ -8468,7 +8504,7 @@ static void set_ebtables_forward_drop(st
+ 				"Failed to set ebtables rule");
+ }
+ 
+-static bool check_band(struct sigma_dut *dut, enum if_band band, bool second_iface)
++static bool check_band(struct sigma_dut *dut, enum if_band band, int second_iface)
+ {
+ 	/* Single band only */
+ 	if (!dut->ap_is_dual || (dut->ap_band == dut->ap_band_1) ||
+@@ -8479,8 +8515,8 @@ static bool check_band(struct sigma_dut
+ 	}
+ 
+ 	/* Compare band of corresponding iface */
+-	return ((!second_iface && dut->ap_band == band) ||
+-		(second_iface && dut->ap_band_1 == band));
++	return ((second_iface == 0 && dut->ap_band == band) ||
++		(second_iface == 1 && dut->ap_band_1 == band));
+ }
+ 
+ static int check_channel(struct sigma_dut *dut, int channel, bool second_iface)
+@@ -8896,6 +8932,115 @@ static void fwtest_set_he_params(struct
+ 
+ }
+ 
++static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
++				  const int link_id)
++{
++	/* Driver overrides pdev_id for ath11k-fwtest cmd, so use dummy
++	 * value of 1 for pdev_id parameter
++	 */
++	int pdev_id = 1;
++
++	/* enable preferred AC */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 186 1", ifname, link_id);
++
++	/* disbale sending basic triggers */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 42 0", ifname, link_id);
++	/* he_dynamic_muedca 0 */
++	run_system_wrapper(dut,
++			   "ath11k-fwtest -t 2 -i %s -l %d -m 0x00 -p %d 0xBF 0x00",
++			   ifname, link_id, pdev_id);
++
++	/* Trigger Interval */
++	run_system_wrapper(dut,
++			   "ath11k-fwtest -t 2 -i %s -l %d -m 0x00 -p %d 0xA2 0x02",
++			   ifname, link_id, pdev_id);
++
++	/* enable full_band_probing */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 194 0", ifname, link_id);
++
++	if (dut->ap_he_ulofdma == VALUE_ENABLED) {
++		/* Disable DL OFDMA */
++		if (dut->ap_he_dlofdma != VALUE_ENABLED) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x00 -v 0 32770 111",
++						  ifname, link_id);
++		}
++	}
++
++	if (dut->he_set_sta_1x1 == VALUE_ENABLED) {
++		/* sets g_force_1x1_peer to 1 */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 118 1", ifname, link_id);
++		/* enables BF/NDPA for smaller SU pkt (pkt tx time less than 200us) */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 255 0", ifname, link_id);
++	}
++
++	if (dut->ap_he_dlofdma == VALUE_ENABLED || dut->ap_he_ulofdma == VALUE_ENABLED) {
++		if (dut->ap_he_ulofdma == VALUE_ENABLED) {
++			/* Freq. BSRP disable command */
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 383 0", ifname, link_id);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 231 0", ifname, link_id);
++			/* Disable reset the queue depth for basic trigger */
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 325 0", ifname, link_id);
++			/* Disable unreliable trig delay time */
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 302 0", ifname, link_id);
++		}
++
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 13 0", ifname, link_id);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 84 0 0", ifname, link_id);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 418 0", ifname, link_id);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 422 0", ifname, link_id);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 427 0", ifname, link_id);
++		/* Enable the equal RU allocation */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 0 1", ifname, link_id);
++		/* allow MU scheduling with MLO */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 515 0", ifname, link_id);
++		/* orthogonal MU scheduling in MLO */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 516 1", ifname, link_id);
++		/* allow OFDMA MLO scheduling */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 540 0", ifname, link_id);
++		/* allow UL scheduling for MLO peers */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 539 0", ifname, link_id);
++
++		/* the 3 command below are for emlsr clients:
++		 * allow UL OFDMA for EMLSR clients */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 578 1", ifname, link_id);
++		/* allow multi-link UL ofdma scheduling */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 579 0", ifname, link_id);
++		/* boolean for each link (primary / secondary) where scheduling is allowed */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 580 1 1", ifname, link_id);
++	}
++
++	if (dut->ap_txBF) {
++		/* Ignore TBTT for NDP */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 2 1", ifname, link_id);
++		/* cv query enable */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 7 1", ifname, link_id);
++		/* override TPC calculations & set TxBF flag to true */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 47 1", ifname, link_id);
++	}
++
++	if (dut->he_sounding == VALUE_ENABLED)
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 7 0", ifname, link_id);
++
++	if (dut->ap_bcc == VALUE_ENABLED) {
++		fwtest_linkid_cmd_wrapper(dut, "-t 1 -m 0x0 -v 0 0x1B 0x10000407",
++				   ifname, link_id);
++		fwtest_linkid_cmd_wrapper(dut, "-t 1 -m 0x0 -v 0 0x1D 0", ifname, link_id);
++	}
++
++	if (dut->ap_he_mimo == MIMO_UL) {
++		uint8_t he_param = 0x7F; /* Bit 7 is reserved, Bit 6 for UL MIMO */
++		/* Update HE Params for UL MIMO */
++		if (!dut->ap_mu_txBF)
++			he_param &= ~(1 << 3); /* Bit 3 for MU TxBF */
++		if (dut->ap_he_dlofdma != VALUE_ENABLED)
++			he_param &= ~(1 << 4); /* Bit 4 for DL OFDMA */
++		if (dut->ap_he_ulofdma != VALUE_ENABLED)
++			he_param &= ~(1 << 5); /* Bit 5 for UL OFDMA */
++		run_system_wrapper(dut,
++				   "ath11k-fwtest -t 1 -i %s -l %d -m 0x00 -v 0 32770 %d",
++				   ifname, link_id, he_param);
++	}
++}
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))
+ 
+@@ -9226,7 +9371,7 @@ enum sigma_cmd_result cmd_ap_config_comm
+ #endif /* ANDROID */
+ 	enum ap_chwidth chwidth;
+ 	enum sec_ch_offset offset;
+-	int chan;
++	int chan, link_id;
+ 	unsigned char addr[6];
+ 	unsigned char main_bssid[6];
+ 	char ifname2[50];
+@@ -9273,12 +9418,16 @@ enum sigma_cmd_result cmd_ap_config_comm
+ write_conf:
+ 	if (conf_counter) {
+ 		const char *f1, *f2;
++		char file_name[256];
++
++		snprintf(file_name, sizeof(file_name), "/sigma_dut-ap_%d.conf",
++			 conf_counter - 1);
+ 
+ 		f1 = concat_sigma_tmpdir(dut, "/sigma_dut-ap.conf",
+ 					 ap_conf_path_1,
+ 					 sizeof(ap_conf_path_1));
+-		f2 = concat_sigma_tmpdir(dut, "/sigma_dut-ap_0.conf",
+-					 ap_conf_path, sizeof(ap_conf_path));
++		f2 = concat_sigma_tmpdir(dut, file_name, ap_conf_path,
++					 sizeof(ap_conf_path));
+ 
+ 		sigma_dut_print(dut, DUT_MSG_DEBUG, "f1 %s, f2 %s", f1, f2);
+ 		if (run_system_wrapper(dut, "cp %s %s", f1, f2) != 0)
+@@ -9316,6 +9465,18 @@ write_conf:
+ 		return -2;
+ 	}
+ 
++	if (conf_counter == dut->num_links - 1)
++		link_id = 0;
++	else
++		link_id = conf_counter + 1;
++
++	if (check_band(dut, BAND_2G, conf_counter))
++		dut->band_to_link[0] = link_id;
++	else if (check_band(dut, BAND_5G, conf_counter))
++		dut->band_to_link[1] = link_id;
++	else
++		dut->band_to_link[2] = link_id;
++
+ 	ifname = get_hostapd_ifname(dut);
+ 
+ 	if (conf_counter == 1 && dut->ap_mode_1 != AP_inval)
+@@ -10541,6 +10702,9 @@ skip_vht_parameters_set:
+ 	if (dut->ap_is_dual && conf_counter == 0) {
+ 		conf_counter++;
+ 		goto write_conf;
++	} else if (dut->num_links > 1 && (conf_counter + 1) < dut->num_links) {
++		conf_counter++;
++		goto write_conf;
+ 	}
+ 
+ 	if (dut->use_hostapd_pid_file)
+@@ -10891,6 +11055,11 @@ hapd_started:
+ 			snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, i+1);
+ 			fwtest_set_he_params(dut, ifname2);
+ 		}
++	} else if (drv == DRIVER_MAC80211 && dut->program == PROGRAM_EHT) {
++		int i;
++
++		for(i = 0; i < dut->num_links; i++)
++			fwtest_set_eht_params(dut, ifname, i);
+ 	}
+ 
+ 	if (dut->bridge && dut->ap_is_dual) {
+@@ -11421,6 +11590,9 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_mode = AP_inval;
+ 	dut->ap_mode_1 = AP_inval;
+ 	dut->ap_is_mld = 0;
++	dut->num_links = 1;
++	for(i = 0; i < 3; i++)
++		dut->band_to_link[i] = -1;
+ 	dut->ap_channel_1 = 0;
+ 
+ 	dut->ap_allow_vht_wep = 0;
+@@ -13478,6 +13650,7 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	struct ifreq ifr;
+ 	int s, wlan_tag = 1;
+ 	const char *val;
++	int link_id = -1;
+ 
+ 	val = get_param(cmd, "WLAN_TAG");
+ 	if (val) {
+@@ -13493,6 +13666,18 @@ static enum sigma_cmd_result cmd_ap_get_
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "Interface");
++	if (val) {
++		if (strcasecmp(val, "6G") == 0)
++			link_id = dut->band_to_link[2];
++		else if (strcasecmp(val, "5G") == 0)
++			link_id = dut->band_to_link[1];
++		else if (strcasecmp(val, "mld") == 0)
++			link_id = 0;
++		else
++			link_id = dut->band_to_link[0];
++	}
++
+ 	get_if_name(dut, ifname, sizeof(ifname), wlan_tag);
+ 
+ 	val = get_param(cmd, "NonTxBSSIndex");
+@@ -13533,8 +13718,15 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	close(s);
+ 	memcpy(addr, ifr.ifr_hwaddr.sa_data, 6);
+ 
+-	snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
+-		 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
++	if (get_driver_type(dut) == DRIVER_MAC80211 &&
++	    dut->program == PROGRAM_EHT && link_id > 0) {
++		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
++			 addr[0], addr[1], addr[2], addr[3], addr[4] - 1,
++			 addr[5] - 1);
++	} else
++		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
++			 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
++
+ 	send_resp(dut, conn, SIGMA_COMPLETE, resp);
+ 	return 0;
+ #elif defined( __QNXNTO__)
+@@ -15961,14 +16153,17 @@ static enum sigma_cmd_result wcn_ap_set_
+ 
+ 
+ static int mac80211_vht_chnum_band(struct sigma_dut *dut, const char *ifname,
+-				   const char *val)
++				   const char *val, int link_id)
+ {
+ 	char *token, *result;
+ 	int channel = 36, chwidth = 80, center_freq_idx, center_freq,
+ 		channel_freq;
+ 	char buf[256];
++	char mode[10];
+ 	char *saveptr;
++	char link_param[10];
+ 	int res;
++	bool link_set = false;
+ 
+ 	/* Extract the channel info */
+ 	token = strdup(val);
+@@ -15992,10 +16187,20 @@ static int mac80211_vht_chnum_band(struc
+ 	center_freq = get_5g_channel_freq(center_freq_idx);
+ 	channel_freq = get_5g_channel_freq(channel);
+ 
++	if (dut->program == PROGRAM_EHT) {
++		snprintf(mode, sizeof(mode), "eht");
++		snprintf(link_param, sizeof(link_param), "-l %d", link_id);
++		link_set = true;
++	} else if (dut->program == PROGRAM_HE)
++		snprintf(mode, sizeof(mode), "he");
++	else
++		snprintf(mode, sizeof(mode), "vht");
++
+ 	/* Issue the channel switch command */
+ 	res = snprintf(buf, sizeof(buf),
+-		       " -i %s chan_switch 10 %d sec_channel_offset=1 center_freq1=%d bandwidth=%d blocktx vht",
+-		       ifname, channel_freq, center_freq, chwidth);
++		       " -i %s %s chan_switch 10 %d sec_channel_offset=1 center_freq1=%d bandwidth=%d blocktx %s",
++		       ifname, link_set? link_param: "", channel_freq,
++		       center_freq, chwidth, mode);
+ 	if (res < 0 || res >= sizeof(buf) || run_hostapd_cli(dut, buf) != 0) {
+ 		sigma_dut_print(dut, DUT_MSG_ERROR,
+ 				"hostapd_cli chan_switch failed");
+@@ -16291,6 +16496,14 @@ static void mac80211_set_trigger_type_3(
+ 			   ifname);
+ }
+ 
++static void mac80211_set_trigger_type_0_eht(struct sigma_dut *dut, const char *ifname, int link_id)
++{
++	if (dut->eht_txemlomn == VALUE_DISABLED) {
++		/* To set UL trigger duration to 1908 (us) */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 63 1908", ifname, link_id);
++	}
++}
++
+ static void mac80211_set_trigger_type_4(struct sigma_dut *dut, const char *ifname)
+ {
+ 	/* Trigger interval */
+@@ -16309,13 +16522,16 @@ static void mac80211_set_trigger_type_4(
+ }
+ 
+ static int mac80211_set_trigger_type(struct sigma_dut *dut, const char *ifname,
+-				      const char *val)
++				      const char *val, int link_id)
+ {
+ 	int trigtype = atoi(val);
+ 
+ 	switch (trigtype) {
+ 	case 0:
+-		mac80211_set_trigger_type_0(dut, ifname);
++		if (dut->program == PROGRAM_EHT)
++			mac80211_set_trigger_type_0_eht(dut, ifname, link_id);
++		else if (dut->program == PROGRAM_HE)
++			mac80211_set_trigger_type_0(dut, ifname);
+ 		break;
+ 	case 1:
+ 		mac80211_set_trigger_type_1(dut, ifname);
+@@ -16400,10 +16616,13 @@ static int mac80211_he_ltf_mapping(struc
+ }
+ 
+ static void mac80211_update_unsol_prb_resp(struct sigma_dut *dut,
+-					   const char *ifname)
++					   const char *ifname,
++					   int link_id)
+ {
+ 	char buf[100];
+ 	int prb_resp_tu, fils_tu;
++	char link_param[10];
++	bool add_link_param = false;
+ 
+ 	if (dut->ap_6g_unsol_prb_resp) {
+ 		prb_resp_tu = 20;
+@@ -16413,20 +16632,28 @@ static void mac80211_update_unsol_prb_re
+ 		fils_tu = 20;
+ 	}
+ 
+-	snprintf(buf, sizeof(buf), "-i %s set fils_discovery_max_interval %d", ifname, fils_tu);
++	if (dut->program == PROGRAM_EHT) {
++		snprintf(link_param, sizeof(link_param), "-l %d", link_id);
++		add_link_param = true;
++	}
++
++	snprintf(buf, sizeof(buf), "-i %s %s set fils_discovery_max_interval %d", ifname,
++		 add_link_param ? link_param : "", fils_tu);
+ 	run_hostapd_cli(dut, buf);
+-	snprintf(buf, sizeof(buf), "-i %s set unsol_bcast_probe_resp_interval %d", ifname, prb_resp_tu);
++	snprintf(buf, sizeof(buf), "-i %s %s set unsol_bcast_probe_resp_interval %d", ifname,
++		 add_link_param ? link_param : "", prb_resp_tu);
+ 	run_hostapd_cli(dut, buf);
+ 	/* Now that Sigma is overriding Out of Box configuration, avoid force disabling
+ 	 * fils/prb_resp_tu.
+ 	 */
+-	snprintf(buf, sizeof(buf), "-i %s set force_disable_in_band_discovery 0", ifname);
++	snprintf(buf, sizeof(buf), "-i %s %s set force_disable_in_band_discovery 0", ifname,
++		 add_link_param ? link_param : "");
+ 	run_hostapd_cli(dut, buf);
+ 
+-	snprintf(buf, sizeof(buf), "-i %s disable", ifname);
++	snprintf(buf, sizeof(buf), "-i %s %s disable", ifname, add_link_param ? link_param : "");
+ 	run_hostapd_cli(dut, buf);
+ 
+-	snprintf(buf, sizeof(buf), "-i %s enable", ifname);
++	snprintf(buf, sizeof(buf), "-i %s %s enable", ifname, add_link_param ? link_param : "");
+ 	run_hostapd_cli(dut, buf);
+ 
+ }
+@@ -16453,8 +16680,16 @@ static enum sigma_cmd_result mac80211_he
+ {
+ 	int16_t he_ltf = 0xFF;
+ 	char *mode = dut->ap_band_6g ? "6" : dut->use_5g ? "5" : "2.4";
++	char program[10];
+ 	int ret = -1;
+ 
++	if (dut->program == PROGRAM_EHT)
++		snprintf(program, sizeof(program), "eht");
++	else if (dut->program == PROGRAM_HE)
++		snprintf(program, sizeof(program), "he");
++	else
++		return STATUS_SENT_ERROR;
++
+ 	if (dut->ar_ltf) {
+ 		he_ltf = mac80211_he_ltf_mapping(dut, dut->ar_ltf);
+ 		free(dut->ar_ltf);
+@@ -16466,19 +16701,19 @@ static enum sigma_cmd_result mac80211_he
+ 		if (val) {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates he-gi-%s %s he-ltf-%s %u",
+-				ifname, mode, val, mode,
++				"iw %s set bitrates %s-gi-%s %s %s-ltf-%s %u",
++				ifname, program, mode, val, program, mode,
+ 				he_ltf);
+ 		} else {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates he-ltf-%s %u",
+-				ifname, mode, he_ltf);
++				"iw %s set bitrates %s-ltf-%s %u",
++				ifname, program, mode, he_ltf);
+ 		}
+ 	} else if (val) {
+ 		ret = run_system_wrapper(dut,
+-					 "iw %s set bitrates he-gi-%s %s",
+-					 ifname, mode, val);
++					 "iw %s set bitrates %s-gi-%s %s",
++					 ifname, program, mode, val);
+ 	}
+ 	if (ret < 0)
+ 		return ERROR_SEND_STATUS;
+@@ -16535,15 +16770,26 @@ static enum sigma_cmd_result mac80211_ap
+ 	unsigned char mac_addr[ETH_ALEN];
+ 	int he_ackpolicymac = 0;
+ 	int ap_he_ackpolicy;
++	int link_id = 0;
+ 
+ 	ifname = get_main_ifname(dut);
+ 
++	val = get_param(cmd, "Interface");
++	if (val) {
++		if (strcasecmp(val, "2G") == 0)
++			link_id = dut->band_to_link[0];
++		else if (strcasecmp(val, "5G") == 0)
++			link_id = dut->band_to_link[1];
++		else if (strcasecmp(val, "6G") == 0)
++			link_id = dut->band_to_link[2];
++	}
++
+ 	val = get_param(cmd, "RTS_FORCE");
+ 	if (val)
+-		mac80211_config_rts_force(dut, ifname, val);
++		mac80211_config_rts_force(dut, ifname, val, link_id);
+ 
+ 	val = get_param(cmd, "chnum_band");
+-	if (val && mac80211_vht_chnum_band(dut, ifname, val) < 0)
++	if (val && mac80211_vht_chnum_band(dut, ifname, val, link_id) < 0)
+ 		return -1;
+ 
+ 	mac80211_set_nebor(dut, ifname, cmd);
+@@ -16583,7 +16829,7 @@ static enum sigma_cmd_result mac80211_ap
+ 		dut->ap_btmreq_bss_term_tsf = atoi(val);
+ 
+ 	val = get_param(cmd, "TriggerType");
+-	if (val && mac80211_set_trigger_type(dut, ifname, val) < 0) {
++	if (val && mac80211_set_trigger_type(dut, ifname, val, link_id) < 0) {
+ 		send_resp(dut, conn, SIGMA_ERROR,
+ 			  "errorCode,TriggerType not supported");
+ 		return STATUS_SENT_ERROR;
+@@ -16654,7 +16900,7 @@ static enum sigma_cmd_result mac80211_ap
+ 			unsol_prb_resp = 0;
+ 		if (unsol_prb_resp != dut->ap_6g_unsol_prb_resp) {
+ 			dut->ap_6g_unsol_prb_resp = unsol_prb_resp;
+-			mac80211_update_unsol_prb_resp(dut, ifname);
++			mac80211_update_unsol_prb_resp(dut, ifname, link_id);
+ 		}
+ 	}
+ 
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1250,6 +1250,9 @@ struct sigma_dut {
+ 	enum if_band ap_band, ap_band_1;
+ 
+ 	int ap_is_mld;
++	unsigned int num_links;
++	/* Index 0: 2.4G, 1: 5G, 2: 6G */
++	int band_to_link[3];
+ 	int i2rlmr_iftmr;
+ 	int i2rlmrpolicy;
+ 	int rnm_mfp;

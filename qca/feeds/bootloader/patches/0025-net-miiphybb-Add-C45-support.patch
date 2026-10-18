@@ -1,0 +1,184 @@
+From 80f86af109a0b00b5c3d0fe419d7f29deecc1f6b Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 21 May 2025 16:42:47 +0530
+Subject: [PATCH] net: miiphybb: Add C45 support.
+
+Change-Id: If0eca915a7ec3d731c34cd442926e66bf23ba530
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/net/phy/miiphybb.c | 96 ++++++++++++++++++++++++++++++++++----
+ 1 file changed, 88 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/phy/miiphybb.c b/drivers/net/phy/miiphybb.c
+index 9f5f9b12c9f..48fdb24d12f 100644
+--- a/drivers/net/phy/miiphybb.c
++++ b/drivers/net/phy/miiphybb.c
+@@ -5,6 +5,8 @@
+  *
+  * (C) Copyright 2001
+  * Gerald Van Baren, Custom IDEAS, vanbaren@cideas.com.
++ *
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  */
+ 
+ /*
+@@ -17,6 +19,14 @@
+ #include <miiphy.h>
+ #include <asm/global_data.h>
+ 
++#define MDIO_C22_CMD_WRITE		(0x1)
++#define MDIO_C22_CMD_READ		(0x2)
++
++#define MDIO_C45_ID			BIT(7)
++#define MDIO_C45_CMD_ADDR		(MDIO_C45_ID | 0x0)
++#define MDIO_C45_CMD_WRITE		(MDIO_C45_ID | 0x1)
++#define MDIO_C45_CMD_READ		(MDIO_C45_ID | 0x3)
++
+ int bb_miiphy_init(void)
+ {
+ 	int i;
+@@ -46,7 +56,7 @@ static inline struct bb_miiphy_bus *bb_miiphy_getbus(const char *devname)
+  * Utility to send the preamble, address, and register (common to read
+  * and write).
+  */
+-static void miiphy_pre(struct bb_miiphy_bus *bus, char read,
++static void miiphy_pre(struct bb_miiphy_bus *bus, unsigned char op,
+ 		       unsigned char addr, unsigned char reg)
+ {
+ 	int j;
+@@ -68,24 +78,37 @@ static void miiphy_pre(struct bb_miiphy_bus *bus, char read,
+ 		bus->delay(bus);
+ 	}
+ 
+-	/* send the start bit (01) and the read opcode (10) or write (10) */
++	/* Clause-22:
++	 *	send the start bit (01) and then
++	 *	read opcode (10) or
++	 *	write opcode (01)
++	 *
++	 * Clause-45:
++	 *	send the start bit (00) and then
++	 *	read opcode (11) or
++	 *	write opcode (01) or
++	 *	address opcode (00)
++	 */
+ 	bus->set_mdc(bus, 0);
+ 	bus->set_mdio(bus, 0);
+ 	bus->delay(bus);
+ 	bus->set_mdc(bus, 1);
+ 	bus->delay(bus);
+ 	bus->set_mdc(bus, 0);
+-	bus->set_mdio(bus, 1);
++	if (op & MDIO_C45_ID)
++		bus->set_mdio(bus, 0);
++	else
++		bus->set_mdio(bus, 1);
+ 	bus->delay(bus);
+ 	bus->set_mdc(bus, 1);
+ 	bus->delay(bus);
+ 	bus->set_mdc(bus, 0);
+-	bus->set_mdio(bus, read);
++	bus->set_mdio(bus, ((op >> 0x1) & 0x1));
+ 	bus->delay(bus);
+ 	bus->set_mdc(bus, 1);
+ 	bus->delay(bus);
+ 	bus->set_mdc(bus, 0);
+-	bus->set_mdio(bus, !read);
++	bus->set_mdio(bus, (op & 0x1));
+ 	bus->delay(bus);
+ 	bus->set_mdc(bus, 1);
+ 	bus->delay(bus);
+@@ -119,6 +142,51 @@ static void miiphy_pre(struct bb_miiphy_bus *bus, char read,
+ 	}
+ }
+ 
++static void bb_miiphy_cmd(struct bb_miiphy_bus *bus, int addr, int devad,
++			  int reg)
++{
++	int j;
++
++	miiphy_pre (bus, MDIO_C45_CMD_ADDR, addr, devad);
++
++	/* send the turnaround (10) */
++	bus->set_mdc(bus, 0);
++	bus->set_mdio(bus, 1);
++	bus->delay(bus);
++	bus->set_mdc(bus, 1);
++	bus->delay(bus);
++	bus->set_mdc(bus, 0);
++	bus->set_mdio(bus, 0);
++	bus->delay(bus);
++	bus->set_mdc(bus, 1);
++	bus->delay(bus);
++
++	/* write 16 bits of register data, MSB first */
++	for (j = 0; j < 16; j++) {
++		bus->set_mdc(bus, 0);
++		if ((reg & 0x00008000) == 0) {
++			bus->set_mdio(bus, 0);
++		} else {
++			bus->set_mdio(bus, 1);
++		}
++		bus->delay(bus);
++		bus->set_mdc(bus, 1);
++		bus->delay(bus);
++		reg <<= 1;
++	}
++
++	/*
++	 * Tri-state the MDIO line.
++	 */
++	bus->mdio_tristate(bus);
++	bus->set_mdc(bus, 0);
++	bus->delay(bus);
++	bus->set_mdc(bus, 1);
++	bus->delay(bus);
++
++	return;
++}
++
+ /*****************************************************************************
+  *
+  * Read a MII PHY register.
+@@ -138,7 +206,12 @@ int bb_miiphy_read(struct mii_dev *miidev, int addr, int devad, int reg)
+ 		return -1;
+ 	}
+ 
+-	miiphy_pre (bus, 1, addr, reg);
++	if (devad == MDIO_DEVAD_NONE)
++		miiphy_pre(bus, MDIO_C22_CMD_READ, addr, reg);
++	else {
++		bb_miiphy_cmd(bus, addr, devad, reg);
++		miiphy_pre(bus, MDIO_C45_CMD_READ, addr, devad);
++	}
+ 
+ 	/* tri-state our MDIO I/O pin so we can read */
+ 	bus->set_mdc(bus, 0);
+@@ -183,7 +256,9 @@ int bb_miiphy_read(struct mii_dev *miidev, int addr, int devad, int reg)
+ 	bus->set_mdc(bus, 1);
+ 	bus->delay(bus);
+ 
+-	debug("%s[%s](0x%x) @ 0x%x = 0x%04x\n", __func__, miidev->name, reg, addr, rdreg);
++#ifdef DEBUG
++	printf("miiphy_read(0x%x) @ 0x%x = 0x%04x\n", reg, addr, rdreg);
++#endif
+ 
+ 	return rdreg;
+ }
+@@ -207,7 +282,12 @@ int bb_miiphy_write(struct mii_dev *miidev, int addr, int devad, int reg,
+ 		return -1;
+ 	}
+ 
+-	miiphy_pre (bus, 0, addr, reg);
++	if (devad == MDIO_DEVAD_NONE)
++		miiphy_pre(bus, MDIO_C22_CMD_WRITE, addr, reg);
++	else {
++		bb_miiphy_cmd(bus, addr, devad, reg);
++		miiphy_pre(bus, MDIO_C45_CMD_WRITE, addr, devad);
++	}
+ 
+ 	/* send the turnaround (10) */
+ 	bus->set_mdc(bus, 0);
+-- 
+2.34.1
+

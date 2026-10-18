@@ -1,0 +1,19 @@
+ECDSA Blob creation tool
+
+Prerequisite:
+   Python version 3.7 or later
+   Openssl version 3.0.2 or later
+
+Usage:
+    python3 ecdsa_blob_gen.py [-h] -k KEY [-e ECKEY] -i IV -c CONTEXT -m {secp256r1,secp384r1,secp521r1}
+
+Input Parameters:
+  - hex_key: 32-byte AES Key generated using NIST tool. Used for EC Private key encryption and CMAC.
+  - hex_iv: 16-byte IV data used for EC Private key encryption.
+  - hex_context: 128-byte context used during AES Key generation using NIST Tool.
+  - curve_mode: NIST P Curves secp256r1, secp384r1, secp521r1
+  - eckey: Optional path to an existing ECDSA private key PEM file
+
+Example:
+
+   python3 ecdsa_blob_gen.py -k 5e3ccb930a48481a7e5dc05aa74c73043a3139eb9d513ae54374b436accf3320 -i 3fa2ed59865434813a07ef4dc27376d0 -c c118b12720b87069b55756cea6d07ea164d2739bc853e220073a02a30c8f5a1e376f272928dfe90bcc2299e1c8544f6983c4ae3b8ed98c4fe0a2b78a009df8d29da50a67d9eefca88173987483132ae8d12895f717d8f66cd7a566bdfe98ee182f26e556cdeac6102f7c4fc1cc7e95c548ef623e1cacdb4a24b962b388dda2dc -m secp384r1

@@ -1,0 +1,23 @@
+Author: Ken Zhu <guigenz@qti.qualcomm.com>
+Date:   Thu Apr 9 16:55:53 2026 -0700
+
+    [mcproxy] Fix crash on startup
+
+    system ipv6 address is not ready to send out general query.
+    because the system will send out general query periodically.
+
+    Change-Id: Iee9010f367893f938f4d23d051b3e25e51fda85a
+    Signed-off-by: Ken Zhu <guigenz@qti.qualcomm.com>
+diff -Nur a/mcproxy/src/proxy/querier.cpp b/mcproxy/src/proxy/querier.cpp
+--- a/mcproxy/src/proxy/querier.cpp	2026-04-09 16:12:15.531698392 -0700
++++ b/mcproxy/src/proxy/querier.cpp	2026-04-09 16:14:55.543110486 -0700
+@@ -54,7 +54,8 @@
+ 
+     if (!send_general_query()) {
+         HC_LOG_ERROR("failed to initialise query startup");
+-        throw "failed to initialise query startup";
++	//it could be failed on startup, the system maybe not ready yet.
++	//let timer to try it again.
+     }
+ }
+ 

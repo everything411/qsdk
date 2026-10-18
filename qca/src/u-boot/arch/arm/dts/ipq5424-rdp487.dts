@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+#include "ipq5424-default.dts"
+
+/ {
+	config_name = "config-rdp487";
+
+	soc: soc@0 {
+		tlmm: pinctrl@1000000 {
+			mdio_pinmux: mdio {
+				mdc {
+					pins = "GPIO_22";
+					function = "mdc";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				mdio {
+					pins = "GPIO_23";
+					function = "mdio";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			phy_rst_pinmux: phy_rst {
+				qti_laguna1_rst {
+					pins = "GPIO_28";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qti_8x8x_rst {
+					pins = "GPIO_18";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+		};
+
+		qusb2_phy_0: qusb2@7B000 {
+			status = "okay";
+		};
+
+		usb3_1: usb2@8af8800 {
+			status = "okay";
+		};
+
+		pcie2_phy: phy@f4000 {
+			status = "okay";
+		};
+
+		pcie2: pcie@50000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie2_pinmux>;
+			perst_gpio = <&tlmm 31 GPIO_ACTIVE_HIGH>;
+			status = "okay";
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&mdio_pinmux>;
+			status = "okay";
+
+			phy1: phy@12 {
+				phy-reset-gpio = <&tlmm 28 0>;
+				reg = <12>;
+				phy_id = <QCA81xx_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <1>;
+				uniphy_type = <0>;
+				xgmac;
+			};
+
+			phy2: ethernet-switch@1 {
+				phy-reset-gpio = <&tlmm 18 0>;
+				dev-mode = <0x1>;
+				reg = <1>;
+				phy_id = <QCA8x8x_SWITCH_TYPE>;
+				id = <3>;
+				uniphy_id = <2>;
+				uniphy_type = <0>;
+				max_speed = <2500>;
+				force-speed;
+				xgmac;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port0: port@0 {
+						reg = <0>;
+						label = "cpu";
+						phy-mode = "sgmii-2500";
+						fixed-link {
+							speed = <2500>;
+							full-duplex;
+						};
+					};
+
+					port1: port@1 {
+						reg = <1>;
+						label = "lan";
+					};
+
+					port2: port@2 {
+						reg = <2>;
+						label = "lan";
+					};
+
+					port3: port@3 {
+						reg = <3>;
+						label = "lan";
+					};
+
+					port4: port@4 {
+						reg = <4>;
+						label = "lan";
+					};
+				};
+			};
+		};
+
+		ethernet: nss-switch {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle1 = <&phy1>;
+			phy-handle2 = <&phy2>;
+			status = "okay";
+		};
+	};
+};

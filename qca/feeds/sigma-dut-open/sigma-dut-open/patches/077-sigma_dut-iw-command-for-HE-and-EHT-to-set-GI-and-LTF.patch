@@ -1,0 +1,83 @@
+From ca64c43a56523922139a630fbbb5f8a04a64c0bc Mon Sep 17 00:00:00 2001
+From: Pavithra Ganesan <quic_pavigane@quicinc.com>
+Date: Thu, 1 Feb 2024 11:13:11 +0530
+Subject: [PATCH] sigma_dut iw command for HE and EHT to set GI and LTF
+
+Fix : In HE, there is no link is created while configuring AP.
+whereas in EHT, a link will be created while configuring AP.
+
+Therefore sigma_dut have to send two different commands to set GI and
+LTF values in HE and EHT respectively.
+
+So to fix "command failed: Invalid argument (-22)" error " to set
+bitrates of GI/LTF in HE, two separate iw set bitrate commands are
+introduced for HE and EHT.
+
+Signed-off-by: Pavithra Ganesan <quic_pavigane@quicinc.com>
+---
+ ap.c | 43 +++++++++++++++++++++++++++++++++----------
+ 1 file changed, 33 insertions(+), 10 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index d903024..d89fee7 100644
+--- a/ap.c
++++ b/ap.c
+@@ -16793,22 +16793,45 @@ static enum sigma_cmd_result mac80211_he_gi(struct sigma_dut *dut,
+ 		if (he_ltf < 0)
+ 			return ERROR_SEND_STATUS;
+ 
+-		if (val) {
++		if (dut->program == PROGRAM_EHT) {
++			if (val) {
++				ret = run_system_wrapper(
++					dut,
++					"iw %s set bitrates -l %d %s-gi-%s %s %s-ltf-%s %u",
++					ifname, link_id, program, mode, val, program, mode,
++					he_ltf);
++			} else {
++				ret = run_system_wrapper(
++					dut,
++					"iw %s set bitrates -l %d %s-ltf-%s %u",
++					ifname, link_id, program, mode, he_ltf);
++			}
++		} else {
++			if (val) {
++				ret = run_system_wrapper(
++					dut,
++					"iw %s set bitrates %s-gi-%s %s %s-ltf-%s %u",
++					ifname, program, mode, val, program, mode,
++					he_ltf);
++			} else {
++				ret = run_system_wrapper(
++					dut,
++					"iw %s set bitrates %s-ltf-%s %u",
++					ifname, program, mode, he_ltf);
++			}
++		}
++	} else if (val) {
++		if (dut->program == PROGRAM_EHT) {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates -l %d %s-gi-%s %s %s-ltf-%s %u",
+-				ifname, link_id, program, mode, val, program, mode,
+-				he_ltf);
++				"iw %s set bitrates -l %d %s-gi-%s %s",
++				ifname, link_id, program, mode, val);
+ 		} else {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates -l %d %s-ltf-%s %u",
+-				ifname, program, mode, he_ltf);
++				"iw %s set bitrates %s-gi-%s %s",
++				ifname, program, mode, val);
+ 		}
+-	} else if (val) {
+-		ret = run_system_wrapper(dut,
+-					 "iw %s set bitrates -l %d %s-gi-%s %s",
+-					 ifname, program, mode, val);
+ 	}
+ 
+ 	if ((dut->program == PROGRAM_EHT) && (dut->nontrigger_txbf == VALUE_ENABLED))
+-- 
+2.34.1
+

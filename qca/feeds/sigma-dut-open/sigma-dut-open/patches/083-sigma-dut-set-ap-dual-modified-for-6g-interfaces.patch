@@ -1,0 +1,53 @@
+From d6292bac50436ae7cd479abf7de9916189363bde Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Thu, 9 May 2024 16:02:52 +0530
+Subject: [PATCH] sigma-dut: Modify ap_is_dual parameter check to include 6G
+ interfaces
+
+Currently ap_is_dual variable in dut structure is set only when both
+2G and 5G interfaces are getting configured. But in WPA3 program,
+there is a testplan that requires both 5G and 6G  to be brought up.
+Since ap_is_dual is set for 2G and 5G it is leading to issue with
+interface being brought up due to config issues.
+
+Hence made a change to set ap_is_dual whenever any 2 of 2G, 5G and 6G
+interfaces are getting configured.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 13 +++++--------
+ 1 file changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index cbbbe11..f7d209d 100644
+--- a/ap.c
++++ b/ap.c
+@@ -1211,20 +1211,17 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 		dut->ap_interface_6g = 1;
+ 	}
+ 
+-	if (dut->ap_interface_5g && dut->ap_interface_2g)
++	if ((dut->ap_interface_5g && dut->ap_interface_2g) ||
++	    (dut->ap_interface_5g && dut->ap_interface_6g) ||
++	    (dut->ap_interface_6g && dut->ap_interface_2g))
+ 		dut->ap_is_dual = 1;
+ 
+ 	if (dut->program == PROGRAM_EHT) {
+ 		dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		dut->ap_beacon_prot = 1;
+-		if (dut->ap_interface_5g && dut->ap_interface_6g) {
+-			dut->ap_is_dual = 1;
++		if ((dut->ap_interface_5g || dut->ap_interface_2g) &&
++		    dut->ap_interface_6g)
+ 			dut->ap_pmf = AP_PMF_REQUIRED;
+-		}
+-		if (dut->ap_interface_2g && dut->ap_interface_6g) {
+-			dut->ap_is_dual = 1;
+-			dut->ap_pmf = AP_PMF_REQUIRED;
+-		}
+ 	}
+ 
+ 	if (dut->ap_is_dual && iface_check) {
+-- 
+2.34.1
+

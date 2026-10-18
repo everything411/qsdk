@@ -1,0 +1,78 @@
+From 796a0cff8b9637283be7b4da67a337f92f54f977 Mon Sep 17 00:00:00 2001
+From: Evangeline E S <ees@qti.qualcomm.com>
+Date: Tue, 23 Sep 2025 11:18:01 +0530
+Subject: [PATCH] serial: msm-geni: Add NULL check for priv pointer
+
+Added a NULL check for the `priv` pointer in
+qcom_geni_serial_poll_bit() to prevent potential
+dereferencing of an invalid pointer.
+
+The function now returns early with an error log
+if `priv` or `priv->base` is NULL, preventing
+crashes during serial polling.
+
+Change-Id: I7ec1293825d3e89bff556c10715b29dc2b4be452
+Signed-off-by: Evangeline E S <ees@qti.qualcomm.com>
+---
+ drivers/serial/serial_msm_geni.c | 35 ++++++++++++++++++++------------
+ 1 file changed, 22 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/serial/serial_msm_geni.c b/drivers/serial/serial_msm_geni.c
+index b49e953dc7e..2767ab21a14 100644
+--- a/drivers/serial/serial_msm_geni.c
++++ b/drivers/serial/serial_msm_geni.c
+@@ -245,7 +245,7 @@ static int msm_serial_setbrg(struct udevice *dev, int baud)
+ static bool qcom_geni_serial_poll_bit(const struct udevice *dev, int offset,
+ 				      int field, bool set)
+ {
+-	u32 reg;
++	u32 reg = 0;
+ 	struct msm_serial_data *priv = dev_get_priv(dev);
+ 	unsigned int baud;
+ 	unsigned int tx_fifo_depth;
+@@ -255,21 +255,30 @@ static bool qcom_geni_serial_poll_bit(const struct udevice *dev, int offset,
+ 
+ 	baud = 115200;
+ 
+-	if (priv) {
+-		baud = priv->baud;
+-		if (!baud)
+-			baud = 115200;
+-		tx_fifo_depth = geni_se_get_tx_fifo_depth(dev);
+-		tx_fifo_width = geni_se_get_tx_fifo_width(priv->base);
+-		fifo_bits = tx_fifo_depth * tx_fifo_width;
+-		/*
+-		 * Total polling iterations based on FIFO worth of bytes to be
+-		 * sent at current baud. Add a little fluff to the wait.
+-		 */
+-		timeout_us = ((fifo_bits * USEC_PER_SEC) / baud) + 500;
++	if (!priv) {
++		pr_err("%s: Invalid private pointer\n", __func__);
++		return false;
+ 	}
+ 
++	if (!priv->base) {
++		pr_err("%s: Invalid base address\n", __func__);
++		return false;
++	}
++
++	baud = priv->baud;
++	if (!baud)
++		baud = 115200;
++	tx_fifo_depth = geni_se_get_tx_fifo_depth(dev);
++	tx_fifo_width = geni_se_get_tx_fifo_width(priv->base);
++	fifo_bits = tx_fifo_depth * tx_fifo_width;
++	/*
++	 * Total polling iterations based on FIFO worth of bytes to be
++	 * sent at current baud. Add a little fluff to the wait.
++	 */
++	timeout_us = ((fifo_bits * USEC_PER_SEC) / baud) + 500;
++
+ 	timeout_us = DIV_ROUND_UP(timeout_us, 10) * 10;
++
+ 	while (timeout_us) {
+ 		reg = readl(priv->base + offset);
+ 		if ((bool)(reg & field) == set)
+-- 
+2.34.1
+

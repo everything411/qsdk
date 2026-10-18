@@ -1,0 +1,63 @@
+From ec66a81fe50b585af651b11c18e099e78e7cdeb8 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Fri, 30 May 2025 10:37:07 +0530
+Subject: [PATCH] phy: Enable USB PHY config for build support
+
+Change-Id: I7ea730c4c8c474fb52ddde41e2d27f35c0d1ba24
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/phy/qcom/Kconfig  | 28 ++++++++++++++++++++++++++++
+ drivers/phy/qcom/Makefile |  4 ++++
+ 2 files changed, 32 insertions(+)
+
+diff --git a/drivers/phy/qcom/Kconfig b/drivers/phy/qcom/Kconfig
+index d1b89e0166f..36f86772ccd 100644
+--- a/drivers/phy/qcom/Kconfig
++++ b/drivers/phy/qcom/Kconfig
+@@ -69,3 +69,31 @@ config PHY_QCOM_UNIPHY_PCIE
+ 	help
+ 	 This driver uses the generic PHY framework and will interact with
+ 	 the DWC3 controller.
++
++config PHY_QCOM_USB_HS_M31
++	tristate "Qualcomm USB High-Speed M31 PHY driver"
++	depends on PHY && ARCH_IPQ
++	help
++	  Enable this to support the High-Speed USB transceiver on various
++	  Qualcomm IPQ chipsets.
++
++config PHY_QCOM_UNI_SSPHY
++	tristate "Qualcomm USB Super-Speed UNIPHY driver"
++	depends on PHY && ARCH_IPQ
++	help
++	  Enable this to support the Super-Speed USB transceiver on various
++	  Qualcomm IPQ chipsets.
++
++config PHY_QCOM_QUSB2
++	tristate "Qualcomm QUSB2 High-Speed PHY driver"
++	depends on PHY && ARCH_IPQ
++	help
++	  Enable this to support the High-Speed USB transceiver on various
++	  Qualcomm IPQ chipsets.
++
++config PHY_QCOM_QMP_USB3
++	tristate "Qualcomm QMP USB3 Super-Speed driver"
++	depends on PHY && ARCH_IPQ
++	help
++	  Enable this to support the Super-Speed USB transceiver on various
++	  Qualcomm IPQ chipsets.
+diff --git a/drivers/phy/qcom/Makefile b/drivers/phy/qcom/Makefile
+index 340b79399d3..ee9912f57dc 100644
+--- a/drivers/phy/qcom/Makefile
++++ b/drivers/phy/qcom/Makefile
+@@ -8,3 +8,7 @@ obj-$(CONFIG_PHY_QCOM_SNPS_EUSB2) += phy-qcom-snps-eusb2.o
+ obj-$(CONFIG_PHY_QCOM_USB_HS_28NM) += phy-qcom-usb-hs-28nm.o
+ obj-$(CONFIG_PHY_QCOM_USB_SS) += phy-qcom-usb-ss.o
+ obj-$(CONFIG_PHY_QCOM_UNIPHY_PCIE) += phy-qca-pcie-uniphy.o
++obj-$(CONFIG_PHY_QCOM_USB_HS_M31) += phy-qcom-usb-hs-m31.o
++obj-$(CONFIG_PHY_QCOM_UNI_SSPHY) += phy-qcom-uni-ssphy.o
++obj-$(CONFIG_PHY_QCOM_QUSB2) += phy-qcom-qusb2.o
++obj-$(CONFIG_PHY_QCOM_QMP_USB3) += phy-qcom-qmp-usb3.o
+-- 
+2.34.1
+

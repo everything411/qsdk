@@ -1,0 +1,29 @@
+#!/bin/sh  /etc/rc.common
+
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: ISC
+#
+
+START=99
+PPE_MCAST_MGR_LOG="/tmp/ppe_mcast_mgr.log"
+PPE_MCAST_MGR_EXE="/usr/sbin/ppe_mcast_mgr"
+
+start() {
+	if [ -x "$PPE_MCAST_MGR_EXE" ]; then
+		if  pgrep -x "${PPE_MCAST_MGR_EXE}"  >> /dev/null
+		then
+			kill -9 $(pgrep "${PPE_MCAST_MGR_EXE}") &> /dev/null
+		fi
+
+		echo "Starting PPE multicast manager" >> /dev/console
+
+		[ -e "$PPE_MCAST_MGR_LOG" ] && rm -rf ${PPE_MCAST_MGR_LOG}
+
+		exec ${PPE_MCAST_MGR_EXE} >> ${PPE_MCAST_MGR_LOG} 2>&1 &
+	fi
+}
+
+stop() {
+	echo "Stopping PPE multicast manager" >> /dev/console
+	kill -9 $(pgrep "${PPE_MCAST_MGR_EXE}") &> /dev/null
+}

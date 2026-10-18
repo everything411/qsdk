@@ -1,0 +1,110 @@
+From 5397243812c925f2c3369843788e5b82735a489c Mon Sep 17 00:00:00 2001
+From: Poovendhan Selvaraj <poovendh@qti.qualcomm.com>
+Date: Mon, 24 Nov 2025 13:30:41 +0530
+Subject: [PATCH] fs: ext4: Add encryption support for filesystem write
+
+- Encryption DISABLED for metadata (superblock, inodes, bitmaps, directories) and during read
+- Encryption ENABLED for file data with DUN (Data Unit Number) tracking
+
+This is typically used in ipq boards with ICE for secure
+crashdump collection.
+
+Change-Id: Ieab5f02dae9b64456c96958afab3eab5e9852daf
+Signed-off-by: Poovendhan Selvaraj <poovendh@qti.qualcomm.com>
+---
+ fs/Makefile          |  2 ++
+ fs/ext4/Kconfig      | 16 ++++++++++++++++
+ fs/ext4/ext4_write.c | 20 ++++++++++++++++++++
+ 3 files changed, 38 insertions(+)
+
+diff --git a/fs/Makefile b/fs/Makefile
+index 1c2ff180bda..d414752ee5d 100644
+--- a/fs/Makefile
++++ b/fs/Makefile
+@@ -25,5 +25,7 @@ obj-$(CONFIG_CMD_UBIFS) += ubifs/
+ obj-$(CONFIG_CMD_ZFS) += zfs/
+ obj-$(CONFIG_FS_SQUASHFS) += squashfs/
+ obj-$(CONFIG_FS_EROFS) += erofs/
++obj-$(CONFIG_FS_CRASHDUMP_ENCRYPTED) += fs_crashdump_encrypted.o 
+ endif
+ obj-y += fs_internal.o
++
+diff --git a/fs/ext4/Kconfig b/fs/ext4/Kconfig
+index 1a913d2b6d2..2bd0b995ee3 100644
+--- a/fs/ext4/Kconfig
++++ b/fs/ext4/Kconfig
+@@ -11,3 +11,19 @@ config EXT4_WRITE
+ 	help
+ 	  This provides support for creating and writing new files to an
+ 	  existing ext4 filesystem partition.
++
++config FS_CRASHDUMP_ENCRYPTED
++	bool "Enable crashdump filesystem hardware encryption support"
++	depends on EXT4_WRITE
++	help
++	  This provides support for hardware-accelerated encryption during
++	  crashdump file writes. When enabled, it automatically separates
++	  file data (encrypted) from filesystem metadata (unencrypted) using
++	  ICE (Inline Crypto Engine) hardware.
++	  
++	  The encryption system tracks Data Unit Numbers (DUN) for sector-level
++	  encryption and provides hooks in ext4_write.c to enable/disable
++	  encryption at the appropriate times.
++	  
++	  This is typically used in embedded systems with hardware crypto
++	  acceleration for secure crashdump collection.
+diff --git a/fs/ext4/ext4_write.c b/fs/ext4/ext4_write.c
+index d109ed6e90d..748692732e8 100644
+--- a/fs/ext4/ext4_write.c
++++ b/fs/ext4/ext4_write.c
+@@ -29,6 +29,10 @@
+ #include <div64.h>
+ #include "ext4_common.h"
+ 
++#ifdef CONFIG_FS_CRASHDUMP_ENCRYPTED
++#include <fs_crashdump_encrypted.h>
++#endif
++
+ static inline void ext4fs_sb_free_inodes_inc(struct ext2_sblock *sb)
+ {
+ 	sb->free_inodes = cpu_to_le32(le32_to_cpu(sb->free_inodes) + 1);
+@@ -786,10 +790,18 @@ static int ext4fs_write_file(struct ext2_inode *file_inode,
+ 		long int blknr;
+ 		int blockend = fs->blksz;
+ 		int skipfirst = 0;
++#ifdef CONFIG_FS_CRASHDUMP_ENCRYPTED
++	/* Notify that we're reading file data (disable encryption) */
++	fs_crashdump_encrypted_notify_file_data(false, delayed_extent);
++#endif
+ 		blknr = read_allocated_block(file_inode, i, NULL);
+ 		if (blknr <= 0)
+ 			return -1;
+ 
++#ifdef CONFIG_FS_CRASHDUMP_ENCRYPTED
++	/* Notify that we're writing file data (enable encryption) */
++	fs_crashdump_encrypted_notify_file_data(true, delayed_extent);
++#endif
+ 		blknr = blknr << log2_fs_blocksize;
+ 
+ 		if (blknr) {
+@@ -831,9 +843,17 @@ static int ext4fs_write_file(struct ext2_inode *file_inode,
+ 	}
+ 	if (previous_block_number != -1) {
+ 		/* spill */
++#ifdef CONFIG_FS_CRASHDUMP_ENCRYPTED
++		/* Notify that we're writing file data (enable encryption) */
++		fs_crashdump_encrypted_notify_file_data(true, delayed_extent);
++#endif
+ 		put_ext4((uint64_t) ((uint64_t)delayed_start << log2blksz),
+ 			 delayed_buf, (uint32_t) delayed_extent);
+ 		previous_block_number = -1;
++#ifdef CONFIG_FS_CRASHDUMP_ENCRYPTED
++		/* Notify that we're completed writing file data (disable encryption) */
++		fs_crashdump_encrypted_notify_file_data(false, delayed_extent);
++#endif
+ 	}
+ 
+ 	return len;
+-- 
+2.34.1
+

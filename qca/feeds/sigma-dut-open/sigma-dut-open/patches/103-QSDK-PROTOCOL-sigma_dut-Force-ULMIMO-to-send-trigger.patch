@@ -1,0 +1,50 @@
+From b13659c6082579f31ae72990588caa78f27273f8 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Tue, 18 Feb 2025 15:09:56 +0530
+Subject: [PATCH] sigma_dut: Force ULMIMO to send triggers in EHT
+
+APUT is sending most of the basic triggers in unicast instead of
+broadcast while running UL MU MIMO in 5G 160MHz BW test for EHT
+testcases. For a similiar issue in HE UL MUMIMO testcases, we force
+ULMIMO to send triggers to achieve the desired result. Hence, to fix
+the issue, porting the commands from HE UL MIMO to EHT UL MIMO as well.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -12232,6 +12232,8 @@ hapd_started:
+ 			    && (dut->ap_he_mimo == MIMO_UL)) {
+ 				if (dut->ap_punct_bitmap)
+ 					fwtest_linkid_cmd_wrapper(dut, "-m 10 -v 0 86 1", ifname, i);
++				/* Enable MU MIMO for 2x2 */
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 641 1", ifname, i);
+ 				/* Disable UL TID de-register feature for UL MIMO*/
+ 				fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 330 0", ifname, i);
+ 				continue;
+@@ -18624,6 +18626,22 @@ static void mac80211_set_trigger_type_0_
+ 		/* To set UL trigger duration to 1908 (us) */
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 63 1908", ifname, link_id);
+ 	}
++
++	if (dut->ap_he_mimo == MIMO_UL) {
++		/* Forcing UL MUMIMO trigger */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 43 5", ifname, link_id);
++		/* Faking uplink qdepth */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 220 1131520", ifname, link_id);
++		/* Setting to enable UL MUMIMO for 2.4G - harmless if sent for 5G */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 332 0", ifname, link_id);
++
++		/* Below 2 commands - Disable FW optimizations in UL MUMIMO added for
++		 * improving single pair TCP UL traffic for large number of clients
++		 * and force UL MUMIMO.
++		 */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 430 0", ifname, link_id);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 431 0", ifname, link_id);
++	}
+ }
+ 
+ static void mac80211_set_trigger_type_4(struct sigma_dut *dut, const char *ifname)

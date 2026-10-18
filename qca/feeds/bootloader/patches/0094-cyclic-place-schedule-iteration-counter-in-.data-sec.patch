@@ -1,0 +1,32 @@
+From 9a085da80689eeffe2d67000120eb9a203ca5b85 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Wed, 1 Apr 2026 23:12:51 +0530
+Subject: [PATCH] cyclic: place schedule iteration counter in .data section
+
+Move the static iteration counter used by schedule() explicitly into the
+.data section. This ensures the variable is located in writable memory
+and avoids potential placement in sections with stricter alignment or
+access constraints on some platforms.
+
+Change-Id: Ibd2532229cfdb051618be19a234afef55f434b52
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ common/cyclic.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/common/cyclic.c b/common/cyclic.c
+index 7a0191e4dca..a7a7e0aff67 100644
+--- a/common/cyclic.c
++++ b/common/cyclic.c
+@@ -90,7 +90,7 @@ static void cyclic_run(void)
+ 
+ void schedule(void)
+ {
+-	static uint32_t iter;
++	static uint32_t iter __section(".data");
+ 	/*
+ 	 * schedule() function takes ~1 milli seconds so to improve the
+ 	 * boot-time, the schedule() function is restricted to execute
+-- 
+2.34.1
+

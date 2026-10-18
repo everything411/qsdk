@@ -1,0 +1,84 @@
+{
+  "rules": [
+    {
+      "tun_rps": {
+        "cmd": "add_rule",
+        "is_ipv6": false,
+        "sip": "172.168.0.1",
+        "dip": "172.168.0.2",
+        "proto": 47,
+        "sport": 0,
+        "dport": 0,
+        "hdr_len_type": "eth",
+        "hdr_len": 25,
+        "usr_data1_en": true,
+        "usr_data1_offset": 10,
+        "usr_data1_val": 5,
+        "usr_data1_mask": "0xffff",
+        "usr_data2_en": false,
+        "usr_data3_en": false,
+        "inner_pkt_type": "eth",
+        "wan_if": "eth0"
+      }
+    },
+    {
+      "tun_rps": {
+        "cmd": "add_rule",
+        "is_ipv6": true,
+        "sip": "2001:db8::1",
+        "dip": "2001:db8::2",
+        "proto": 41,
+        "sport": 1234,
+        "dport": 5678,
+        "hdr_len_type": "ip",
+        "hdr_len": 40,
+        "usr_data1_en": false,
+        "usr_data2_en": true,
+        "usr_data2_offset": 20,
+        "usr_data2_val": 100,
+        "usr_data2_mask": "0xffff",
+        "usr_data3_en": false,
+        "inner_pkt_type": "ip",
+        "inner_ip_proto_offset": 6,
+        "inner_ipv4_proto_val": 6,
+        "inner_ipv4_proto_mask": "0xff",
+        "inner_ipv6_proto_val": 59,
+        "inner_ipv6_proto_mask": "0xff",
+        "wan_if": "eth0"
+      }
+    },
+    {
+      "tun_rps": {
+        "cmd": "del_rule",
+        "is_ipv6": false,
+        "sip": "172.168.0.1",
+        "dip": "172.168.0.2",
+        "proto": 47,
+        "sport": 0,
+        "dport": 0,
+        "usr_data1_en": true,
+        "usr_data1_offset": 10,
+        "usr_data1_val": 5,
+        "usr_data1_mask": "0xffff"
+      }
+    },
+    {
+      "tun_rps": {
+        "cmd": "add_rule",
+        "is_ipv6": false,
+        "sip": "192.168.1.1",
+        "dip": "192.168.1.2",
+        "proto": 47,
+        "sport": 0,
+        "dport": 0,
+        "hdr_len_type": "eth",
+        "hdr_len": 30,
+        "usr_data1_en": false,
+        "usr_data2_en": false,
+        "usr_data3_en": false,
+        "inner_pkt_type": "eth",
+        "wan_if": "eth0"
+      }
+    }
+  ]
+}

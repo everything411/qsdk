@@ -1,0 +1,69 @@
+From 81bfded7d9f02abb7367e219107a4bf5c662cee9 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Thu, 15 Feb 2024 11:26:54 +0530
+Subject: [PATCH] sigma_dut: Enable MLO and beacon protection config for WPA3
+
+Wifi interface is getting deleted when AP tries to bringup
+the vaps in WPA3. MLO support is not enabled for WPA3 cases
+in config file and hence it resulted in vap bringup failure.
+
+Becaon protection and OWE test cases for WPA3 program failed
+due to the absence of beacon_prot flag and owe key management.
+
+Enabled the required flags for MLO support, beacon protection
+and OWE to update properly in the config file.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -2860,6 +2860,9 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	if (dut->ap_mode == AP_11be)
++		dut->ap_beacon_prot = 1;
++
+ 	val = get_param(cmd, "MBSSID_MU");
+ 	if (val) {
+ 		if (strcasecmp(val, "enable") == 0) {
+@@ -10166,6 +10169,7 @@ write_conf:
+ 			{ AKM_FILS_SHA384, "FILS-SHA384" },
+ 			{ AKM_FT_FILS_SHA256, "FT-FILS-SHA256" },
+ 			{ AKM_FT_FILS_SHA384, "FT-FILS-SHA384" },
++			{ AKM_OWE, "OWE" },
+ 			{ AKM_SAE_EXT_KEY, "SAE-EXT-KEY" },
+ 			{ AKM_FT_SAE_EXT_KEY, "FT-SAE-EXT-KEY" },
+ 		};
+@@ -10974,7 +10978,7 @@ skip_vht_parameters_set:
+ 		}
+ 	}
+ 
+-	if (dut->program == PROGRAM_EHT)
++	if (dut->program == PROGRAM_EHT || dut->ap_mode == AP_11be)
+ 		fprintf(f, "mld_ap=1\n");
+ 
+ 	if (dut->ap_key_mgmt == AP_WPA2_OWE && dut->ap_tag_ssid[0][0] &&
+@@ -12619,6 +12623,9 @@ static enum sigma_cmd_result cmd_ap_rese
+ 		dut->switch_he_eht = 0;
+ 	}
+ 
++	if (dut->ap_mode == AP_11be)
++		dut->ap_beacon_prot = 1;
++
+ 	dut->dpp_conf_id = -1;
+ 	free(dut->ap_dpp_conf_addr);
+ 	dut->ap_dpp_conf_addr = NULL;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -397,6 +397,7 @@ enum akm_suite_values {
+ 	AKM_FILS_SHA384 = 15,
+ 	AKM_FT_FILS_SHA256 = 16,
+ 	AKM_FT_FILS_SHA384 = 17,
++	AKM_OWE = 18,
+ 	AKM_SAE_EXT_KEY = 24,
+ 	AKM_FT_SAE_EXT_KEY = 25,
+ 

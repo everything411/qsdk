@@ -1,0 +1,58 @@
+From faa119928d47bf8d7d3d50a52b08be41b54104da Mon Sep 17 00:00:00 2001
+From: Sreeramya Soratkal <ssramya@qti.qualcomm.com>
+Date: Mon, 29 Sep 2025 10:19:15 +0530
+Subject: [PATCH] QSDK:DP: ath12k: Clear QoS stats on dp_stats reset
+
+Clear MLD QoS stats and each link peer's qos_stats when resetting
+dp_stats via debugfs. This is required to support SDWF telemetry
+stats reset.
+
+Change-Id: I1e4aaa92905d965485907c3e6b8d3aeaa44abb6e
+Signed-off-by: Sreeramya Soratkal <ssramya@qti.qualcomm.com>
+
+diff --git a/drivers/net/wireless/ath/ath12k/debugfs.c b/drivers/net/wireless/ath/ath12k/debugfs.c
+index 351408ba..da5ee225 100644
+--- a/drivers/net/wireless/ath/ath12k/debugfs.c
++++ b/drivers/net/wireless/ath/ath12k/debugfs.c
+@@ -2217,6 +2217,26 @@ static const struct file_operations fops_extd_rx_stats = {
+ 	.open = simple_open,
+ };
+ 
++static void ath12k_dp_peer_clear_qos_stats(struct ath12k_dp_peer *dp_peer)
++{
++	struct ath12k_dp_link_peer *link_peer;
++	int link_id;
++
++	/* Clear MLD QOS stats */
++	memset(&dp_peer->mld_qos_stats, 0,
++	       sizeof(dp_peer->mld_qos_stats));
++
++	rcu_read_lock();
++	/* Clear QOS stats for each link peer */
++	for (link_id = 0; link_id < ATH12K_NUM_MAX_LINKS; link_id++) {
++		link_peer = rcu_dereference(dp_peer->link_peers[link_id]);
++		if (link_peer && link_peer->peer_stats.qos_stats)
++			memset(link_peer->peer_stats.qos_stats, 0,
++			       sizeof(*link_peer->peer_stats.qos_stats));
++	}
++	rcu_read_unlock();
++}
++
+ static ssize_t ath12k_write_enable_dp_stats(struct file *file,
+ 					    const char __user *ubuf,
+ 					    size_t count, loff_t *ppos)
+@@ -2241,8 +2261,10 @@ static ssize_t ath12k_write_enable_dp_stats(struct file *file,
+ 	if (strstr(buf, "reset")) {
+ 		spin_lock_bh(&ar->dp.dp_hw->peer_lock);
+ 		list_for_each_entry(dp_peer, &ar->dp.dp_hw->peers, list) {
+-			if (dp_peer)
++			if (dp_peer) {
+ 				memset(&dp_peer->stats, 0, sizeof(dp_peer->stats));
++				ath12k_dp_peer_clear_qos_stats(dp_peer);
++			}
+ 		}
+ 		spin_unlock_bh(&ar->dp.dp_hw->peer_lock);
+ 		return count;
+-- 
+2.34.1
+

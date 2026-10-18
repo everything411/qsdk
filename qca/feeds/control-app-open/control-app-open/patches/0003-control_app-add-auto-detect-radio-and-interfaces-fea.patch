@@ -1,0 +1,369 @@
+From c40592d2c05b92cd2b36e8c6578b63b122f5f8bd Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Sat, 12 Aug 2023 15:52:18 +0530
+Subject: [PATCH] control_app: add auto detect radio and interfaces feature
+
+Currently, the app uses hard coded values for the radio and interface
+assignment. This is not scalable approach.
+
+Add logic to detect the radios automatically and then set interfaces
+accordingly. Also, since currently MLO feature is not supported, add
+change to skip MLO supported radio(s) as well.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ main.c                |   9 +++
+ utils.c               |  97 ++++++++++++++++++++++++++++++
+ utils.h               |  17 +++++-
+ vendor_specific.h     |   1 +
+ vendor_specific_dut.c | 133 ++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 256 insertions(+), 1 deletion(-)
+
+diff --git a/main.c b/main.c
+index cdc7aa9d489c..ef0b774dc4c5 100755
+--- a/main.c
++++ b/main.c
+@@ -242,13 +242,22 @@ static int parse_parameters(int argc, char *argv[]) {
+     if (ifs_configured == 0) {
+ #ifdef DEFAULT_APP_INTERFACES_PARAMS
+ #ifdef _OPENWRT_
++        if (detect_radios(buf, sizeof(buf))) {
++            set_auto_detect_interface();
++            printf("\nDetected interface parameters %s.\n", buf);
++            goto set_interface;
++        }
++
+         if (detect_third_radio())
+             snprintf(buf, sizeof(buf), "%s", DEFAULT_APP_6E_INTERFACES_PARAMS);
+         else
+ #endif
+             snprintf(buf, sizeof(buf), "%s", DEFAULT_APP_INTERFACES_PARAMS);
+         printf("\nUse default interface parameters %s.\n", buf);
++
++set_interface:
+         set_wireless_interface(buf);
++
+ #else
+         usage();
+         printf("\nWe need to specify the interfaces with -i.\n");
+diff --git a/utils.c b/utils.c
+index 3c0f359781fb..aeb0243470a4 100644
+--- a/utils.c
++++ b/utils.c
+@@ -49,9 +49,11 @@ int stdout_level = LOG_LEVEL_DEBUG;
+ int syslog_level = LOG_LEVEL_INFO;
+ 
+ /* multiple VAPs */
++int auto_detect_interface = 0;
+ int interface_count = 0;
+ int configured_interface_count = 0;
+ struct interface_info interfaces[16];
++char bands_phy[BAND_LEN][PHY_LEN];
+ int band_mbssid_cnt[16];
+ struct interface_info* default_interface;
+ static struct loopback_info loopback = {};
+@@ -1762,3 +1764,98 @@ int file_exists(const char *fname)
+ 	struct stat s;
+ 	return stat(fname, &s) == 0;
+ }
++
++bool is_5ghz_freq(int freq)
++{
++    if ((freq >= 5180 && freq < 5600) ||
++        (freq >= 5600 && freq < 5825))
++        return true;
++
++    return false;
++}
++
++bool is_6ghz_freq(int freq)
++{
++    if (freq < 5935 || freq > 7115)
++        return false;
++
++    return true;
++}
++
++void set_auto_detect_interface()
++{
++    auto_detect_interface = 1;
++}
++
++int get_auto_detect_interface()
++{
++    return auto_detect_interface;
++}
++
++void reset_radio_band()
++{
++    int i;
++
++    for (i = 0; i < BAND_MAX; i++)
++        bands_phy[i][0] = '\0';
++}
++
++bool set_radio_band(char *phy, char *band)
++{
++    int idx;
++
++    if (!band || !phy)
++        return -1;
++
++    switch (band[0] - '0') {
++    case 2: idx = BAND_24GHZ;
++        break;
++    case 5: idx = BAND_5GHZ;
++        break;
++    case 6: idx = BAND_6GHZ;
++        break;
++    default:
++        return -1;
++    }
++
++    if (strlen(bands_phy[idx]) != 0) {
++        printf("\t Already %s is with %s MHz band. We don't support split mac.\n",
++               bands_phy[idx], band);
++        return -1;
++    }
++
++    strlcpy(bands_phy[idx], phy, PHY_LEN);
++
++    return 0;
++}
++
++void interfaces_init_auto()
++{
++#if defined(_OPENWRT_) && !defined(_WTS_OPENWRT_)
++    char buffer[BUFFER_LEN];
++    char mac_addr[S_BUFFER_LEN];
++    int i;
++
++    memset(buffer, 0, sizeof(buffer));
++
++    for (i = 0; i < interface_count; i++) {
++        if (i % 4 != 0) {
++            snprintf(buffer, sizeof(buffer),
++                     "iw phy %s interface add %s type managed >/dev/null 2>/dev/null",
++                     bands_phy[interfaces[i].band], interfaces[i].ifname);
++            system(buffer);
++        }
++
++        if (i % 4 == 0) {
++            memset(mac_addr, 0, sizeof(mac_addr));
++            get_mac_address(mac_addr, sizeof(mac_addr), interfaces[i].ifname);
++        }
++
++        control_interface(interfaces[i].ifname, "down");
++        mac_addr[16] = (char)((i % 4) + 48);
++        set_mac_address(interfaces[i].ifname, mac_addr);
++    }
++
++    sleep(1);
++#endif
++}
+diff --git a/utils.h b/utils.h
+index f7d90c732916..6de18ef49ade 100644
+--- a/utils.h
++++ b/utils.h
+@@ -34,6 +34,11 @@
+ #endif
+ #define UPLOAD_TC_APP_LOG 1
+ 
++#define PHY_LEN          10
++#define INTERFACE_LEN    7
++#define BAND_LEN         5
++#define INTERFACE_COUNTS 3
++
+ /* Log */
+ enum {
+     LOG_LEVEL_DEBUG_VERBOSE = 0,    
+@@ -47,7 +52,10 @@ enum {
+ enum {
+     BAND_24GHZ = 0,
+     BAND_5GHZ = 1,
+-    BAND_6GHZ = 2
++    BAND_6GHZ = 2,
++
++    /* keep last */
++    BAND_MAX,
+ };
+ 
+ enum {
+@@ -228,4 +236,11 @@ int is_ht40plus_chan(int chan);
+ int is_ht40minus_chan(int chan);
+ int http_file_post(char *host, int port, char *path, char *file_name);
+ int file_exists(const char *fname);
++bool is_5ghz_freq(int freq);
++bool is_6ghz_freq(int freq);
++void set_auto_detect_interface();
++int get_auto_detect_interface();
++void reset_radio_band();
++bool set_radio_band(char *phy, char *band);
++void interfaces_init_auto();
+ #endif
+diff --git a/vendor_specific.h b/vendor_specific.h
+index e1dd96129c41..323c2370ce00 100644
+--- a/vendor_specific.h
++++ b/vendor_specific.h
+@@ -162,6 +162,7 @@ void set_phy_mode();
+ #ifdef _OPENWRT_
+ void openwrt_apply_radio_config(void);
+ int detect_third_radio(void);
++int detect_radios(char *buf, int len);
+ #endif
+ 
+ void create_sta_interface();
+diff --git a/vendor_specific_dut.c b/vendor_specific_dut.c
+index 298aca0ed2d6..8c59c295c5b5 100644
+--- a/vendor_specific_dut.c
++++ b/vendor_specific_dut.c
+@@ -44,6 +44,136 @@ int detect_third_radio() {
+ 
+     return third_radio;
+ }
++
++static int radio_is_mlo_capable(char *phy)
++{
++    FILE *fp;
++    char buffer[BUFFER_LEN];
++    char cmd[50];
++    int mlo = 0;
++
++    snprintf(cmd, sizeof(cmd), "iw phy %s info | awk '/channel list/,0'", phy);
++
++    fp = popen(cmd, "r");
++    if (fp) {
++        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
++            if (strstr(buffer, "hw_idx")) {
++                mlo = 1;
++                break;
++            }
++        }
++        pclose(fp);
++    }
++
++    return mlo;
++}
++
++static int get_radio_band(char *phy, char *band)
++{
++    FILE *fp;
++    char buffer[BUFFER_LEN];
++    char cmd[60];
++    int freq, ret = -1;
++
++    snprintf(cmd, sizeof(cmd), "iw phy %s channels | grep ' MHz' | awk '{print $2}'",
++             phy);
++
++    fp = popen(cmd, "r");
++    if (fp) {
++        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
++            freq = atoi(buffer);
++            if (is_6ghz_freq(freq)) {
++                snprintf(band, BAND_LEN, "6");
++                ret = 0;
++            } else if (is_5ghz_freq(freq)) {
++                snprintf(band, BAND_LEN, "5");
++                ret = 0;
++            } else {
++                snprintf(band, BAND_LEN, "2.4");
++                ret = 0;
++            }
++
++            if (!ret)
++                break;
++        }
++        pclose(fp);
++    }
++
++    return ret;
++}
++
++int detect_radios(char *buf, int buf_len) {
++    FILE *fp;
++    char buffer[BUFFER_LEN], *ptr;
++    char interface[INTERFACE_LEN], phy_name[PHY_LEN], band[BAND_LEN];
++    int iface_num, num_radios = 0, len = 0, i;
++
++    reset_radio_band();
++
++    fp = popen("iw dev", "r");
++    if (fp) {
++        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
++            ptr = strstr(buffer, "phy");
++            if (ptr) {
++                /* strip # from phy name from iw dev output */
++                strlcpy(phy_name, ptr, PHY_LEN);
++                phy_name[3] = phy_name[4];
++                phy_name[4] = '\0';
++
++                printf("\nDetect Radio: New radio \'%s\' detected.", phy_name);
++
++                if (radio_is_mlo_capable(phy_name)) {
++                    printf("\nDetect Radio: Radio \'%s\' supports MLO but we don't. Skipping.",
++                           phy_name);
++                    continue;
++                } else {
++                    iface_num = phy_name[3] - '0';
++                    snprintf(interface, sizeof(interface), "wlan%d", iface_num);
++
++                    if (get_radio_band(phy_name, band)) {
++                        printf("\nDetect Radio: Can't get operating band of radio \'%s\'. Skipping.",
++                               phy_name);
++                        continue;
++                    }
++
++                    if (set_radio_band(phy_name, band)) {
++                        printf("\nDetect Radio: Can't proceed with this radio. Skipping.");
++                        continue;
++                    }
++
++                    printf("\nDetect Radio: Radio \'%s\' has %s interface, supports %s GHz band",
++                           phy_name, interface, band);
++
++                    num_radios++;
++
++                    /* append the interfaces param */
++                    len += snprintf(buf + len, buf_len - len, "%d:%s,",
++                                    band[0] - '0', interface);
++
++                    for (i = 1; i <= INTERFACE_COUNTS; i++) {
++                        len += snprintf(buf + len, buf_len - len, "%d:%s%d,",
++                                        band[0] - '0', interface, i);
++                    }
++                }
++            }
++        }
++        pclose(fp);
++
++        if (!num_radios) {
++            printf("\nDetect Radio: No supported radios detected.\n");
++            return 0;
++        } else {
++            printf("\nDetect Radio: %d radios detected. Detection Complete.",
++                   num_radios);
++        }
++    } else {
++        return 0;
++    }
++
++    printf("\n");
++
++    return 1;
++}
+ #endif
+ 
+ void interfaces_init() {
+@@ -52,6 +182,9 @@ void interfaces_init() {
+     char mac_addr[S_BUFFER_LEN];
+     int third_radio = 0;
+ 
++    if (get_auto_detect_interface())
++        return interfaces_init_auto();
++
+     third_radio = detect_third_radio();
+ 
+     memset(buffer, 0, sizeof(buffer));
+-- 
+2.17.1
+

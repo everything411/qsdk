@@ -1,0 +1,12 @@
+#!/bin/sh
+#
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: ISC
+#
+
+if [ "$ACTION" = "add" ]; then
+        # First WiFi interface up → capture once
+        [ ! -f /tmp/meminfo.wifi ] && {
+        cat /proc/meminfo >> /tmp/meminfo.wifi
+        }
+fi

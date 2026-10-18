@@ -1,0 +1,36 @@
+From 86e1e4a59bfedde05797d608c8c092812c93392d Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Fri, 30 May 2025 11:51:55 +0530
+Subject: [PATCH] usb: dwc3: Fix mem leak in USB cleanup path
+
+Fixes a memory leak in the USB cleanup path by freeing
+resources allocated for USB event buffers and the PHY
+clock device node. These allocations were not released
+during cleanup, leading to memory leaks on USB teardown.
+
+Change-Id: I98c9f4e3fb21b80ea5ebf87e02a46011876deb87
+Signed-off-by: Ram Kumar D <quic_ramd@quicinc.com>
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/usb/dwc3/core.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/usb/dwc3/core.c b/drivers/usb/dwc3/core.c
+index a35b8c2f646..4ec91b03000 100644
+--- a/drivers/usb/dwc3/core.c
++++ b/drivers/usb/dwc3/core.c
+@@ -193,6 +193,11 @@ static void dwc3_free_one_event_buffer(struct dwc3 *dwc,
+ 		struct dwc3_event_buffer *evt)
+ {
+ 	dma_free_coherent(evt->buf);
++
++	if (evt) {
++		free(evt);
++		evt = NULL;
++	}
+ }
+ 
+ /**
+-- 
+2.34.1
+

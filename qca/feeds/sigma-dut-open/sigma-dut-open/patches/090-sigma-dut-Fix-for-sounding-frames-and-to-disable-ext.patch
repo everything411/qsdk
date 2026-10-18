@@ -1,0 +1,93 @@
+From d1fc5a40128bd609a775aed6abfb54f246b39e00 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Wed, 18 Sep 2024 15:27:06 +0530
+Subject: [PATCH] sigma-dut: Fix for sounding frames and to disable extra LTF
+
+FW change has been made to disable sounding for very short packets.
+This leads to issues in WFA testcases, hence adding the FW test
+command to disable the fix for sigma dut.
+
+Also adding fw test command to disable extra LTF as APUT sending data
+with number of EHT-LTF Symbols = 2 (4 EHT-LTF symbol) instead of 1 and
+EHT-LTF Symbols = 1 (2 EHT-LTF symbol) instead of 0.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -9447,6 +9447,13 @@ static void fwtest_set_eht_params(struct
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 7 1", ifname, link_id);
+ 		/* override TPC calculations & set TxBF flag to true */
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 47 1", ifname, link_id);
++		/* disable a fix that disables sounding for very short packets */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x68 -v 0 3 0", ifname, link_id);
++	}
++
++	if (dut->ap_he_ulofdma == VALUE_ENABLED || dut->ap_he_dlofdma == VALUE_ENABLED) {
++		/* disable extra LTF for OFDMA cases*/
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 838 0", ifname, link_id);
+ 	}
+ 
+ 	if (dut->he_sounding == VALUE_ENABLED)
+@@ -9489,6 +9496,14 @@ static void fwtest_set_eht_params(struct
+ 			fwtest_linkid_cmd_wrapper(dut, "-m 0xA -v 0 85 1", ifname, link_id);
+ 		}
+ 	}
++
++	if (dut->ap_mu_edca == VALUE_ENABLED && dut->ap_he_ulofdma == VALUE_ENABLED &&
++	    dut->ap_he_ppdu == PPDU_MU && dut->ap_scs == VALUE_ENABLED) {
++		/* the disablement of deterministic basic trigger based upon
++		 * QOS NULLs needs to be ignored
++		 */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 926 1", ifname, link_id);
++	}
+ }
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))
+@@ -11837,11 +11852,38 @@ hapd_started:
+ 		}
+ 	}
+ 
+-	if (dut->ap_mu_edca == VALUE_ENABLED && dut->ap_he_ulofdma == VALUE_ENABLED &&
+-	    dut->ap_he_ppdu == PPDU_MU && dut->ap_scs == VALUE_ENABLED) {
+-		/* the disablement of deterministic basic trigger based upon
+-		 * QOS NULLs needs to be ignored */
+-		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 926 1", ifname);
++	if (drv == DRIVER_MAC80211 && dut->program != PROGRAM_EHT) {
++		/* NOTE: EHT program excluded as it is handled in fwtest_set_eht_params() */
++		int i;
++
++		if (dut->ap_txBF) {
++			/* disable a fix that disables sounding for very short packets */
++			fwtest_cmd_wrapper(dut, "-m 0x68 -v 0 3 0", ifname);
++		}
++
++		if (dut->ap_he_ulofdma == VALUE_ENABLED || dut->ap_he_dlofdma == VALUE_ENABLED) {
++			/* disable extra LTF for OFDMA cases*/
++			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 838 0", ifname);
++		}
++
++		for (i = 0; i < dut->mbss.num_non_tx_bss; i++) {
++			char ifname2[50];
++			snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, i+1);
++
++			if (dut->ap_txBF)
++				fwtest_cmd_wrapper(dut, "-m 0x68 -v 0 3 0", ifname2);
++
++			if (dut->ap_he_ulofdma == VALUE_ENABLED || dut->ap_he_dlofdma == VALUE_ENABLED)
++				fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 838 0", ifname2);
++		}
++
++		if (dut->ap_mu_edca == VALUE_ENABLED && dut->ap_he_ulofdma == VALUE_ENABLED &&
++		    dut->ap_he_ppdu == PPDU_MU && dut->ap_scs == VALUE_ENABLED) {
++			/* the disablement of deterministic basic trigger based upon
++			 * QOS NULLs needs to be ignored
++			 */
++			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 926 1", ifname);
++		}
+ 	}
+ 
+ 	if (dut->bridge && dut->ap_is_dual) {

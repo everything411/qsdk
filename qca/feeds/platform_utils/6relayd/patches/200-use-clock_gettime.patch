@@ -1,0 +1,27 @@
+Author: Deepak kumar <quic_deepaku@quicinc.com>
+Date: Tue Nov 19 13:37:15 2024
+
+    opensync: fix for routing ipv6
+
+Signed-off-by: Deepak kumar <quic_deepaku@quicinc.com>
+Index: 6relayd-1.0.0/src/6relayd/dhcpv6-ia.c
+===================================================================
+--- 6relayd-1.0.0.orig/src/6relayd/dhcpv6-ia.c	2024-12-08 22:42:26.000000000 +0530
++++ 6relayd-1.0.0/src/6relayd/dhcpv6-ia.c	2025-04-01 12:32:54.294240517 +0530
+@@ -25,7 +25,6 @@
+ #include <resolv.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+-#include <sys/syscall.h>
+ #include <sys/timerfd.h>
+ #include <time.h>
+ #include <unistd.h>
+@@ -129,7 +128,7 @@
+ 
+ static time_t monotonic_time(void) {
+   struct timespec ts;
+-  syscall(SYS_clock_gettime, CLOCK_MONOTONIC, &ts);
++  clock_gettime(CLOCK_MONOTONIC, &ts);
+   return ts.tv_sec;
+ }
+ 

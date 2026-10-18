@@ -1,0 +1,101 @@
+From 8916675a6329f6182090b7a0c0991a33097b5b2e Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Wed, 9 Jul 2025 15:16:05 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL: sigma_dut: Adding support for sending SCS
+ response
+
+Adding support to send unsolicited SCS response when receiving the
+dev_send_frame command for the same.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 70 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 70 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -15346,6 +15346,75 @@ static int ap_send_frame_60g(struct sigm
+ }
+ 
+ 
++static int mac80211_send_frame_scsresp(struct sigma_dut *dut, struct sigma_cmd *cmd,
++				       const char *ifname)
++{
++	const char *val;
++	char dest_mac[20];
++	int scs_id = 0;
++	int scs_reqtype = -1;
++
++	val = get_param(cmd, "Dest_MAC");
++	if (val)
++		strlcpy(dest_mac, val, sizeof(dest_mac));
++
++	val = get_param(cmd, "SCSDescrElem_SCSID_1");
++	if (val)
++		scs_id = atoi(val);
++
++	val = get_param(cmd, "SCSDescrElem_RequestType_1");
++	if (val)
++	{
++		if (strcasecmp(val, "Add") == 0)
++			scs_reqtype = 0;
++		else if (strcasecmp(val, "Remove") == 0)
++			scs_reqtype = 1;
++		else {
++			sigma_dut_print(dut, DUT_MSG_ERROR,
++					"Unsupported SCSDescrElem_RequestType");
++			return -1;
++		}
++	}
++
++	run_system_wrapper(dut, "hostapd_cli -i %s send_unsolicited_scs_resp %s --scsid %d --req_type %d",
++			   ifname, dest_mac, scs_id, scs_reqtype);
++	return 0;
++}
++
++
++static int mac80211_ap_send_frame_qm(struct sigma_dut *dut, struct sigma_conn *conn,
++				     struct sigma_cmd *cmd)
++{
++	const char *val, *ifname;
++
++	ifname = get_main_ifname(dut);
++
++	val = get_param(cmd, "FrameName");
++	if (!val)
++		return -1;
++
++	if (strcasecmp(val, "SCSResp") == 0)
++		mac80211_send_frame_scsresp(dut, cmd, ifname);
++	else
++		return -1;
++
++	return 1;
++}
++
++
++static int ap_send_frame_qm(struct sigma_dut *dut, struct sigma_conn *conn,
++			    struct sigma_cmd *cmd)
++{
++	switch (get_driver_type(dut)) {
++	case DRIVER_MAC80211:
++		return mac80211_ap_send_frame_qm(dut, conn, cmd);
++	default:
++		send_resp(dut, conn, SIGMA_ERROR,
++			  "errorcode, Unsupported ap_send_frame for the current driver");
++		return 0;
++	}
++}
++
+ enum sigma_cmd_result cmd_ap_send_frame(struct sigma_dut *dut,
+ 					struct sigma_conn *conn,
+ 					struct sigma_cmd *cmd)
+@@ -15376,6 +15445,8 @@ enum sigma_cmd_result cmd_ap_send_frame(
+ 			return ap_send_frame_60g(dut, conn, cmd);
+ 		if (strcasecmp(val, "EHT") == 0)
+ 			return ap_send_frame_mbo(dut, conn, cmd);
++		if (strcasecmp(val, "QM") == 0)
++			return ap_send_frame_qm(dut, conn, cmd);
+ 	}
+ 
+ 	val = get_param(cmd, "PMFFrameType");

@@ -1,0 +1,12 @@
+/var/log/messages {
+	su root root
+	compress
+	copytruncate
+	notifempty
+	maxsize 300K
+	missingok
+	postrotate
+		/usr/sbin/syslog-ng-ctl reload > /dev/null
+	endscript
+	rotate 2
+}

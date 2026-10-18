@@ -1,0 +1,30 @@
+From 502886839ca8af7f772081d8291176ce40cc1651 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <quic_vkarunam@quicinc.com>
+Date: Mon, 5 May 2025 15:50:28 +0530
+Subject: [PATCH] cmd: Add conditional flushing of dest buffer
+
+Flush destination buffer only if it is available
+
+Change-Id: I526e240e7ffed4579ed537284a397a85fd3da403
+Signed-off-by: Vandhiadevan Karunamoorthy <quic_vkarunam@quicinc.com>
+---
+ cmd/ximg.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/cmd/ximg.c b/cmd/ximg.c
+index 29d7c3279b3..8907b579d4c 100644
+--- a/cmd/ximg.c
++++ b/cmd/ximg.c
+@@ -265,7 +265,8 @@ do_imgextract(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
+ 		puts("OK\n");
+ 	}
+ 
+-	flush_cache(dest, ALIGN(len, ARCH_DMA_MINALIGN));
++	if (dest)
++		flush_cache(dest, ALIGN(len, ARCH_DMA_MINALIGN));
+ 
+ 	env_set_hex("fileaddr", data);
+ 	env_set_hex("filesize", len);
+-- 
+2.34.1
+

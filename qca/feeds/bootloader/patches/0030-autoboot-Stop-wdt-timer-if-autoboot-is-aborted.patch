@@ -1,0 +1,46 @@
+From 662ac1cc1621ef21b648bf6cc25bf036a0076295 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Tue, 27 May 2025 20:59:36 +0530
+Subject: [PATCH] autoboot: Stop wdt timer if autoboot is aborted
+
+This patch ensures that the watchdog timer is stopped
+when the autoboot process is interrupted by user input.
+This prevents unintended system resets during manual
+validation.
+
+Change-Id: I8da364d889eb3ce38fa03c9a9011e917d953bf7a
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ common/autoboot.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/common/autoboot.c b/common/autoboot.c
+index c77c67272ae..6227316db72 100644
+--- a/common/autoboot.c
++++ b/common/autoboot.c
+@@ -61,6 +61,11 @@ static int menukey;
+ #if defined(CONFIG_CMD_NET) && defined(CONFIG_ETH_SKIP_INIT_R)
+ extern int initr_net(void);
+ #endif
++
++#if defined(CONFIG_IPQ_STOP_WDT)
++extern void ipq_wdt_start(bool start);
++#endif
++
+ /**
+  * passwd_abort_crypt() - check for a crypt-style hashed key sequence to abort booting
+  *
+@@ -417,6 +422,10 @@ static int abortboot_single_key(int bootdelay)
+ 	initr_net();
+ #endif
+ 
++#if defined(CONFIG_IPQ_STOP_WDT)
++	ipq_wdt_start(false);
++#endif
++
+ 	return abort;
+ }
+ 
+-- 
+2.34.1
+

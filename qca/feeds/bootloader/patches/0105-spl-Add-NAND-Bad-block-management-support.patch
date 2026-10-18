@@ -1,0 +1,34 @@
+From 0851cc5d479fdedfc8bdc3fdec91bf0e65c1b292 Mon Sep 17 00:00:00 2001
+From: abhiv <abhiv@qti.qualcomm.com>
+Date: Wed, 3 Jun 2026 05:37:25 -0700
+Subject: [PATCH] spl: Add NAND Bad block management support
+
+Add support in SBL to skip bad NAND blocks
+during partition reads and continue from
+the next valid block. Add nand_utils.c to
+spl build.
+
+Change-Id: I39e8fc9664baea105c3de23ca784f1d21653ee54
+Signed-off-by: abhiv <abhiv@qti.qualcomm.com>
+---
+ drivers/mtd/nand/raw/Makefile | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/drivers/mtd/nand/raw/Makefile b/drivers/mtd/nand/raw/Makefile
+index 2363fcfff8a..c04921e473a 100644
+--- a/drivers/mtd/nand/raw/Makefile
++++ b/drivers/mtd/nand/raw/Makefile
+@@ -19,9 +19,7 @@ obj-$(CONFIG_SPL_NAND_BASE) += nand_base.o nand_amd.o nand_hynix.o \
+ 				nand_samsung.o nand_toshiba.o
+ obj-$(CONFIG_SPL_NAND_IDENT) += nand_ids.o nand_timings.o
+ obj-$(CONFIG_$(PHASE_)NAND_INIT) += nand.o
+-ifeq ($(CONFIG_SPL_ENV_SUPPORT),y)
+-obj-$(CONFIG_ENV_IS_IN_NAND) += nand_util.o
+-endif
++obj-$(CONFIG_SPL_NAND_BASE) += nand_util.o
+ 
+ else # not spl
+ 
+-- 
+2.34.1
+

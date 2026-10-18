@@ -1,0 +1,64 @@
+From 3f4b717f8cf4486f9e0aeedfdae2340b088ec93b Mon Sep 17 00:00:00 2001
+From: Amith A <amitajit@qti.qualcomm.com>
+Date: Thu, 4 Dec 2025 23:08:19 +0530
+Subject: [PATCH] QSDK:HOSTAPD:hostapd-extn Expose helper APIs and add event data for extn
+
+Remove `static` qualifiers from `wpa_ctrl_command()` and
+`switch_link_hapd()` when `CONFIG_QCN_EXTN` is enabled to allow
+external access for extension features. Additionally, introduce
+`event_data_extn` in `union wpa_event_data` to carry vendor-specific
+extension event data. These changes enable integration of QCN-specific
+extensions.
+
+Patch-dependency: None
+
+Signed-off-by: Amith A <amitajit@qti.qualcomm.com>
+---
+ hostapd/hostapd_cli.c  | 6 ++++--
+ src/ap/drv_callbacks.c | 5 ++++-
+ 2 files changed, 8 insertions(+), 3 deletions(-)
+
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -226,7 +226,10 @@ static int _wpa_ctrl_command(struct wpa_
+ }
+ 
+ 
+-static inline int wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd)
++#ifndef CONFIG_QCN_EXTN
++static inline
++#endif
++int wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd)
+ {
+ 	return _wpa_ctrl_command(ctrl, cmd, 1);
+ }
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1907,7 +1907,10 @@ static void hostapd_action_rx(struct hos
+ 
+ #ifdef NEED_AP_MLME
+ 
+-static struct hostapd_data *
++#ifndef CONFIG_QCN_EXTN
++static
++#endif
++struct hostapd_data *
+ switch_link_hapd(struct hostapd_data *hapd, int link_id)
+ {
+ #ifdef CONFIG_IEEE80211BE
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -7962,6 +7962,13 @@ union wpa_event_data {
+ 		u8 *addr;
+ 		u8 tid;
+ 	} tclas_flow_event;
++
++	/**
++	 * event_data_extn - Extension event data for vendor-specific events
++	 *
++	 * This field is used for extension events
++	 */
++	union wpa_event_data_extn event_data_extn;
+ };
+ 
+ /**

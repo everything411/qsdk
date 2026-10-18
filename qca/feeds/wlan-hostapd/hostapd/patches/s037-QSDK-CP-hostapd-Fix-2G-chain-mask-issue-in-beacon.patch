@@ -1,0 +1,44 @@
+From 7009014b468e8a2a55c89fffb8a6e8bff7a56a27 Mon Sep 17 00:00:00 2001
+From: Sriram Sankar Sankarapandian Thangaraj <sriramsa@qti.qualcomm.com>
+Date: Wed, 26 Nov 2025 15:38:09 +0530
+Subject: [PATCH] QSDK:CP:hostapd: Fix 2G chain mask issue in beacon
+
+After setting the chainmask, hapd get mode data updated with new chainmask
+from the driver and udpates its current_mode if the frequency matches.
+
+If the modes from the driver contain 2G 11g mode data but not 11b,
+hapd appends 11b mode based on the 11g data. While updating current_mode,
+hapd loops through the driver modes (now appended with 11b), checks if the
+frequency matches, and first copies 11g, then overrides with 11b as the
+frequency matches again. It must loop through all modes to free the
+driver-returned modes.
+
+As a fix, a check was added to match the mode as well, ensuring the correct
+mode data is copied to current_mode.
+
+Patch-dependency:
+	Ifb2522ee9cd (QSDK:CP:hostapd: Add support for dynamic chain mask)
+
+Signed-off-by: Sriram Sankar Sankarapandian Thangaraj <sriramsa@qti.qualcomm.com>
+---
+ hostapd/ctrl_iface.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 70f6e51..284c2fa 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -5045,8 +5045,8 @@ static int hostapd_ctrl_set_tx_rx_chain_mask(struct hostapd_data *hapd, char *cm
+ 		int found_matching_mode = 0;
+ 		for (i = 0; i < num_modes; i++) {
+ 			struct hostapd_hw_modes *mode = &modes[i];
+-			if (mode->channels && (mode->channels->freq ==
+-			    hapd->iface->current_mode->channels->freq)) {
++			if (mode->channels && (mode->mode == hapd->iface->current_mode->mode) &&
++			    (mode->channels->freq == hapd->iface->current_mode->channels->freq)) {
+ 				if (hapd->iface->current_mode->rates)
+ 					os_free(hapd->iface->current_mode->rates);
+ 
+-- 
+2.34.1
+

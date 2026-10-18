@@ -1,0 +1,53 @@
+From e704ea9b108cb4d22461df1a4f2061a27cfdadc1 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Wed, 25 Mar 2026 15:01:56 +0530
+Subject: [PATCH] arm: dts: ipq5210: Add support for tiny U-Boot DTB list
+
+Add a reduced DTB selection for the IPQ5210 platform
+when building with CONFIG_IPQ_TINY enabled. This keeps
+the tiny U-Boot footprint minimal by including only the
+required RDP board device trees.
+
+The tiny build enables the following RDPs:
+
+RDP497, RDP498, RDP499, RDP500, RDP501,
+RDP502, RDP503, RDP504, and RDP505.
+
+Change-Id: Ic478e8bd91302c21d81c7cea44b7f358e369db38
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index e809587ae6c..c58b2033cf3 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -1,5 +1,16 @@
+ # SPDX-License-Identifier: GPL-2.0+
+ 
++ifdef CONFIG_IPQ_TINY
++dtb-$(CONFIG_TARGET_IPQ5210) += ipq5210-rdp497.dtb \
++				ipq5210-rdp498.dtb \
++				ipq5210-rdp499.dtb \
++				ipq5210-rdp500.dtb \
++				ipq5210-rdp501.dtb \
++				ipq5210-rdp502.dtb \
++				ipq5210-rdp503.dtb \
++				ipq5210-rdp504.dtb \
++				ipq5210-rdp505.dtb
++else
+ dtb-$(CONFIG_TARGET_IPQ5210) += ipq5210-emulation.dtb \
+ 				ipq5210-rdp497.dtb \
+ 				ipq5210-rdp498.dtb \
+@@ -13,6 +24,7 @@ dtb-$(CONFIG_TARGET_IPQ5210) += ipq5210-emulation.dtb \
+ 				ipq5210-db-hm01.1.dtb \
+ 				ipq5210-db-hm02.1.dtb
+ 
++endif
+ dtb-$(CONFIG_TARGET_IPQ9650) += ipq9650-emulation.dtb \
+                                 ipq9650-rdp488.dtb \
+                                 ipq9650-rdp489.dtb \
+-- 
+2.34.1
+

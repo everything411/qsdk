@@ -1,0 +1,199 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+#include "ipq5332-default.dts"
+
+/ {
+
+	soc: soc {
+		tlmm: pinctrl@1000000 {
+			mdio_pinmux: mdio {
+				mdc {
+					pins = "GPIO_27";
+					function = "mdc_1";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				mdio {
+					pins = "GPIO_28";
+					function = "mdio_1";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			phy_rst_pinmux: phy_rst {
+				qti_8x8x_rst {
+					pins = "GPIO_51";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qti_sfp_tx_los {
+					pins = "GPIO_24";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+					output-enable;
+				};
+			};
+
+			blsp1_i2c_pinmux: blsp1_i2c_pins {
+				blsp1_scl {
+					pins = "GPIO_29";
+					function = "blsp1_i2c_scl0";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				blsp1_sda {
+					pins = "GPIO_30";
+					function = "blsp1_i2c_sda0";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie0_x1_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_38";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie1_x2_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_47";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie2_x1_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_44";
+					bias-pull-up;
+				};
+			};
+		};
+
+		blsp1_i2c: i2c@78B6000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&blsp1_i2c_pinmux>;
+			status = "okay";
+		};
+
+		hs_m31phy_0: hs_m31phy@7b000 {
+			status = "okay";
+		};
+
+		usb0: usb@8af8800 {
+			qti,select-utmi-as-pipe-clk;
+			status = "okay";
+
+			dwc3@8a00000 {
+				phys = <&hs_m31phy_0>;
+				phy-names = "usb2-phy";
+				maximum-speed = "high-speed";
+			};
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&mdio_pinmux>;
+			status = "okay";
+
+			phy0: ethernet-switch@1 {
+				phy-reset-gpio = <&tlmm 51 0>;
+				dev-mode = <0x1>;
+				reg = <1>;
+				phy_id = <QCA8x8x_SWITCH_TYPE>;
+				id = <1>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+				max_speed = <2500>;
+				force-speed;
+				xgmac;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port0: port@0 {
+						reg = <0>;
+						label = "cpu";
+						phy-mode = "sgmii-2500";
+						fixed-link {
+							speed = <2500>;
+							full-duplex;
+						};
+					};
+
+					port1: port@1 {
+						reg = <1>;
+						label = "lan";
+					};
+
+					port2: port@2 {
+						reg = <2>;
+						label = "lan";
+					};
+
+					port3: port@3 {
+						reg = <3>;
+						label = "lan";
+					};
+
+					port4: port@4 {
+						reg = <4>;
+						label = "lan";
+					};
+				};
+			};
+
+			phy1: phy@ff {
+				reg = <0xFF>;
+				phy_id = <SFP10G_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <1>;
+				uniphy_type = <0>;
+				max_speed = <10000>;
+				xgmac;
+			};
+		};
+
+		ethernet: nss-switch {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			status = "okay";
+		};
+
+		pcie0_x1: pci@20000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie0_x1_pinmux>;
+			num-lanes = <1>;
+			perst_gpio = <&tlmm 38 0>;
+			status = "okay";
+		};
+
+		pcie1_x2: pci@18000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie1_x2_pinmux>;
+			num-lanes = <1>;
+			perst_gpio = <&tlmm 47 0>;
+			status = "okay";
+		};
+
+		pcie2_x1: pci@10000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie2_x1_pinmux>;
+			num-lanes = <1>;
+			perst_gpio = <&tlmm 44 0>;
+			status = "okay";
+		};
+	};
+};

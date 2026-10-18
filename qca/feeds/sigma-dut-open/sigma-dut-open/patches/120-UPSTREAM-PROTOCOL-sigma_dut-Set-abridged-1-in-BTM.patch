@@ -1,0 +1,54 @@
+From eed8f0a06de4a7e0f5b5263e1bec66638e29e600 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <dhanavan@qti.qualcomm.com>
+Date: Wed, 25 Mar 2026 14:43:41 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Set abridged to 1 in BTM Request
+ for ML reconfiguration cases
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Update BTM request generation to include abridged=1 for multi‑link (ML)
+reconfiguration caases. This change aligns the BTM request format
+with the EHT ML reconfiguration test case expectations.
+
+Patch-dependency: 109-UPSTREAM-sigma_dut-Avoid-setting-neighbor-preference.patch
+
+Signed-off-by: Dhanavandhana Kannan <dhanavan@qti.qualcomm.com>
+---
+ ap.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index a1fda53..6d354b5 100644
+--- a/ap.c
++++ b/ap.c
+@@ -15514,7 +15514,7 @@ static int mac80211_ap_send_frame_btm_req(struct sigma_dut *dut,
+ 						cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
+ 			} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
+ 				snprintf(buf, sizeof(buf),
+-						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d,%d",
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d,%d",
+ 						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+ 						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+ 						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+@@ -15522,7 +15522,7 @@ static int mac80211_ap_send_frame_btm_req(struct sigma_dut *dut,
+ 						dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1],  dut->btm[0].nebor_linkid[2]);
+ 			} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1) {
+ 				snprintf(buf, sizeof(buf),
+-						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d",
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d",
+ 						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+ 						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+ 						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+@@ -15530,7 +15530,7 @@ static int mac80211_ap_send_frame_btm_req(struct sigma_dut *dut,
+ 						dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1]);
+ 			} else if (dut->btm[0].nebor_linkid[0] != -1) {
+ 				snprintf(buf, sizeof(buf),
+-						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d",
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d",
+ 						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+ 						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+ 						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+-- 
+2.34.1
+

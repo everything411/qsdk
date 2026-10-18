@@ -1,0 +1,72 @@
+From c2b82fbc2bc5c256f91d478d5bc2ea2d095e2f1b Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 18 Sep 2025 11:12:33 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Add fwtest cmds for consistent
+ UL triggers in SCS UL tests
+
+In SCS testcases with UL OFDMA enabled, UL triggers are expected to
+be sent consistently. However, current behavior relies on QoS NULL
+frames from stations to initiate triggers, leading to inconsistency.
+
+This change introduces  fwtest command to make the UL triggers
+consistent by sending UL triggers irrespective of QoS NULL frames
+from the station.
+
+11ax mode:
+ath11k-fwtest -i wlan0 -m 0x48 -v 0 720
+ath11k-fwtest -i wlan0 -m 0x48 -v 0 926 1
+
+11be mode:
+ath11k-fwtest -i wlan0 -l <link_id> -m 0x48 -v 0 720
+ath11k-fwtest -i wlan0 -l <link_id> -m 0x48 -v 0 926 1
+
+Fixes: I9c8d12e95c4
+       (UPSTREAM:PROTOCOL: sigma_dut: Adding support for QM features)
+
+Change-Id: Ice49de747a85ef5144a8f6448132401649ce2e20
+Signed-off-by: Arun Vikas T <vikast@qti.qualcomm.com>
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index 5d005e0..2bd374b 100644
+--- a/ap.c
++++ b/ap.c
+@@ -12585,13 +12585,31 @@ hapd_started:
+ 		}
+ 	}
+ 
+-	if (dut->program == PROGRAM_QM) {
++	if (drv == DRIVER_MAC80211 && dut->program == PROGRAM_QM) {
+ 		if (dut->ap_mscs == VALUE_ENABLED)
+ 			run_system_wrapper(dut,
+ 					   "echo 1 > /sys/kernel/debug/ecm/ecm_classifier_mscs/enabled");
+ 		else if (dut->ap_mscs == VALUE_DISABLED)
+ 			run_system_wrapper(dut,
+ 					   "echo 0 > /sys/kernel/debug/ecm/ecm_classifier_mscs/enabled");
++
++		/* 1. #926: Send UL triggers consistently irrespective of
++		 * station's QoS NULL frames
++		 * 2. #720: Add aggressive dl and ul scheduling of triggers,
++		 * turn off lazy rate adaptation for QoS R3 APUT
++		 */
++		if (dut->device_type == AP_dut && dut->ap_scs == VALUE_ENABLED &&
++		    dut->ap_he_ulofdma == VALUE_ENABLED) {
++			if (mode == AP_11be) {
++				for (int i = 0; i < dut->num_links; i++) {
++					fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 926 1", ifname, i);
++					fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 720", ifname, i);
++				}
++			} else if (mode == AP_11ax) {
++				fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 926 1", ifname);
++				fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 720", ifname);
++			}
++		}
+ 	}
+ 
+ 	/* Disable latency aware txmode selection */
+-- 
+2.34.1
+

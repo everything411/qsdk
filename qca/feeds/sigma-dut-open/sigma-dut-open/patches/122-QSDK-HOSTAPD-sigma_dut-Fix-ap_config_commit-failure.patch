@@ -1,0 +1,41 @@
+From e80ee19304bc21e8b3ce0a08e700340b6184288e Mon Sep 17 00:00:00 2001
+From: Arunpandi Kannan <arunpand@qti.qualcomm.com>
+Date: Wed, 15 Apr 2026 15:28:37 +0530
+Subject: [PATCH] QSDK:HOSTAPD: sigma_dut: Fix ap_config_commit failure for DPP
+ program
+
+ap_config_commit was incorrectly failing based on NAME for mac80211.
+Update the check to rely on PROGRAM_DPP instead, and return success
+when an invalid AP mode is set for DPP, assuming test is reset.
+
+Patch-dependency: None
+Patch-work: None
+Fixes: None
+
+Signed-off-by: Arunpand Kannan<arunpand@qti.qualcomm.com>
+---
+ ap.c | 8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index d336f5b..6d6980c 100644
+--- a/ap.c
++++ b/ap.c
+@@ -10540,12 +10540,8 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 		}
+ 
+ 		if (drv == DRIVER_MAC80211) {
+-			if (cmd) {
+-				const char *name = get_param(cmd, "NAME");
+-
+-				if (name && !strcmp(name, "QCOM-DUT") && mode >= AP_inval)
+-					return 1;
+-			}
++			if (dut->program == PROGRAM_DPP && mode >= AP_inval)
++				return 1;
+ 		}
+ 
+ 		if (check_band(dut, BAND_2G, link_id))
+-- 
+2.34.1
+

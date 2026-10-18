@@ -1,0 +1,88 @@
+From 192a37ca374ba26675478ce195eea6735e13bdc4 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Mon, 12 Aug 2024 14:22:39 +0530
+Subject: [PATCH] sigma-dut: Enabling trigger frames for MBSSID case.
+
+Currently, It is being observed that more unicast basic trigger are seen
+instead of broadcast while running MBSSID Control Frame test. Fixing
+this issue by adding firmware test commands for enabling UL OFDMA MBSSID
+support for trigger frames and to set UL duration to 1000 usec and enable
+a firmware WAR for not dropping mcs. Also issuing MU MBSSID firmware test
+commands to non TX vaps which are currently issued to only TX vaps.
+
+Signed-off-by: Hari Chandrakanthan <quic_haric@quicinc.com>
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c        | 22 ++++++++++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 23 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 1bb9f9a..a51e047 100644
+--- a/ap.c
++++ b/ap.c
+@@ -8998,6 +8998,10 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname)
+ 		run_system_wrapper(dut, "ath11k-fwtest -t 1 -i %s -m 0x00 -v 0 32770 %d", ifname, he_param);
+ 	}
+ 	if (dut->ap_mbssid_mu == VALUE_ENABLED) {
++		/* Enable UL OFDMA mBSSID support for trigger frames */
++		run_system_wrapper(dut, "ath11k-fwtest -t 2 -i %s -m 0x00 -p %d 0xC7 0x07",
++				   ifname, pdev_id);
++
+ 		/* To bias the scheduler to MU instead of SU, to ensure larger number
+ 		 * of broadcast triggers instead of unicast */
+ 		fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 21 0", ifname);
+@@ -10981,6 +10985,8 @@ skip_vht_parameters_set:
+ 			if (dut->bridge)
+ 				fprintf(f, "bridge=%s\n", dut->bridge);
+ 
++			strlcpy(dut->mbss.conf[i].ifname, ifname2, IFNAMSIZ);
++
+ 			if (dut->ap_wme)
+ 				fprintf(f, "wmm_enabled=1\n");
+ 
+@@ -17047,6 +17053,7 @@ static void mac80211_set_assoc_disallow(struct sigma_dut *dut, const char *ifnam
+ 
+ static void mac80211_set_trigger_type_0(struct sigma_dut *dut, const char *ifname)
+ {
++	int i;
+ 	/* TriggerType "0" for Basic trigger */
+ 	run_system_wrapper(dut,
+ 			   "ath11k-fwtest -i %s -m 0x47 -v 0 95 7",
+@@ -17084,6 +17091,21 @@ static void mac80211_set_trigger_type_0(struct sigma_dut *dut, const char *ifnam
+ 		 * even if we receive no data TB PPDU */
+ 		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 220 640000", ifname);
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 302 0", ifname);
++
++		/* NOTE: The above five commands are being looped for non TX vaps in the following block.
++		 * During mbssid grouping changes, need to accomodate TX vaps as well within the loop */
++		for ( i = 0; i < dut->mbss.num_non_tx_bss; i++) {
++			fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 3 0 4 1 4", dut->mbss.conf[i].ifname);
++			fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 6 0 4 1 4", dut->mbss.conf[i].ifname);
++			fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 1 0 4 1 4", dut->mbss.conf[i].ifname);
++			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 220 640000", dut->mbss.conf[i].ifname);
++			fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 302 0", dut->mbss.conf[i].ifname);
++		}
++	}
++
++	if (dut->ap_he_ulofdma == VALUE_ENABLED) {
++		/* set ul duration to 1000 usec and enable a fw war for not dropping mcs */
++		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000 1", ifname);
+ 	}
+ 
+ 	/* set ul duration to 1200 usec and enable a fw war for not dropping mcs
+diff --git a/sigma_dut.h b/sigma_dut.h
+index f852de3..625795e 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -557,6 +557,7 @@ struct mbss_config {
+ 	enum ap_key_mgmt key_mgmt;
+ 	char psk[MAX_PSK_LEN];
+ 	unsigned char non_tx_bssid[6];
++	char ifname[IFNAMSIZ];
+ };
+ 
+ struct mbss_support {
+-- 
+2.34.1
+

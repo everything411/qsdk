@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * Copyright (C) 2019 Jagan Teki <jagan@amarulasolutions.com>
+ */
+
+#include "rk3399-u-boot.dtsi"
+
+&gpio0 {
+	bootph-pre-ram;
+};
+
+&sdmmc {
+	pinctrl-0 = <&sdmmc_bus4 &sdmmc_clk &sdmmc_cmd &sdmmc_cd>;
+};
+
+&sdmmc0_pwr_h {
+	bootph-pre-ram;
+};
+
+&vcc3v0_sd {
+	bootph-pre-ram;
+};
+
+&vcc_sdio {
+	regulator-init-microvolt = <3000000>;
+};

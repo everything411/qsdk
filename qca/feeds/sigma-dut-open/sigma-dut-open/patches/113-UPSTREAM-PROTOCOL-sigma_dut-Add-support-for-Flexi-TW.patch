@@ -1,0 +1,80 @@
+From cada95d4c80b239a0caadac1adb832b66c8d2b27 Mon Sep 17 00:00:00 2001
+From: Alok Singh <aloksing@qti.qualcomm.com>
+Date: Tue, 13 Jan 2026 08:41:21 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Add support for Flexi TWT
+ feature
+
+Adding support for WiFi 7 and WiFi 6 program's Flexi TWT feature.
+CAPI parameters added to support the feature.
+
+Signed-off-by: Alok Singh <aloksing@qti.qualcomm.com>
+---
+ ap.c        | 18 ++++++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 19 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 8e45e92..5582cce 100644
+--- a/ap.c
++++ b/ap.c
+@@ -2892,6 +2892,14 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 			dut->ap_rtwt = VALUE_DISABLED;
+ 	}
+ 
++	val = get_param(cmd, "FlexibleTWT");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0)
++			dut->ap_flextwt = VALUE_ENABLED;
++		else if (strcasecmp(val, "disable") == 0)
++			dut->ap_flextwt = VALUE_DISABLED;
++	}
++
+ 	val = get_param(cmd, "SUBeamformerMode");
+ 	if (val)
+ 		subeamformermode = atoi(val);
+@@ -9778,6 +9786,11 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int
+ 		/* SIFS Burst disable to handle short SP */
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 2 1", ifname);
+ 	}
++
++	if (dut->ap_flextwt == VALUE_ENABLED)
++		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1800", ifname);
++	else
++		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000", ifname);
+ }
+ 
+ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+@@ -9946,6 +9959,10 @@ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 2 1", ifname, link_id);
+ 	}
+ 
++	if (dut->ap_flextwt == VALUE_ENABLED)
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 63 1800", ifname, link_id);
++	else
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000", ifname, link_id);
+ 	/* Enable mix bw */
+ 	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 141 1", ifname, link_id);
+ }
+@@ -13752,6 +13769,7 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 	dut->ap_ulmudata_disablerx = VALUE_NOT_SET;
+ 	dut->ap_btwt = VALUE_NOT_SET;
+ 	dut->ap_rtwt = VALUE_NOT_SET;
++	dut->ap_flextwt = VALUE_NOT_SET;
+ 	dut->ltf_trig = 0;
+ 	dut->nontrigger_txbf = VALUE_NOT_SET;
+ 	dut->ap_preamblepunct = VALUE_NOT_SET;
+diff --git a/sigma_dut.h b/sigma_dut.h
+index a7a5950..5bebf91 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1146,6 +1146,7 @@ struct sigma_dut {
+ 	enum value_not_set_enabled_disabled ap_ulmudata_disablerx;
+ 	enum value_not_set_enabled_disabled ap_btwt;
+ 	enum value_not_set_enabled_disabled ap_rtwt;
++	enum value_not_set_enabled_disabled ap_flextwt;
+ 	enum value_not_set_enabled_disabled nontrigger_txbf;
+ 	enum value_not_set_enabled_disabled ap_preamblepunct;
+ 	enum value_not_set_enabled_disabled eht_omctrl;
+-- 
+2.34.1
+

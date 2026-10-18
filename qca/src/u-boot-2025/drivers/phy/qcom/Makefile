@@ -1,0 +1,15 @@
+obj-$(CONFIG_PHY_QCOM_IPQ4019_USB) += phy-qcom-ipq4019-usb.o
+obj-$(CONFIG_MSM8916_USB_PHY) += msm8916-usbh-phy.o
+obj-$(CONFIG_PHY_QCOM_QMP_PCIE) += phy-qcom-qmp-pcie.o
+obj-$(CONFIG_PHY_QCOM_QMP_UFS) += phy-qcom-qmp-ufs.o
+obj-$(CONFIG_PHY_QCOM_QUSB2) += phy-qcom-qusb2.o
+obj-$(CONFIG_PHY_QCOM_USB_SNPS_FEMTO_V2) += phy-qcom-snps-femto-v2.o
+obj-$(CONFIG_PHY_QCOM_SNPS_EUSB2) += phy-qcom-snps-eusb2.o
+obj-$(CONFIG_PHY_QCOM_USB_HS_28NM) += phy-qcom-usb-hs-28nm.o
+obj-$(CONFIG_PHY_QCOM_USB_SS) += phy-qcom-usb-ss.o
+obj-$(CONFIG_PHY_QCOM_UNIPHY_PCIE) += phy-qca-pcie-uniphy.o
+obj-$(CONFIG_PHY_QCOM_USB_HS_M31) += phy-qcom-usb-hs-m31.o
+obj-$(CONFIG_PHY_QCOM_UNI_SSPHY) += phy-qcom-uni-ssphy.o
+obj-$(CONFIG_PHY_QCOM_QUSB2) += phy-qcom-qusb2.o
+obj-$(CONFIG_PHY_QCOM_QMP_USB3) += phy-qcom-qmp-usb3.o
+obj-$(CONFIG_PHY_QCOM_USB_FEMTO) += phy-qcom-usb-femto-hs.o

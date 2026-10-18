@@ -1,0 +1,36 @@
+From 9956b19fbd2a74b2ade280389300fa42be90c4d7 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+Date: Thu, 10 Sep 2026 22:27:07 -0700
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Don't force PMF for WPA3 program
+
+cmd_ap_set_wireless() forces dut->ap_pmf on every ap_set_wireless
+call when dut->program is EHT or WPA3. For WPA3-FT tests, this
+clobbers an explicit PMF,Required already set via ap_set_security
+whenever a later ap_set_wireless call (e.g. FT_OA,Enable) arrives,
+downgrading ieee80211w=2 to 1 and failing RSNCap_MFPR checks.
+
+Drop the WPA3 case; EHT-only matches the pre-existing behavior this
+override was meant for. EPPKE key management already derives its own
+ieee80211w independent of dut->ap_pmf, so it is unaffected.
+
+Signed-off-by: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+---
+ ap.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index 85aaacb..cf84a59 100644
+--- a/ap.c
++++ b/ap.c
+@@ -1491,7 +1491,7 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 	    (dut->ap_interface_6g && dut->ap_interface_2g))
+ 		dut->ap_is_dual = 1;
+ 
+-	if (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) {
++	if (dut->program == PROGRAM_EHT) {
+ 		dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		dut->ap_beacon_prot = 1;
+ 		if ((dut->ap_interface_5g || dut->ap_interface_2g) &&
+-- 
+2.34.1
+

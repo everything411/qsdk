@@ -1,0 +1,141 @@
+From 2921fba71e1854c4eaec2879372c90d0cfa00b06 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Mon, 11 Nov 2024 16:00:05 +0530
+Subject: [PATCH] sigma_dut: Add support for MRSNO
+
+Adding support for KEYMGNT WPA3-COMPAT which is required for MRSNO
+support. If WPA3-COMPAT, set the security to SAE if the interface is
+6G, else set the security to WPA2-PSK. Also update the RSNO and RSNO2
+AKM, pairwise and pmf accordingly based on the interface.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c        | 15 +++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 16 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -3646,6 +3646,9 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_key_mgmt = AP_WPA2_ENT_FT_EAP;
+ 			dut->ap_cipher = AP_CCMP;
+ 			dut->ap_pmf = AP_PMF_OPTIONAL;
++		} else if (strcasecmp(val, "WPA3-COMPAT") == 0) {
++			dut->ap_key_mgmt = AP_WPA3_COMPAT;
++			dut->ap_cipher = AP_CCMP;
+ 		} else if (strcasecmp(val, "NONE") == 0) {
+ 			dut->ap_key_mgmt = AP_OPEN;
+ 			dut->ap_cipher = AP_PLAIN;
+@@ -5388,6 +5391,7 @@ static int owrt_ap_config_vap(struct sig
+ 		case AP_WPA2_EAP_SHA256:
+ 		case AP_WPA2_PSK_SHA256:
+ 		case AP_WPA2_ENT_FT_EAP:
++		case AP_WPA3_COMPAT:
+ 			/* TODO */
+ 			break;
+ 		case AP_SUITEB:
+@@ -6400,6 +6404,7 @@ static int cmd_wcn_ap_config_commit(stru
+ 	case AP_WPA2_PSK_SHA256:
+ 	case AP_WPA2_ENT_FT_EAP:
+ 	case AP_WPA3_SAE_EXT:
++	case AP_WPA3_COMPAT:
+ 		/* Not supported */
+ 		break;
+ 	}
+@@ -8615,6 +8620,7 @@ static int cmd_ath_ap_config_commit(stru
+ 	case AP_WPA2_ENT_FT_EAP:
+ 	case AP_OSEN:
+ 	case AP_WPA3_SAE_EXT:
++	case AP_WPA3_COMPAT:
+ 		/* TODO */
+ 		send_resp(dut, conn, SIGMA_ERROR,
+ 			  "errorCode,Unsupported KeyMgnt value");
+@@ -8730,6 +8736,7 @@ static int cmd_ath_ap_config_commit(stru
+ 		case AP_WPA2_ENT_FT_EAP:
+ 		case AP_OSEN:
+ 		case AP_WPA3_SAE_EXT:
++		case AP_WPA3_COMPAT:
+ 			/* TODO */
+ 			send_resp(dut, conn, SIGMA_ERROR,
+ 				  "errorCode,Unsupported KeyMgnt value");
+@@ -10678,6 +10685,42 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 			fprintf(f, "auth_server_shared_secret=%s\n",
+ 				dut->ap_radius_password);
+ 			break;
++		case AP_WPA3_COMPAT:
++			if (check_band(dut, BAND_6G, link_id)) {
++				fprintf(f, "wpa=2\n");
++				fprintf(f, "wpa_key_mgmt=SAE\n");
++				fprintf(f, "wpa_pairwise=%s\n",
++					hostapd_cipher_name(cipher));
++				fprintf(f, "sae_password=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "ieee80211w=2\n");
++				fprintf(f, "sae_pwe=1\n");
++			} else {
++				fprintf(f, "wpa=2\n");
++				fprintf(f, "wpa_key_mgmt=WPA-PSK\n");
++				fprintf(f, "wpa_pairwise=%s\n",
++					hostapd_cipher_name(cipher));
++				fprintf(f, "wpa_passphrase=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "ieee80211w=0\n");
++				fprintf(f, "sae_pwe=2\n");
++				/* RSNO AKM */
++				fprintf(f, "rsn_override_key_mgmt=SAE\n");
++				/* RSNO PAIRWISE */
++				fprintf(f, "rsn_override_pairwise=%s\n",
++					hostapd_cipher_name(cipher));
++				/* RSNO PMF */
++				fprintf(f, "rsn_override_mfp=2\n");
++				fprintf(f, "rsn_override_omit_rsnxe=1\n");
++			}
++
++			/* RSNO2 AKM */
++			fprintf(f, "rsn_override_key_mgmt_2=SAE-EXT-KEY\n");
++			/* RSNO2 PAIRWISE */
++			fprintf(f, "rsn_override_pairwise_2=GCMP-256\n");
++			/* RSNO2 PMF */
++			fprintf(f, "rsn_override_mfp_2=2\n");
++			break;
+ 		}
+ skip_key_mgmt:
+ 
+@@ -10737,7 +10780,8 @@ skip_key_mgmt:
+ 				fprintf(f, "sae_require_mfp=1\n");
+ 			break;
+ 		case AP_PMF_REQUIRED:
+-			fprintf(f, "ieee80211w=2\n");
++			if (dut->ap_key_mgmt != AP_WPA3_COMPAT)
++				fprintf(f, "ieee80211w=2\n");
+ 			break;
+ 		}
+ 
+@@ -11020,7 +11064,8 @@ skip_key_mgmt:
+ 			}
+ 		}
+ 
+-		if (dut->ap_mbo) {
++		if (dut->ap_mbo && (dut->ap_key_mgmt != AP_WPA3_COMPAT ||
++				    check_band(dut, BAND_6G, link_id))) {
+ 			fprintf(f, "mbo=1\n");
+ 			/* OCE AP mode */
+ 			fprintf(f, "oce=4\n");
+@@ -12999,6 +13044,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_ft_ds = VALUE_NOT_SET;
+ 	dut->ap_reg_domain = REG_DOMAIN_NOT_SET;
+ 	dut->ap_mobility_domain[0] = '\0';
++	dut->ap_mbo = 0;
+ 
+ 	if (dut->program == PROGRAM_MBO) {
+ 		dut->ap_mbo = 1;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -576,6 +576,7 @@ enum ap_key_mgmt {
+ 	AP_WPA2_ENT_FT_EAP,
+ 	AP_OSEN,
+ 	AP_WPA3_SAE_EXT,
++	AP_WPA3_COMPAT,
+ };
+ 
+ enum eht_ru_alloc {

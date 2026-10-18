@@ -1,0 +1,1271 @@
+#!/bin/sh
+#
+# Copyright (c) 2023-2024, 2026 Qualcomm Innovation Center, Inc. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+
+#@edma_dump
+#@example : edma_dump [ipq53xx|ipq95xx|ipq54xx|ipq52xx|ipq96xx] [general|txdesc|txcmpl|rxdesc|rxfill|full] [ring_num] [cache] [8B_mode]
+load_miami() {
+	RXDESC_WORD=8
+	RXFILL_WORD=4
+	TXDESC_WORD=8
+	TXCMPL_WORD=4
+	RXDESC_NUM_RNG=16
+	RXFILL_NUM_RNG=8
+	TXDESC_NUM_RNG=24
+	TXCMPL_NUM_RNG=24
+	EXTENDED_DUMP_1=0
+	PLATFORM="MIAMI"
+	IS_NEW_PPE=0
+	RXDESC_CACHE_BA=0x3ABE8000
+	RXDESC_CACHE_DEPTH=0x280
+	TXDESC_CACHE_BA=0x3ABD0000
+	TXDESC_CACHE_DEPTH=0x200
+	RXFILL_CACHE_BA=0x3ABBF000
+	RXFILL_CACHE_DEPTH=0x100
+	TXCMPL_CACHE_BA=0x3ABE0000
+	TXCMPL_CACHE_DEPTH=0x440
+}
+
+load_alder() {
+	RXDESC_WORD=8
+	RXFILL_WORD=4
+	TXDESC_WORD=8
+	TXCMPL_WORD=4
+	RXDESC_NUM_RNG=24
+	RXFILL_NUM_RNG=8
+	TXDESC_NUM_RNG=32
+	TXCMPL_NUM_RNG=32
+	PLATFORM="ALDER"
+	IS_NEW_PPE=0
+	EXTENDED_DUMP_1=0
+	RXDESC_CACHE_BA=0x3ABE8000
+	RXDESC_CACHE_DEPTH=0x3C0
+	TXDESC_CACHE_BA=0x3ABD0000
+	TXDESC_CACHE_DEPTH=0x200
+	RXFILL_CACHE_BA=0x3ABBF000
+	RXFILL_CACHE_DEPTH=0x100
+	TXCMPL_CACHE_BA=0x3ABE0000
+	TXCMPL_CACHE_DEPTH=0x440
+}
+
+load_marina() {
+	RXDESC_WORD=8
+	RXFILL_WORD=4
+	TXDESC_WORD=8
+	TXCMPL_WORD=4
+	RXDESC_NUM_RNG=24
+	RXFILL_NUM_RNG=8
+	TXDESC_NUM_RNG=32
+	TXCMPL_NUM_RNG=32
+	EXTENDED_DUMP_1=1
+	PLATFORM="MARINA"
+	IS_NEW_PPE=0
+	RXDESC_CACHE_BA=0x3ABE8000
+	RXDESC_CACHE_DEPTH=0x3C0
+	TXDESC_CACHE_BA=0x3ABD0000
+	TXDESC_CACHE_DEPTH=0x200
+	RXFILL_CACHE_BA=0x3ABBF000
+	RXFILL_CACHE_DEPTH=0x100
+	TXCMPL_CACHE_BA=0x3ABE0000
+	TXCMPL_CACHE_DEPTH=0x640
+}
+
+load_hermosa() {
+	RXDESC_WORD=8
+	RXFILL_WORD=4
+	TXDESC_WORD=8
+	TXCMPL_WORD=4
+	RXDESC_NUM_RNG=24
+	RXFILL_NUM_RNG=20
+	TXDESC_NUM_RNG=24
+	TXCMPL_NUM_RNG=20
+	DDRQ_WORD_NUM=5
+	GRO_WORD_NUM=4
+	EXTENDED_DUMP_1=0
+	PLATFORM="HERMOSA"
+	IS_NEW_PPE=1
+	RXDESC_CACHE_BA=0x3ADE8000
+	RXDESC_CACHE_DEPTH=0x1e0
+	TXDESC_CACHE_BA=0x3ADD0000
+	TXDESC_CACHE_DEPTH=0x300
+	RXFILL_CACHE_BA=0x3AEC0000
+	RXFILL_CACHE_DEPTH=0x280
+	TXCMPL_CACHE_BA=0x3ADE0000
+	TXCMPL_CACHE_DEPTH=0x280
+}
+
+load_juhu() {
+	RXDESC_WORD=8
+	RXFILL_WORD=4
+	TXDESC_WORD=8
+	TXCMPL_WORD=4
+	RXDESC_NUM_RNG=24
+	RXFILL_NUM_RNG=20
+	TXDESC_NUM_RNG=24
+	TXCMPL_NUM_RNG=20
+	DDRQ_WORD_NUM=5
+	GRO_WORD_NUM=4
+	EXTENDED_DUMP_1=0
+	PLATFORM="JUHU"
+	IS_NEW_PPE=1
+	RX_BIN_CNT=8
+	RXDESC_CACHE_BA=0x2ADE8000
+	RXDESC_CACHE_DEPTH=0x1e0
+	TXDESC_CACHE_BA=0x2ADD0000
+	TXDESC_CACHE_DEPTH=0x180
+	RXFILL_CACHE_BA=0x2AEC0000
+	RXFILL_CACHE_DEPTH=0x280
+	TXCMPL_CACHE_BA=0x2ADE0000
+	TXCMPL_CACHE_DEPTH=0x280
+}
+
+hex_addr() {
+	printf "0x%x" "$1"
+}
+
+dump_reg() {
+	label="$1"
+	addr="$2"
+	echo "$label $(hex_addr "$addr") : $(devmem $(hex_addr "$addr"))"
+}
+
+general_dump() {
+
+	dump_reg "NSS_PPE_EDMA_MAS_CTRL_REG" $(($1))
+	dump_reg "NSS_PPE_EDMA_PORT_CTRL_REG" $(($1 + 0x4))
+	dump_reg "NSS_PPE_EDMA_VLAN_CTRL_REG" $(($1 + 0x8))
+	dump_reg "NSS_PPE_EDMA_RXDESC2FILL_MAP_REG_0" $(($1 + 0x14))
+	dump_reg "NSS_PPE_EDMA_RXDESC2FILL_MAP_REG_1" $(($1 + 0x18))
+	if [ $EXTENDED_DUMP_1 -eq 1 ];then
+		dump_reg "NSS_PPE_EDMA_RXDESC2FILL_MAP_REG_2" $(($1 + 0x1C))
+	fi
+	if [ $IS_NEW_PPE -eq 1 ];then
+		dump_reg "NSS_PPE_EDMA_RXDESC2FILL_MAP_REG_2" $(($1 + 0x1C))
+		dump_reg "NSS_PPE_EDMA_WR_CACHE_INDEX" $(($1 + 0xC))
+	fi
+	dump_reg "NSS_PPE_EDMA_TXQ_CTRL_REG" $(($1 + 0x20))
+	dump_reg "NSS_PPE_EDMA_TXQ_CTRL_REG2" $(($1 + 0x24))
+	dump_reg "NSS_PPE_EDMA_TXQ_FC_REG0" $(($1 + 0x28))
+	dump_reg "NSS_PPE_EDMA_TXQ_FC_REG1" $(($1 + 0x30))
+	dump_reg "NSS_PPE_EDMA_TXQ_FC_REG2" $(($1 + 0x34))
+	dump_reg "NSS_PPE_EDMA_TXQ_FC_REG3" $(($1 + 0x38))
+	dump_reg "NSS_PPE_EDMA_RXQ_CTRL_REG" $(($1 + 0x3C))
+	dump_reg "NSS_PPE_EDMA_MISC_ERR_QID_REG1" $(($1 + 0x40))
+	dump_reg "NSS_PPE_EDMA_RXQ_FC_THRE_REG" $(($1 + 0x44))
+	dump_reg "NSS_PPE_EDMA_DMAR_CTRL_REG" $(($1 + 0x48))
+	dump_reg "NSS_PPE_EDMA_AXIR_CTRL_REG" $(($1 + 0x4C))
+	dump_reg "NSS_PPE_EDMA_AXIW_CTRL_REG" $(($1 + 0x50))
+	dump_reg "NSS_PPE_EDMA_MIN_MSS_REG" $(($1 + 0x54))
+	dump_reg "NSS_PPE_EDMA_LOOPBACK_CTRL_REG" $(($1 + 0x58))
+	dump_reg "NSS_PPE_EDMA_MISC_INT_STAT_REG" $(($1 + 0x5C))
+	dump_reg "NSS_PPE_EDMA_MISC_INT_MASK_REG" $(($1 + 0x60))
+	dump_reg "NSS_PPE_EDMA_DBG_CTRL_REG" $(($1 + 0x64))
+	dump_reg "NSS_PPE_EDMA_DBG_DATA_REG" $(($1 + 0x68))
+	dump_reg "NSS_PPE_EDMA_TX_TIMEOUT_THRES" $(($1 + 0x6C))
+	dump_reg "NSS_PPE_EDMA_REQ0_FIFO_THRES" $(($1 + 0x80))
+	dump_reg "NSS_PPE_EDMA_WB_OS_THRES" $(($1 + 0x84))
+	dump_reg "NSS_PPE_EDMA_MISC_ERR_QID_REG2" $(($1 + 0x88))
+	dump_reg "NSS_PPE_EDMA_TXDESC2CMPL_MAP_REG_0" $(($1 + 0x8C))
+	dump_reg "NSS_PPE_EDMA_TXDESC2CMPL_MAP_REG_1" $(($1 + 0x90))
+	dump_reg "NSS_PPE_EDMA_TXDESC2CMPL_MAP_REG_2" $(($1 + 0x94))
+	dump_reg "NSS_PPE_EDMA_TXDESC2CMPL_MAP_REG_3" $(($1 + 0x98))
+	if [ $EXTENDED_DUMP_1 -eq 1 ];then
+		dump_reg "NSS_PPE_EDMA_TXDESC2CMPL_MAP_REG_4" $(($1 + 0x9C))
+		dump_reg "NSS_PPE_EDMA_TXDESC2CMPL_MAP_REG_5" $(($1 + 0xA0))
+		dump_reg "NSS_PPE_EDMA_AXCACHE_OVERRIDE_REG" $(($1 + 0xAC))
+		dump_reg "NSS_PPE_EDMA_CACHEINDEX_LUT_REG" $(($1 + 0xB0))
+		dump_reg "NSS_PPE_EDMA_CACHEINDEX_LUT2_REG" $(($1 + 0xB4))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG4" $(($1 + 0xB8))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG5" $(($1 + 0xC0))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG6" $(($1 + 0xC4))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG7" $(($1 + 0xC8))
+	fi
+	if [ $IS_NEW_PPE -ne 1 ];then
+		dump_reg "NSS_PPE_EDMA_MDIO_SLV_PASUE_MAP_REG_0" $(($1 + 0xA4))
+		dump_reg "NSS_PPE_EDMA_MDIO_SLV_PASUE_MAP_REG_1" $(($1 + 0xA8))
+	else
+		dump_reg "NSS_PPE_EDMA_TXCMPL_2ND_RING_REG" $(($1 + 0x9C))
+		dump_reg "NSS_PPE_EDMA_AXCACHE_OVERRIDE_REG" $(($1 + 0xAC))
+		dump_reg "NSS_PPE_EDMA_CACHEINDEX_LUT_REG" $(($1 + 0xB0))
+		dump_reg "NSS_PPE_EDMA_CACHEINDEX_LUT2_REG" $(($1 + 0xB4))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG4" $(($1 + 0xB8))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG5" $(($1 + 0xC0))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG6" $(($1 + 0xC4))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG7" $(($1 + 0xC8))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG8" $(($1 + 0xCC))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG9" $(($1 + 0xD0))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG10" $(($1 + 0xD4))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG11" $(($1 + 0xD8))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG12" $(($1 + 0xDC))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG13" $(($1 + 0xE0))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG14" $(($1 + 0xE4))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG15" $(($1 + 0xE8))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG16" $(($1 + 0xEC))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG17" $(($1 + 0xF0))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG18" $(($1 + 0xF4))
+		dump_reg "NSS_PPE_EDMA_TXQ_FC_REG19" $(($1 + 0xF8))
+		dump_reg "NSS_PPE_EDMA_RXDESC2FILL_MAP_REG_3" $(($1 + 0x100))
+		dump_reg "NSS_PPE_EDMA_RXDESC2FILL_MAP_REG_4" $(($1 + 0x104))
+		dump_reg "NSS_PPE_EDMA_RXDESC2FILL_MAP_REG_5" $(($1 + 0x108))
+		for i in $(seq 0 $(($DDRQ_WORD_NUM - 1)))
+		do
+			reg=$((($1 + 0x110) + (0x4*$i)))
+			dump_reg "NSS_PPE_EDMA_RX_WR_PH_REG_$i" $reg
+		done
+		dump_reg "NSS_PPE_EDMA_RX_LP_WR_PH_REG" $(($1 + 0x130))
+		dump_reg "NSS_PPE_EDMA_RX_DATA_BASE_ADDR_L" $(($1 + 0x134))
+		dump_reg "NSS_PPE_EDMA_RX_DESC_BASE_ADDR_L" $(($1 + 0x138))
+		dump_reg "NSS_PPE_EDMA_RX_BASE_ADDR_H" $(($1 + 0x13C))
+		dump_reg "NSS_PPE_EDMA_DDRQ_CTRL_CFG" $(($1 + 0x140))
+		dump_reg "NSS_PPE_EDMA_DDRQ_XGEM_VLD_REG0" $(($1 + 0x144))
+		dump_reg "NSS_PPE_EDMA_DDRQ_XGEM_VLD_REG1" $(($1 + 0x148))
+		dump_reg "NSS_PPE_EDMA_DDRQ_XGEM_VLD_REG2" $(($1 + 0x14C))
+		dump_reg "NSS_PPE_EDMA_DDRQ_XGEM_VLD_REG3" $(($1 + 0x150))
+		dump_reg "NSS_PPE_EDMA_DDRQ_XGEM_VLD_REG4" $(($1 + 0x154))
+		dump_reg "NSS_PPE_EDMA_DDRQ_DATA_OFFSET_SEL_REG0" $(($1 + 0x158))
+		dump_reg "NSS_PPE_EDMA_DDRQ_DATA_OFFSET_SEL_REG1" $(($1 + 0x15C))
+		dump_reg "NSS_PPE_EDMA_LOOPBACK_SCHD_REG" $(($1 + 0x160))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG0" $(($1 + 0x164))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG1" $(($1 + 0x168))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG2" $(($1 + 0x16C))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG3" $(($1 + 0x170))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG4" $(($1 + 0x174))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG5" $(($1 + 0x178))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG6" $(($1 + 0x17C))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG7" $(($1 + 0x180))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG8" $(($1 + 0x184))
+		dump_reg "NSS_PPE_EDMA_TX_RING_INIT_WEIGHTS_REG9" $(($1 + 0x188))
+		dump_reg "NSS_PPE_EDMA_DDRQ_SCHD_SP_REG" $(($1 + 0x18C))
+		dump_reg "NSS_PPE_EDMA_DDRQ_INIT_WEIGHTS_REG0" $(($1 + 0x190))
+		dump_reg "NSS_PPE_EDMA_DDRQ_INIT_WEIGHTS_REG1" $(($1 + 0x194))
+		dump_reg "NSS_PPE_EDMA_EDMA_SCHD_REG" $(($1 + 0x198))
+		dump_reg "NSS_PPE_EDMA_LOOPBACK_FC_REG0" $(($1 + 0x19C))
+		dump_reg "NSS_PPE_EDMA_LOOPBACK_FC_REG1" $(($1 + 0x1A0))
+		dump_reg "NSS_PPE_EDMA_LOOPBACK_FC_REG2" $(($1 + 0x1A4))
+		dump_reg "NSS_PPE_EDMA_MDIO_SLV_PASUE_MAP_REG_0" $(($1 + 0x1A8))
+		dump_reg "NSS_PPE_EDMA_MDIO_SLV_PASUE_MAP_REG_1" $(($1 + 0x1AC))
+		dump_reg "NSS_PPE_EDMA_MDIO_SLV_PASUE_MAP_REG_2" $(($1 + 0x1B0))
+		for i in $(seq 0 $(($GRO_WORD_NUM - 1)))
+		do
+			reg=$((($1 + 0x1C0) + (0x4*$i)))
+			dump_reg "NSS_PPE_EDMA_RING_SLOT_SEL_$i" $reg
+		done
+		dump_reg "NSS_PPE_EDMA_GRO_CONFIG1" $(($1 + 0x1D0))
+		dump_reg "NSS_PPE_EDMA_GRO_CONFIG2" $(($1 + 0x1D4))
+		dump_reg "NSS_PPE_EDMA_GRO_CYCLE_UNIT" $(($1 + 0x1D8))
+		dump_reg "NSS_PPE_EDMA_DBG_CNT_TIME" $(($1 + 0x1DC))
+		dump_reg "NSS_PPE_EDMA_DBG_CNT_CLEAN" $(($1 + 0x1E0))
+		dump_reg "NSS_PPE_EDMA_DBG_TOTAL_GO" $(($1 + 0x1E4))
+		dump_reg "NSS_PPE_EDMA_DBG_TOTAL_CLEAN" $(($1 + 0x1E8))
+		dump_reg "NSS_PPE_EDMA_DBG_CNT_TOTAL_CNT" $(($1 + 0x1EC))
+		for i in $(seq 0 $(($DDRQ_WORD_NUM - 1)))
+		do
+			reg=$((($1 + 0x1FC) + (0x4*$i)))
+			dump_reg "NSS_PPE_EDMA_DBG_CNT_BYTE_PKT_STATUS_$i" $reg
+		done
+		dump_reg "NSS_PPE_EDMA_DBG_CNT_BYTE_PKT_CTR" $(($1 + 0x220))
+		dump_reg "NSS_PPE_EDMA_PASS_THR_TUNNEL_LEN_DELTA" $(($1 + 0x224))
+		dump_reg "NSS_PPE_EDMA_TXDESC_PASSTHR_REG_0" $(($1 + 0x230))
+		dump_reg "NSS_PPE_EDMA_TXDESC_PASSTHR_REG_1" $(($1 + 0x234))
+		dump_reg "NSS_PPE_EDMA_TXDESC_PASSTHR_REG_2" $(($1 + 0x238))
+		dump_reg "NSS_PPE_EDMA_TXDESC_PASSTHR_REG_3" $(($1 + 0x23C))
+		dump_reg "NSS_PPE_EDMA_TXDESC_PASSTHR_REG_4" $(($1 + 0x240))
+		# TODO: The register offset values seems to be OO Order and OO Sequence
+		dump_reg "NSS_PPE_EDMA_ENQ_DIS_REG0" $(($1 + 0x250))
+		dump_reg "NSS_PPE_EDMA_ENQ_DIS_REG1" $(($1 + 0x254))
+		dump_reg "NSS_PPE_EDMA_ENQ_DIS_REG2" $(($1 + 0x258))
+		dump_reg "NSS_PPE_EDMA_ENQ_DIS_REG3" $(($1 + 0x26C))
+		dump_reg "NSS_PPE_EDMA_ENQ_DIS_REG4" $(($1 + 0x268))
+		dump_reg "NSS_PPE_EDMA_ENQ_DIS_REG5" $(($1 + 0x27C))
+		dump_reg "NSS_PPE_EDMA_ACTION_SEL_CTRL" $(($1 + 0x280))
+		dump_reg "NSS_PPE_EDMA_L4S_TIMER" $(($1 + 0x284))
+		dump_reg "NSS_PPE_EDMA_DEQ_DROP_REG0" $(($1 + 0x300))
+		dump_reg "NSS_PPE_EDMA_DEQ_DROP_REG1" $(($1 + 0x304))
+		dump_reg "NSS_PPE_EDMA_DEQ_DROP_REG2" $(($1 + 0x308))
+		dump_reg "NSS_PPE_EDMA_DEQ_DROP_REG3" $(($1 + 0x30C))
+		dump_reg "NSS_PPE_EDMA_DEQ_DROP_REG4" $(($1 + 0x310))
+		dump_reg "NSS_PPE_EDMA_DEQ_DROP_REG5" $(($1 + 0x314))
+	fi
+
+	for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x1000) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXDESC_BA_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x1004) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXDESC_PROD_IDX_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x1008) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXDESC_CONS_IDX_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x100C) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXDESC_RING_SIZE_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x1010) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXDESC_CTRL_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x1014) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXDESC_BA2_REG_$i" $reg
+	done
+	if [ "$EXTENDED_DUMP_1" -eq 1 ] || [ "$IS_NEW_PPE" -eq 1 ]; then
+		for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x1018) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXDESC_BA_HIGH_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x101C) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXDESC_BA2_HIGH_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x1020) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXDESC_UPLOAD_IDX_TRIG_$i" $reg
+		done
+		for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x1024) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXDESC_UPLOAD_IDX_ADDR_L_$i" $reg
+		done
+		for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x1028) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXDESC_UPLOAD_IDX_ADDR_H_$i" $reg
+		done
+		for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x102C) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXDESC_DROP_REG_$i" $reg
+		done
+	fi
+
+	if [ $IS_NEW_PPE -eq 1 ];then
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29000) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_BA_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29004) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_PROD_IDX_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29008) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_CONS_IDX_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x2900C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_RING_BUFFER0_SIZE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29010) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_BUFFER1_SIZE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29014) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_FC_THRE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29018) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_UGT_THRE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x2901C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_RING_EN_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29020) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_DISABLE_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29024) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_DISABLE_DONE_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29028) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_BA_HIGH_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x2902C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_INDEX_RESET_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29030) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_UPLOAD_IDX_TRIG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29034) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_UPLOAD_IDX_ADDR_L_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29038) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_UPLOAD_IDX_ADDR_H_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x2903C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_FORMAT_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x36000) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_INT_STAT_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x36004) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_INT_MASK_REG_$i" $reg
+		done
+
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A000) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_BA_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A004) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_PROD_IDX_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A008) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_CONS_IDX_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A00C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_RING_SIZE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A010) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_THRE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A014) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_UGT_THRE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A018) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_CTRL_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A01C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_BPC_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A020) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_DISABLE_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A024) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_DISABLE_DONE_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A028) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_PH_BA_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A02C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_BA_HIGH_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A030) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_PH_BA_HIGH_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A034) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_INDEX_RESET_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A038) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_UPLOAD_IDX_TRIG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A03C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_UPLOAD_IDX_ADDR_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A040) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_UPLOAD_IDX_ADDR_H_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x4A044) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_CACHE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 62000) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_INT_STAT_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x62004) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_INT_MASK_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x62008) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RX_MOD_TIMER_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x6200C) + (0x100*$i)))
+			dump_reg "NSS_PPE_EDMA_RX_INT_CTRL_REG_$i" $reg
+		done
+	else
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29000) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_BA_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29004) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_PROD_IDX_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29008) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_CONS_IDX_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x2900C) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_RING_BUFFER0_SIZE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29010) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_BUFFER1_SIZE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29014) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_FC_THRE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29018) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_UGT_THRE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x2901C) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_RING_EN_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29020) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_DISABLE_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x29024) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_DISABLE_DONE_$i" $reg
+		done
+		if [ $EXTENDED_DUMP_1 -eq 1 ];then
+			for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+			do
+				reg=$((($1 + 0x29028) + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXFILL_BA_HIGH_REG_$i" $reg
+			done
+			for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+			do
+				reg=$((($1 + 0x2902C) + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXFILL_INDEX_RESET_REG_$i" $reg
+			done
+			for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+			do
+				reg=$((($1 + 0x29030) + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXFILL_UPLOAD_IDX_TRIG_$i" $reg
+			done
+			for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+			do
+				reg=$((($1 + 0x29034) + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXFILL_UPLOAD_IDX_ADDR_L_$i" $reg
+			done
+			for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+			do
+				reg=$((($1 + 0x29038) + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXFILL_UPLOAD_IDX_ADDR_H_$i" $reg
+			done
+		fi
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB31000 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_INT_STAT_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB31004 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXFILL_INT_MASK_REG_$i" $reg
+		done
+
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39000 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_BA_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39004 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_PROD_IDX_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39008 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_CONS_IDX_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB3900c + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_RING_SIZE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39010 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_THRE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39014 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_UGT_THRE_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39018 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_CTRL_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB3901C + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_BPC_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39020 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_DISABLE_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39024 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_DISABLE_DONE_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB39028 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_PH_BA_REG_$i" $reg
+		done
+		if [ $EXTENDED_DUMP_1 -eq 1 ];then
+			for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+			do
+				reg=$((0x3AB3902C + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXDESC_BA_HIGH_REG_$i" $reg
+			done
+			for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+			do
+				reg=$((0x3AB39030 + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_PH_BA_HIGH_REG_$i" $reg
+			done
+			for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+			do
+				reg=$((0x3AB39034 + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXDESC_INDEX_RESET_REG_$i" $reg
+			done
+			for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+			do
+				reg=$((0x3AB39038 + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXDESC_UPLOAD_IDX_TRIG_$i" $reg
+			done
+			for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+			do
+				reg=$((0x3AB3903C + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXDESC_UPLOAD_IDX_ADDR_$i" $reg
+			done
+			for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+			do
+				reg=$((0x3AB39040 + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXDESC_UPLOAD_IDX_ADDR_H_$i" $reg
+			done
+			for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+			do
+				reg=$((0x3AB39044 + (0x1000*$i)))
+				dump_reg "NSS_PPE_EDMA_RXDESC_CACHE_REG_$i" $reg
+			done
+		fi
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB59000 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_INT_STAT_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB59004 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RXDESC_INT_MASK_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB59008 + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RX_MOD_TIMER_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+		do
+			reg=$((0x3AB5900C + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_RX_INT_CTRL_REG_$i" $reg
+		done
+	fi
+
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x79000) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXCMPL_BA_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x79004) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXCMPL_PROD_IDX_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x79008) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXCMPL_CONS_IDX_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x7900C) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXCMPL_RING_SIZE_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x79010) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXCMPL_UGT_THRE_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x79014) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXCMPL_CTRL_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x79018) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TXCMPL_BPC_REG_$i" $reg
+	done
+	if [ "$EXTENDED_DUMP_1" -eq 1 ] || [ "$IS_NEW_PPE" -eq 1 ]; then
+		for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x7901C) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXCMPL_BA_HIGH_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x79020) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXCMPL_UPLOAD_IDX_TRIG_$i" $reg
+		done
+		for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x79024) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXCMPL_UPLOAD_IDX_ADDR_L_$i" $reg
+		done
+		for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x79028) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXCMPL_UPLOAD_IDX_ADDR_H_$i" $reg
+		done
+		for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+		do
+			reg=$((($1 + 0x7902C) + (0x1000*$i)))
+			dump_reg "NSS_PPE_EDMA_TXCMPL_CACHE_REG_$i" $reg
+		done
+	fi
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x99000) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TX_INT_STAT_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x99004) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TX_INT_MASK_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x99008) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TX_MOD_TIMER_REG_$i" $reg
+	done
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		reg=$((($1 + 0x9900C) + (0x1000*$i)))
+		dump_reg "NSS_PPE_EDMA_TX_INT_CTRL_REG_$i" $reg
+	done
+	if [ "$PLATFORM" = "JUHU" ]; then
+		for i in $(seq 0 $(($RX_BIN_CNT - 1)))
+		do
+			reg=$((($1 + 0xFA300) + (0x4*$i)))
+			dump_reg "NSS_PPE_EDMA_RX_BIN_CNT_LOW_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RX_BIN_CNT - 1)))
+		do
+			reg=$((($1 + 0xFA320) + (0x4*$i)))
+			dump_reg "NSS_PPE_EDMA_RX_BIN_CNT_HIGH_REG_$i" $reg
+		done
+		for i in $(seq 0 $(($RX_BIN_CNT - 1)))
+		do
+			reg=$((($1 + 0xFA340) + (0x4*$i)))
+			dump_reg "NSS_PPE_EDMA_RX_BIN_CNT_THRES_REG_$i" $reg
+		done
+		dump_reg "NSS_PPE_EDMA_RX_BIN_CTRL_REG" $(($1 + 0xFA360))
+	fi
+}
+
+rxdesc_dump() {
+	ring_n=$1
+	dump_cached=$2
+	rxdesc_ring_base=$3
+	ring_base_multiple=$4
+
+	echo "RXDESC DUMP: Ring: $ring_n rxdesc ring base: $rxdesc_ring_base base_multiple: $ring_base_multiple"
+
+	#producer index
+	rxdesc_prod=$((($rxdesc_ring_base + 0x4) + ($ring_base_multiple*$ring_n)))
+	prod_val=$(devmem $(hex_addr $rxdesc_prod))
+	echo "rxdesc_prod[$ring_n] addr:$(hex_addr $rxdesc_prod) index: $prod_val"
+
+	#consumer index
+	rxdesc_cons=$((($rxdesc_ring_base + 0x8) + ($ring_base_multiple*$ring_n)))
+	cons_val=$(devmem $(hex_addr $rxdesc_cons))
+	echo "rxdesc_cons[$ring_n] addr:$(hex_addr $rxdesc_cons) index: $cons_val"
+
+	#base address
+	rxdesc_ba=$((($rxdesc_ring_base) + ($ring_base_multiple*$ring_n)))
+	ba_val=$(devmem $(hex_addr $rxdesc_ba))
+	echo "rxdesc_ba[$ring_n] addr:$(hex_addr $rxdesc_ba) index: $ba_val"
+
+	#ring size
+	rxdesc_sz=$((($rxdesc_ring_base + 0xC) + ($ring_base_multiple*$ring_n)))
+	count=$(devmem $(printf "0x%x" $rxdesc_sz))
+	MAX=$(($count - 1))
+
+	reg=$(devmem $(printf "0x%x" $rxdesc_ba))
+	for i in $(seq 0 $MAX)
+	do
+		echo "desc: $i"
+		for j in $(seq 1 $RXDESC_WORD)
+		do
+			val=$(devmem $(printf "0x%x" $reg))
+			echo "addr_${j}:$(printf "0x%x" $reg) val_${j}: $val"
+			reg=$(($reg + 4))
+		done
+	done
+
+	if [ "$dump_cached" -eq 1 ];then
+		echo "dumping cached descriptors"
+		NUM_CACHE_DESC_PER_RNG=$(($RXDESC_CACHE_DEPTH/$RXDESC_NUM_RNG))
+		RXDESC_SZ=$(($RXDESC_WORD*4))
+		RXDESC_CACHE_SZ=$(($NUM_CACHE_DESC_PER_RNG*$RXDESC_SZ))
+		reg=$(($RXDESC_CACHE_BA + $(($ring_n*$RXDESC_CACHE_SZ))))
+		for i in $(seq 0 $(($NUM_CACHE_DESC_PER_RNG - 1)))
+		do
+			echo "desc: $i"
+			for j in $(seq 1 $RXDESC_WORD)
+			do
+				val=$(devmem $(printf "0x%x" $reg))
+				echo "addr_${j}:$(printf "0x%x" $reg) val_${j}: $val"
+				reg=$(($reg + 4))
+			done
+		done
+	fi
+}
+
+txdesc_dump() {
+	ring_n=$1
+	dump_cached=$2
+	edma_offset=$3
+
+	echo "TXDESC DUMP: Ring: $ring_n"
+
+	#producer index
+	txdesc_prod=$((($edma_offset + 0x1004) + (0x1000*$ring_n)))
+	prod_val=$(devmem $(printf "0x%x" $txdesc_prod))
+	echo "txdesc_prod[$ring_n] addr: $(printf "0x%x" $txdesc_prod) index: $prod_val"
+
+	#consumer index
+	txdesc_cons=$((($edma_offset + 0x1008) + (0x1000*$ring_n)))
+	cons_val=$(devmem $(printf "0x%x" $txdesc_cons))
+	echo "txdesc_cons[$ring_n] addr: $(printf "0x%x" $txdesc_cons) index: $cons_val"
+
+	#base address
+	txdesc_ba=$((($edma_offset + 0x1000) + (0x1000*$ring_n)))
+	ba_val=$(devmem $(printf "0x%x" $txdesc_ba))
+	echo "txdesc_ba[$ring_n] addr: $(printf "0x%x" $txdesc_ba) index: $ba_val"
+
+	#ring size
+	txdesc_sz=$((($edma_offset + 0x100C) + (0x1000*$ring_n)))
+	count=$(devmem $(printf "0x%x" $txdesc_sz))
+	MAX=$(($count - 1))
+
+	reg=$(devmem $(printf "0x%x" $txdesc_ba))
+	for i in $(seq 0 $MAX)
+	do
+		echo "desc: $i"
+		for j in $(seq 1 $TXDESC_WORD)
+		do
+			val=$(devmem $(printf "0x%x" $reg))
+			echo "addr_${j}:$(printf "0x%x" $reg) val_${j}: $val"
+			reg=$(($reg + 4))
+		done
+	done
+
+	if [ "$dump_cached" -eq 1 ];then
+		echo "dumping cache descriptors"
+		NUM_CACHE_DESC_PER_RNG=$(($TXDESC_CACHE_DEPTH/$TXDESC_NUM_RNG))
+		TXDESC_SZ=$(($TXDESC_WORD*4))
+		TXDESC_CACHE_SZ=$(($NUM_CACHE_DESC_PER_RNG*$TXDESC_SZ))
+		reg=$(($TXDESC_CACHE_BA + $(($ring_n*$TXDESC_CACHE_SZ))))
+		for i in $(seq 0 $(($NUM_CACHE_DESC_PER_RNG - 1)))
+		do
+			echo "desc: $i"
+			for j in $(seq 1 $TXDESC_WORD)
+			do
+				val=$(devmem $(printf "0x%x" $reg))
+				echo "addr_${j}:$(printf "0x%x" $reg) val_${j}: $val"
+				reg=$(($reg + 4))
+			done
+		done
+	fi
+}
+
+rxfill_dump() {
+	ring_n=$1
+	dump_cached=$2
+	edma_offset=$3
+	ring_base_multiple=$4
+
+	echo "RXFILL DUMP: Ring: $ring_n RXFILL_WORD size: $RXFILL_WORD base multiple: $ring_base_multiple"
+
+	#producer index
+	rxfill_prod=$((($edma_offset + 0x29004) + ($ring_base_multiple*$ring_n)))
+	prod_val=$(devmem $(printf "0x%x" $rxfill_prod))
+	echo "rxfill_prod[$ring_n] addr: $(printf "0x%x" $rxfill_prod) index: $prod_val"
+
+	#consumer index
+	rxfill_cons=$((($edma_offset + 0x29008) + ($ring_base_multiple*$ring_n)))
+	cons_val=$(devmem $(printf "0x%x" $rxfill_cons))
+	echo "rxfill_cons[$ring_n] addr: $(printf "0x%x" $rxfill_cons) index: $cons_val"
+
+	#base address
+	rxfill_ba=$((($edma_offset + 0x29000) + ($ring_base_multiple*$ring_n)))
+	ba_val=$(devmem $(printf "0x%x" $rxfill_ba))
+	echo "rxfill_ba[$ring_n] addr: $(printf "0x%x" $rxfill_ba) index: $ba_val"
+
+	#ring size
+	if [ "$EXTENDED_DUMP_1" -eq 1 ] || [ "$IS_NEW_PPE" -eq 1 ]; then
+		rxfill_sz=$((($edma_offset + 0x29010) + ($ring_base_multiple*$ring_n)))
+	else
+		rxfill_sz=$((($edma_offset + 0x2900C) + ($ring_base_multiple*$ring_n)))
+	fi
+
+	count=$(devmem $(printf "0x%x" $rxfill_sz))
+	MAX=$(($count - 1))
+
+	reg=$(devmem $(printf "0x%x" $rxfill_ba))
+	for i in $(seq 0 $MAX)
+	do
+		echo "desc: $i"
+		for j in $(seq 1 $RXFILL_WORD)
+		do
+			val=$(devmem $(printf "0x%x" $reg))
+			echo "addr_${j}:$(printf "0x%x" $reg) val_${j}: $val"
+			reg=$(($reg + 4))
+		done
+	done
+
+	if [ "$dump_cached" -eq 1 ];then
+		echo "dumping cache descriptors"
+		NUM_CACHE_DESC_PER_RNG=$(($RXFILL_CACHE_DEPTH/$RXFILL_NUM_RNG))
+		RXFILL_SZ=$(($RXFILL_WORD*4))
+		RXFILL_CACHE_SZ=$(($NUM_CACHE_DESC_PER_RNG*$RXFILL_SZ))
+		reg=$(($RXFILL_CACHE_BA + $(($ring_n*$RXFILL_CACHE_SZ))))
+		for i in $(seq 0 $(($NUM_CACHE_DESC_PER_RNG - 1)))
+		do
+			echo "desc: $i"
+			for j in $(seq 1 $RXFILL_WORD)
+			do
+				val=$(devmem $(printf "0x%x" $reg))
+				echo "addr_${j}:$(printf "0x%x" $reg) val_${j}: $val"
+				reg=$(($reg + 4))
+			done
+		done
+	fi
+}
+
+txcmpl_dump() {
+	ring_n=$1
+	dump_cached=$2
+	edma_offset=$3
+
+	echo "TXCMPL DUMP: TXCMPL_WORD size: $TXCMPL_WORD Ring: $ring_n"
+
+	#producer index
+	txcmpl_prod=$((($edma_offset + 0x79004) + (0x1000*$ring_n)))
+	prod_val=$(devmem $(printf "0x%x" $txcmpl_prod))
+	echo "txcmpl_prod[$ring_n] addr: $(printf "0x%x" $txcmpl_prod) index: $prod_val"
+
+	#consumer index
+	txcmpl_cons=$((($edma_offset + 0x79008) + (0x1000*$ring_n)))
+	cons_val=$(devmem $(printf "0x%x" $txcmpl_cons))
+	echo "txcmpl_cons[$ring_n] addr: $(printf "0x%x" $txcmpl_cons) index: $cons_val"
+
+	#base address
+	txcmpl_ba=$((($edma_offset + 0x79000) + (0x1000*$ring_n)))
+	ba_val=$(devmem $(printf "0x%x" $txcmpl_ba))
+	echo "txcmpl_ba[$ring_n] addr: $(printf "0x%x" $txcmpl_ba) index: $ba_val"
+
+	#ring size
+	txcmpl_sz=$((($edma_offset + 0x7900C) + (0x1000*$ring_n)))
+	count=$(devmem $(printf "0x%x" $txcmpl_sz))
+	MAX=$(($count - 1))
+
+	reg=$(devmem $(printf "0x%x" $txcmpl_ba))
+	for i in $(seq 0 $MAX)
+	do
+		echo "desc: $i"
+		for j in $(seq 1 $TXCMPL_WORD)
+		do
+			val=$(devmem $(printf "0x%x" $reg))
+			echo "addr_${j}:$(printf "0x%x" $reg) val_${j}: $val"
+			reg=$(($reg + 4))
+		done
+	done
+
+	if [ "$dump_cached" -eq 1 ];then
+		echo "dumping cache descriptors"
+		NUM_CACHE_DESC_PER_RNG=$(($TXCMPL_CACHE_DEPTH/$TXCMPL_NUM_RNG))
+		TXCMPL_SZ=$(($TXCMPL_WORD*4))
+		TXCMPL_CACHE_SZ=$(($NUM_CACHE_DESC_PER_RNG*$TXCMPL_SZ))
+		reg=$(($TXCMPL_CACHE_BA + $(($ring_n*$TXCMPL_CACHE_SZ))))
+		for i in $(seq 0 $(($NUM_CACHE_DESC_PER_RNG - 1)))
+		do
+			echo "desc: $i"
+			for j in $(seq 1 $TXCMPL_WORD)
+			do
+				val=$(devmem $(printf "0x%x" $reg))
+				echo "addr_${j}:$(printf "0x%x" $reg) val_${j}: $val"
+				reg=$(($reg + 4))
+			done
+		done
+	fi
+}
+
+full_dump() {
+	#general dump
+	if [ "$PLATFORM" = "HERMOSA" ]; then
+		general_dump 0x3AD00000
+	elif [ "$PLATFORM" = "JUHU" ]; then
+		general_dump 0x2AD00000
+	else
+		general_dump 0x3AB00000
+	fi
+
+	#rxdesc dump
+	for i in $(seq 0 $(($RXDESC_NUM_RNG - 1)))
+	do
+		if [ "$PLATFORM" = "HERMOSA" ]; then
+			rxdesc_dump $i $1 0x3AD4A000 0x100
+		elif [ "$PLATFORM" = "JUHU" ]; then
+			rxdesc_dump $i $1 0x2AD4A000 0x100
+		else
+			rxdesc_dump $i $1 0x3AB39000 0x1000
+		fi
+	done
+
+	#rxfill dump
+	for i in $(seq 0 $(($RXFILL_NUM_RNG - 1)))
+	do
+		if [ "$PLATFORM" = "HERMOSA" ]; then
+			rxfill_dump $i $1 0x3AD00000 0x100
+		elif [ "$PLATFORM" = "JUHU" ]; then
+			rxfill_dump $i $1 0x2AD00000 0x100
+		else
+			rxfill_dump $i $1 0x3AB00000 0x1000
+		fi
+	done
+
+	#txdesc dump
+	for i in $(seq 0 $(($TXDESC_NUM_RNG - 1)))
+	do
+		if [ "$PLATFORM" = "HERMOSA" ]; then
+			txdesc_dump $i $1 0x3AD00000
+		elif [ "$PLATFORM" = "JUHU" ]; then
+			txdesc_dump $i $1 0x2AD00000
+		else
+			txdesc_dump $i $1 0x3AB00000
+		fi
+	done
+
+	#txcmpl dump
+	for i in $(seq 0 $(($TXCMPL_NUM_RNG - 1)))
+	do
+		if [ "$PLATFORM" = "HERMOSA" ]; then
+			txcmpl_dump $i $1 0x3AD00000
+		elif [ "$PLATFORM" = "JUHU" ]; then
+			txcmpl_dump $i $1 0x2AD00000
+		else
+			txcmpl_dump $i $1 0x3AB00000
+		fi
+	done
+}
+
+case $4 in
+cache)
+	cache_dump=1;
+	;;
+*)
+	cache_dump=0;
+	;;
+esac
+
+case $1 in
+ipq53xx)
+	load_miami
+	;;
+ipq95xx)
+	load_alder
+	;;
+ipq54xx)
+	load_marina
+	;;
+ipq52xx)
+	load_hermosa
+	;;
+ipq96xx)
+	load_juhu
+	;;
+*)
+	echo 'edma_dump [ipq53xx|ipq95xx|ipq54xx|ipq52xx|ipq96xx] [general|txdesc|txcmpl|rxdesc|rxfill|full] [ring_num] [cache] [8B_mode]'
+	exit 1
+	;;
+esac
+
+case $5 in
+8B_mode)
+	echo "8B mode enabled. Using 2 word size for RXFILL and TXCMPL rings"
+	RXFILL_WORD=2
+	TXCMPL_WORD=2
+	;;
+*)
+	;;
+esac
+
+case $2 in
+general)
+	echo "general dump"
+	if [ "$PLATFORM" = "HERMOSA" ]; then
+		general_dump 0x3AD00000
+	elif [ "$PLATFORM" = "JUHU" ]; then
+		general_dump 0x2AD00000
+	else
+		general_dump 0x3AB00000
+	fi
+	;;
+txdesc)
+	echo "tx desc ring dump for ring: $3"
+	if [ "$PLATFORM" = "HERMOSA" ]; then
+		txdesc_dump $3 $cache_dump 0x3AD00000
+	elif [ "$PLATFORM" = "JUHU" ]; then
+		txdesc_dump $3 $cache_dump 0x2AD00000
+	else
+		txdesc_dump $3 $cache_dump 0x3AB00000
+	fi
+	;;
+txcmpl)
+	echo "tx complete ring dump for ring: $3"
+	if [ "$PLATFORM" = "HERMOSA" ]; then
+		txcmpl_dump $3 $cache_dump 0x3AD00000
+	elif [ "$PLATFORM" = "JUHU" ]; then
+		txcmpl_dump $3 $cache_dump 0x2AD00000
+	else
+		txcmpl_dump $3 $cache_dump 0x3AB00000
+	fi
+	;;
+rxdesc)
+	echo "rx desc ring dump for ring: $3"
+	if [ "$PLATFORM" = "HERMOSA" ]; then
+		rxdesc_dump $3 $cache_dump 0x3AD4A000 0x100
+	elif [ "$PLATFORM" = "JUHU" ]; then
+		rxdesc_dump $3 $cache_dump 0x2AD4A000 0x100
+	else
+		rxdesc_dump $3 $cache_dump 0x3AB39000 0x1000
+	fi
+	;;
+rxfill)
+	echo "rx fill ring dump for ring: $3"
+	if [ "$PLATFORM" = "HERMOSA" ]; then
+		rxfill_dump $3 $cache_dump 0x3AD00000 0x100
+	elif [ "$PLATFORM" = "JUHU" ]; then
+		rxfill_dump $3 $cache_dump 0x2AD00000 0x100
+	else
+		rxfill_dump $3 $cache_dump 0x3AB00000 0x1000
+	fi
+	;;
+full)
+	echo "complete dump"
+	full_dump $cache_dump
+	;;
+*)
+	echo 'edma_dump [ipq53xx|ipq95xx|ipq54xx|ipq52xx|ipq96xx] [general|txdesc|txcmpl|rxdesc|rxfill|full] [ring_num] [cache] [8B_mode]'
+	exit 1
+	;;
+esac

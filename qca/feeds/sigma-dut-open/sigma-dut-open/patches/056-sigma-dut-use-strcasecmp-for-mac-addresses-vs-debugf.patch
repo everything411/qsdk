@@ -1,0 +1,39 @@
+From f0f6ac5ea620969aae5da19437b409a457300591 Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Fri, 15 Jul 2022 14:20:28 +0530
+Subject: [PATCH] sigma-dut: use strcasecmp for mac addresses vs debugfs
+
+Mac80211 creates debugfs for station mac in lower case characters
+but CAPI command is issued with upper case station mac for
+addba request.
+hence sigma-dut fails to find the STA debugfs directory and throws error.
+
+CAPI CMD:
+sigma_dut -l ap_send_addba_req,NAME,DutAP,sta_mac_address,00:10:18:F8:DE:15
+Debugs entry:
+root@OpenWrt:/sys/kernel/debug/ieee80211/phy0/netdev:wlan0/stations# ls
+00:10:18:f8:de:15
+
+Use case insensitive comparision to avoid above failure.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ ap.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index 3c417ed..8e64199 100644
+--- a/ap.c
++++ b/ap.c
+@@ -2180,7 +2180,7 @@ static int mac80211_debug_enable_addba_req(struct sigma_dut *dut, int tid,
+ 		if (res < 0 || res >= sizeof(path))
+ 			continue;
+ 
+-		if (strcmp(entry->d_name, sta_mac) == 0) {
++		if (strcasecmp(entry->d_name, sta_mac) == 0) {
+ 			res = snprintf(buf, sizeof(buf),
+ 				       "%s/aggr_mode", path);
+ 			if (res < 0 || res >= sizeof(buf) || stat(buf, &s) != 0)
+-- 
+2.7.4
+

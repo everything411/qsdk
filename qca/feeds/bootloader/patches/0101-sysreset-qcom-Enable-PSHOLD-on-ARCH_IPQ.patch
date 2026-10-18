@@ -1,0 +1,32 @@
+From 6e82ef062c9251b23ec93a8629882ae09cef0111 Mon Sep 17 00:00:00 2001
+From: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+Date: Mon, 20 Apr 2026 15:52:39 +0530
+Subject: [PATCH] sysreset: qcom: Enable PSHOLD on ARCH_IPQ
+
+Extend SYSRESET_QCOM_PSHOLD dependency to ARCH_IPQ
+in addition to ARCH_IPQ40XX. This enables PSHOLD-based
+system reset support on newer Qualcomm IPQ SoCs that
+share the same reset mechanism.
+
+Change-Id: I70e7a26302ecb756c4b3ec1b320eb7190247237f
+Signed-off-by: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+---
+ drivers/sysreset/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/sysreset/Kconfig b/drivers/sysreset/Kconfig
+index 121194e4418..e6a29e312ee 100644
+--- a/drivers/sysreset/Kconfig
++++ b/drivers/sysreset/Kconfig
+@@ -242,7 +242,7 @@ config SYSRESET_RAA215300
+ 
+ config SYSRESET_QCOM_PSHOLD
+ 	bool "Support sysreset for Qualcomm SoCs via PSHOLD"
+-	depends on ARCH_IPQ40XX
++	depends on ARCH_IPQ40XX || ARCH_IPQ
+ 	help
+ 	  Add support for the system reboot on Qualcomm SoCs via PSHOLD.
+ 
+-- 
+2.34.1
+

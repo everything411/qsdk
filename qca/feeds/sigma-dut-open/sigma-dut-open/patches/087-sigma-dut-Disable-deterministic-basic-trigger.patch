@@ -1,0 +1,89 @@
+From eefcb683e2c2b815a43fb95b5aa8f511d9a86125 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Tue, 6 Aug 2024 12:18:01 +0530
+Subject: [PATCH] sigma-dut: Disabling deterministic basic trigger to be
+ ignored.
+
+Earlier, in the OOB behavior the deterministic basic trigger would not
+turn off after seeing the consecutive Qos NULLs from the STA. So, there
+were few bug fixes done for the deterministic basic trigger in the
+firmware which is also affects for the WFA UL SCS feature.
+
+However, in WFA UL SCS tests, STAs always respond with the Qos NULLs
+in response to deterministic basic trigger. For WFA tests, the
+disablement of deterministic basic trigger based upon QOS NULLs needs
+to be ignored for which the new fwtest command has been added in
+the firmware.
+
+Hence, integrating the new fwtest command to sigma_dut to pass the
+testcases that would be affected by the firmware change.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c        | 23 +++++++++++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 24 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 1bb9f9a..ba6ab13 100644
+--- a/ap.c
++++ b/ap.c
+@@ -2789,6 +2789,21 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 	if (dut->ap_mode == AP_11be)
+ 		dut->ap_beacon_prot = 1;
+ 
++	val = get_param(cmd, "SCS");
++	if (!val)
++		val = get_param(cmd, "EHTSCS_TrafficSupport");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0) {
++			dut->ap_scs = VALUE_ENABLED;
++		} else if (strcasecmp(val, "disable") == 0) {
++			dut->ap_scs = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported SCS");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -11535,6 +11550,13 @@ hapd_started:
+ 		}
+ 	}
+ 
++	if (dut->ap_mu_edca == VALUE_ENABLED && dut->ap_he_ulofdma == VALUE_ENABLED &&
++	    dut->ap_he_ppdu == PPDU_MU && dut->ap_scs == VALUE_ENABLED) {
++		/* the disablement of deterministic basic trigger based upon
++		 * QOS NULLs needs to be ignored */
++		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 926 1", ifname);
++	}
++
+ 	if (dut->bridge && dut->ap_is_dual) {
+ 		if (run_system_wrapper(dut, "ifconfig %s up", dut->bridge)
+ 		    != 0) {
+@@ -12576,6 +12598,7 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 	}
+ 
+ 	dut->hostapd_running = 0;
++	dut->ap_scs = VALUE_NOT_SET;
+ 
+ 	if (get_openwrt_driver_type() == OPENWRT_DRIVER_ATHEROS)
+ 		return 1;
+diff --git a/sigma_dut.h b/sigma_dut.h
+index f852de3..8d1892c 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1275,6 +1275,7 @@ struct sigma_dut {
+ 
+ 	/*Use ap_pmf_link for interface specific cases*/
+ 	enum ap_pmf ap_pmf_link[MAX_MLD_SUPPORTED];
++	enum value_not_set_enabled_disabled ap_scs;
+ };
+ 
+ 
+-- 
+2.34.1
+

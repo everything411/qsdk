@@ -1,0 +1,33 @@
+--- a/ap.c
++++ b/ap.c
+@@ -7980,10 +7980,11 @@ nla_put_failure:
+ static void set_second_ap_security_conf(FILE *file, struct sigma_dut *dut)
+ {
+ 	const char *key_mgmt;
++	enum driver_type drv = get_driver_type(dut);
+ 
+ 	switch (dut->ap_tag_key_mgmt[0]) {
+ 	case AP2_OPEN:
+-		if (dut->ap_cipher == AP_WEP)
++		if (dut->ap_cipher == AP_WEP && drv != DRIVER_MAC80211)
+ 			fprintf(file, "wep_key0=%s\n", dut->ap_wepkey);
+ 		break;
+ 	case AP2_WPA2_PSK:
+@@ -8359,8 +8360,15 @@ write_conf:
+ 
+ 	switch (dut->ap_key_mgmt) {
+ 	case AP_OPEN:
+-		if (dut->ap_cipher == AP_WEP)
+-			fprintf(f, "wep_key0=%s\n", dut->ap_wepkey);
++		if (dut->ap_cipher == AP_WEP) {
++			if (drv == DRIVER_MAC80211) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Not Supported");
++				return -2;
++			} else {
++				fprintf(f, "wep_key0=%s\n", dut->ap_wepkey);
++			}
++		}
+ 		break;
+ 	case AP_WPA2_PSK:
+ 	case AP_WPA2_PSK_MIXED:

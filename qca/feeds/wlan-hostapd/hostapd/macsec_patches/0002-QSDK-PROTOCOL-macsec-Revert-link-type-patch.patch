@@ -1,0 +1,38 @@
+From 513ccee989dbda9e618fb188495bae8932259209 Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <hprem@qti.qualcomm.com>
+Date: Thu, 11 Dec 2025 14:18:57 +0530
+Subject: [PATCH 2/2] QSDK:PROTOCOL: macsec: Revert link type patch
+
+This patch reverts the commit of r31-hostapd-display-the-link_type-of-a-station-through-hostapd_cli.patch
+
+Signed-off-by: Harshitha Prem <hprem@qti.qualcomm.com>
+---
+ src/ap/ctrl_iface_ap.c | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index bdf7f7d..29d8984 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -632,18 +632,6 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+-#ifdef CONFIG_IEEE80211BE
+-	if (sta->mld_info.mld_sta == true) {
+-		size_t link_type;
+-
+-		link_type = sta->mld_info.links[hapd->mld_link_id].nstr_bitmap_len;
+-		ret = os_snprintf(buf + len, buflen-len, "link_type[%d]=%s\n",
+-				  hapd->mld_link_id, link_type ? "NSTR" : "STR");
+-		if (!os_snprintf_error(buflen - len, ret))
+-			len += ret;
+-	}
+-#endif /* CONFIG_IEEE80211BE*/
+-
+ 	return len;
+ }
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,20 @@
+From 6bc20283360b3ae7e39611b1243b0a90fb6edad9 Mon Sep 17 00:00:00 2001
+From: Deepak Kumar <quic_deepaku@quicinc.com>
+Date: Wed, 10 Jul 2024 14:08:46 +0530
+This change fixes compilation error with adding header file <cstdint>
+
+Change-Id: I77f37319b680ca171f203b7c6c2b2c041d67a07d
+Signed-off-by: Deepak Kumar <quic_deepaku@quicinc.com>
+
+Index: breakpad-0.1/src/client/linux/handler/minidump_descriptor.h
+===================================================================
+--- breakpad-0.1.orig/src/client/linux/handler/minidump_descriptor.h
++++ breakpad-0.1/src/client/linux/handler/minidump_descriptor.h
+@@ -37,6 +37,7 @@
+ 
+ #include "client/linux/handler/microdump_extra_info.h"
+ #include "common/using_std_string.h"
++#include <cstdint>
+ 
+ // This class describes how a crash dump should be generated, either:
+ // - Writing a full minidump to a file in a given directory (the actual path,

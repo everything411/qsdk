@@ -1,0 +1,27 @@
+From 7173e348c7b73aa93a91ad1fe30e674693cce496 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Tue, 20 May 2025 23:40:59 +0530
+Subject: [PATCH] pci: Enable PCIe support for ARCH_IPQ SoCs
+
+Change-Id: I05b8fd8119fe52bc95ede579eba7264a332cf880
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/pci/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/pci/Kconfig b/drivers/pci/Kconfig
+index 4f876d39875..7dc8610c443 100644
+--- a/drivers/pci/Kconfig
++++ b/drivers/pci/Kconfig
+@@ -373,7 +373,7 @@ config PCIE_DW_MESON
+ 
+ config PCIE_DW_QCOM
+ 	bool "Qualcomm DesignWare based PCIe controller"
+-	depends on ARCH_SNAPDRAGON
++	depends on ARCH_SNAPDRAGON || ARCH_IPQ
+ 	select PCIE_DW_COMMON
+ 	help
+ 	  Say Y here if you want to enable DW PCIe controller support on
+-- 
+2.34.1
+

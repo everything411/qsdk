@@ -1,0 +1,39 @@
+/* SPDX-License-Identifier: BSD-3-Clause-Clear */
+/*
+ * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#ifndef ATH12K_WMI_WIFI6_H
+#define ATH12K_WMI_WIFI6_H
+
+/* WiFi6 Target configuration defines */
+#define WIFI6_TARGET_NUM_OFFLD_PEERS			4
+#define WIFI6_TARGET_NUM_OFFLD_REORDER_BUFFS		4
+#define WIFI6_TARGET_NUM_PEER_KEYS			2
+#define WIFI6_TARGET_AST_SKID_LIMIT			16
+#define WIFI6_TARGET_RX_TIMEOUT_LO_PRI			100
+#define WIFI6_TARGET_RX_TIMEOUT_HI_PRI			40
+#define WIFI6_TARGET_DECAP_MODE_RAW			0
+#define WIFI6_TARGET_DECAP_MODE_NATIVE_WIFI		1
+#define WIFI6_TARGET_SCAN_MAX_PENDING_REQS		4
+#define WIFI6_TARGET_BMISS_OFFLOAD_MAX_VDEV		3
+#define WIFI6_TARGET_ROAM_OFFLOAD_MAX_VDEV		3
+#define WIFI6_TARGET_ROAM_OFFLOAD_MAX_AP_PROFILES	8
+#define WIFI6_TARGET_NUM_MCAST_GROUPS			12
+#define WIFI6_TARGET_NUM_MCAST_TABLE_ELEMS		64
+#define WIFI6_TARGET_MCAST2UCAST_MODE			2
+#define WIFI6_TARGET_TX_DBG_LOG_SIZE			1024
+#define WIFI6_TARGET_NUM_WDS_ENTRIES			32
+#define WIFI6_TARGET_DMA_BURST_SIZE			1
+#define WIFI6_TARGET_RX_SKIP_DEFRAG_TIMEOUT_DUP_DETECTION_CHECK	1
+#define WIFI6_TARGET_VOW_CONFIG				0
+#define WIFI6_TARGET_GTK_OFFLOAD_MAX_VDEV		3
+#define WIFI6_TARGET_NUM_MSDU_DESC			2500
+#define WIFI6_TARGET_MAX_BCN_OFFLD			16
+#define WIFI6_TARGET_RX_BATCHMODE			1
+#define WIFI6_TARGET_EMA_MAX_PROFILE_PERIOD		8
+
+void ath12k_wifi6_wmi_init_qcn9074(struct ath12k_base *ab,
+				   struct ath12k_wmi_resource_config_arg *config);
+#endif

@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+&{/} {
+	bootph-all;
+	compatible = "qcom,ipq5210";
+};
+
+&{/chosen} {
+	/delete-property/ u-boot,booted-bank;
+};
+
+&tmel_qmp {
+	bootph-all;
+	compatible = "qcom,tmel-qmp-mbox-secure";
+	interrupts = <GIC_SPI 68 IRQ_TYPE_EDGE_RISING>;
+};
+
+&qupv3 {
+	bootph-all;
+	clocks = <&gcc GCC_QUPV3_2X_CORE_CLK>,
+		 <&gcc GCC_QUPV3_AHB_MST_CLK>,
+		 <&gcc GCC_QUPV3_AHB_SLV_CLK>,
+		 <&gcc GCC_QUPV3_CORE_CLK>,
+		 <&gcc GCC_QUPV3_SLEEP_CLK>;
+	clock-names = "2x-core", "m-ahb", "s-ahb",
+		      "core", "sleep";
+	assigned-clocks = <&gcc GCC_QUPV3_2X_CORE_CLK>;
+	assigned-clock-rates = <200000000>;
+	status = "okay";
+};
+
+&qspi_pinmux {
+	qspi_data {
+		drive-strength = <8>;
+	};
+
+	qspi_cs_n {
+		drive-strength = <8>;
+	};
+
+	qspi_clk {
+		drive-strength = <8>;
+	};
+};
+
+&nand {
+	bootph-all;
+	max_clk_frequency = <400000000>;
+	resets = <&gcc GCC_QPIC_BCR>;
+	reset-names = "bcr_rst";
+	status = "okay";
+};

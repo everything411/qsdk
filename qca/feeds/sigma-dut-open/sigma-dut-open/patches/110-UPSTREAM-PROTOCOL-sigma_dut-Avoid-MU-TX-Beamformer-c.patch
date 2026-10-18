@@ -1,0 +1,84 @@
+From 32aa9fb40ecf7cb48a6ee4b3e9cd8e015e8b321b Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Tue, 9 Sep 2025 14:59:40 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Avoid MU TX Beamformer
+ configuration on unsupported HW
+
+Sigma_dut configures MU TX Beamformer if the CAPI parameter for the
+same is provided, without any capability check. Some Hardwares were
+not supporting MU TX BF, but its FW was advertising the  MU TX BF
+capability and the configuration was able to be set from sigma_dut
+through hostapd. Recently, FW has patched this up and configuring MU
+BF capability is causing issues in hostapd bringup.
+
+To fix this issue, during sigma_dut initialisation MU TX BF capability
+is checked from its wiphy info and only if it is present the
+configuration of ap_mu_txBF member is allowed, this will avoid
+attempting to configure MU TX BF on HW which doesn't support it.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c        | 12 +++++++-----
+ sigma_dut.h |  1 +
+ 2 files changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 69da8ff..683826e 100644
+--- a/ap.c
++++ b/ap.c
+@@ -2122,7 +2122,7 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 	}
+ 
+ 	val = get_param(cmd, "MU_TxBF");
+-	if (val) {
++	if (val && dut->hw_modes.ap_mu_txBF_capab) {
+ 		if (strcasecmp(val, "enable") == 0) {
+ 			dut->ap_txBF = 1;
+ 			dut->ap_mu_txBF = 1;
+@@ -2901,7 +2901,7 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 		subeamformermode = atoi(val);
+ 
+ 	val = get_param(cmd, "MUBeamformerMode");
+-	if (val) {
++	if (val && dut->hw_modes.ap_mu_txBF_capab) {
+ 		dut->ap_txBF = 1;
+ 		dut->ap_mu_txBF = 1;
+ 	}
+@@ -2958,7 +2958,7 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 	}
+ 
+ 	val = get_param(cmd, "MUBeamformerMode");
+-	if (val) {
++	if (val && dut->hw_modes.ap_mu_txBF_capab) {
+ 		dut->ap_txBF = 1;
+ 		dut->ap_mu_txBF = 1;
+ 	}
+@@ -13014,9 +13014,11 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
+ 	/* Check for MU Beamformer capability (B33) and disable this capability
+ 	 * if the driver does not support it. This clears the default value
+ 	 * set in cmd_ap_reset_default(). */
+-	if (dut->program == PROGRAM_HE &&
++	if (get_driver_type(dut) == DRIVER_MAC80211 &&
+ 	    !(dut->hw_modes.ap_he_phy_capab[33 / 8] & (1 << (33 % 8))))
+-		dut->ap_mu_txBF = 0;
++		dut->hw_modes.ap_mu_txBF_capab = 0;
++	else
++		dut->hw_modes.ap_mu_txBF_capab = 1;
+ 
+ 	if ((dut->program == PROGRAM_VHT || dut->program == PROGRAM_HE) &&
+ 	    !(dut->hw_modes.vht_capab & IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE))
+diff --git a/sigma_dut.h b/sigma_dut.h
+index e697b9a..0e8f149 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -149,6 +149,7 @@ struct dut_hw_modes {
+ 	u32 vht_capab;
+ 	u8 vht_mcs_set[8];
+ 	u8 ap_he_phy_capab[11];
++	bool ap_mu_txBF_capab;
+ 	bool valid;
+ };
+ 
+-- 
+2.34.1
+

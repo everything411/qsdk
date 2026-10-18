@@ -1,0 +1,180 @@
+From 1229c5a09a61f85ed7294ff834b4a8ea1699942f Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Wed, 14 May 2025 23:39:20 +0530
+Subject: [PATCH] i2c: Add I2C controller support for IPQ platforms
+
+Add I2C controller support for Qualcomm IPQ platforms.
+
+Supported platforms:
+- IPQ5332
+- IPQ9574
+
+Change-Id: I5cc008d40b47b59ebf376127814f9195198a3461
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/i2c/Kconfig   |  2 +-
+ drivers/i2c/qup_i2c.c | 99 ++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 98 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/i2c/Kconfig b/drivers/i2c/Kconfig
+index 7754ec10284..11325e07faf 100644
+--- a/drivers/i2c/Kconfig
++++ b/drivers/i2c/Kconfig
+@@ -628,7 +628,7 @@ config SYS_I2C_OCTEON
+ 
+ config SYS_I2C_QUP
+ 	bool "Qualcomm QUP I2C controller"
+-	depends on ARCH_SNAPDRAGON
++	depends on (ARCH_SNAPDRAGON || ARCH_IPQ)
+ 	help
+ 	  Support for Qualcomm QUP I2C controller based on Qualcomm Universal
+ 	  Peripherals (QUP) engine. The QUP engine is an advanced high
+diff --git a/drivers/i2c/qup_i2c.c b/drivers/i2c/qup_i2c.c
+index 26707d63980..0e4f8813158 100644
+--- a/drivers/i2c/qup_i2c.c
++++ b/drivers/i2c/qup_i2c.c
+@@ -3,6 +3,7 @@
+  * Copyright (c) 2009-2013, 2016-2018, The Linux Foundation. All rights reserved.
+  * Copyright (c) 2014, Sony Mobile Communications AB.
+  * Copyright (c) 2022-2023, Sumit Garg <sumit.garg@linaro.org>
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  *
+  * Inspired by corresponding driver in Linux: drivers/i2c/busses/i2c-qup.c
+  */
+@@ -16,6 +17,7 @@
+ #include <linux/err.h>
+ #include <linux/compat.h>
+ #include <linux/bitops.h>
++#include <linux/iopoll.h>
+ #include <asm/io.h>
+ #include <i2c.h>
+ #include <watchdog.h>
+@@ -118,6 +120,8 @@
+ #define QUP_TAG_V2_DATARD_STOP			0x87
+ 
+ #define QUP_I2C_MX_CONFIG_DURING_RUN		BIT(31)
++#define QUP_I2C_INVALID_SLAVE_ADDR		BIT(24)
++#define QUP_I2C_NACK_BIT_STAT			BIT(3)
+ 
+ /* Minimum transfer timeout for i2c transfers in micro seconds */
+ #define TOUT_CNT				(2 * 1000 * 1000)
+@@ -201,6 +205,20 @@ static int qup_i2c_change_state(struct qup_i2c_priv *qup, u32 state)
+ 	return 0;
+ }
+ 
++/*
++ * Check whether the values in the OUTPUT FIFO are shifted out.
++ */
++static int check_write_done(struct qup_i2c_priv *qup)
++{
++	u32 val;
++	int ret = 0;
++
++	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL ,
++				       val, val & BIT(4),
++				       10, TOUT_CNT * 10);
++	return ret;
++}
++
+ /*
+  * Function to check wheather Input or Output FIFO
+  * has data to be serviced
+@@ -368,6 +386,16 @@ static int qup_i2c_blsp_write(struct qup_i2c_priv *qup, unsigned int addr,
+ 		return ret;
+ 	writel(QUP_OUT_SVC_FLAG, qup->base + QUP_OPERATIONAL);
+ 
++	ret = qup_i2c_check_fifo_status(qup, QUP_OPERATIONAL,
++					QUP_MX_OUTPUT_DONE);
++	if (ret)
++		return ret;
++
++	mdelay(2);
++	ret = check_write_done(qup);
++	if (ret)
++		return ret;
++
+ 	ret = qup_i2c_change_state(qup, QUP_PAUSE_STATE);
+ 	return ret;
+ }
+@@ -545,9 +573,76 @@ static int qup_i2c_probe_chip(struct udevice *dev, uint chip_addr,
+ 			      uint chip_flags)
+ {
+ 	struct qup_i2c_priv *qup = dev_get_priv(dev);
+-	u32 hw_ver = readl(qup->base + QUP_HW_VERSION);
++	int ret = 0;
++	u32 val, hw_ver = readl(qup->base + QUP_HW_VERSION);
++
++	if (!hw_ver)
++		return -ENOENT;
++
++	writel(1, qup->base + QUP_SW_RESET);
++	ret = qup_i2c_poll_state_valid(qup);
++	if (ret)
++		return ret;
++
++	writel(QUP_V2_TAGS_EN, qup->base + QUP_I2C_MASTER_GEN);
++
++	qup_i2c_conf_mode_v2(qup);
++
++	ret = qup_i2c_change_state(qup, QUP_RESET_STATE);
++	if (ret)
++		goto out;
++
++	qup->config_run = 0;
++	qup_i2c_enable_io_config(qup, QUP_MAX_TAGS_LEN,
++				 READ_RX_TAGS_LEN + 1);
++
++	ret = qup_i2c_change_state(qup, QUP_RUN_STATE);
++	if (ret)
++		goto out;
++
++	/** clock configuration */
++	writel(qup->clk_ctl, qup->base + QUP_I2C_CLK_CTL);
++
++	ret = qup_i2c_change_state(qup, QUP_PAUSE_STATE);
++	if (ret)
++		goto out;
+ 
+-	return hw_ver ? 0 : -1;
++	qup_i2c_write_word(qup, QUP_TAG_V2_START | (((chip_addr << 1) | 0x1)
++				<< 8) | (QUP_TAG_V2_DATARD_STOP << 16) |
++				(1 << 24));
++
++	ret = qup_i2c_change_state(qup, QUP_RUN_STATE);
++	if (ret)
++		goto out;
++
++	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL ,
++				       val, !(val & QUP_OUT_SVC_FLAG),
++				       10, 1000);
++
++	if (ret)
++		goto out;
++
++	writel(QUP_OUT_SVC_FLAG, qup->base + QUP_OPERATIONAL);
++
++	val = readl(qup->base + QUP_I2C_STATUS);
++	if ((val & QUP_I2C_INVALID_SLAVE_ADDR) ||
++	    (val & QUP_I2C_NACK_BIT_STAT)) {
++		ret = -EREMOTEIO;
++		goto out;
++	}
++
++	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL ,
++				       val, !(val & QUP_IN_SVC_FLAG),
++				       10, 1000);
++
++	if (ret)
++		goto out;
++
++	writel(QUP_IN_SVC_FLAG, qup->base + QUP_OPERATIONAL);
++
++out:
++	qup_i2c_change_state(qup, QUP_RESET_STATE);
++	return ret;
+ }
+ 
+ static const struct dm_i2c_ops qup_i2c_ops = {
+-- 
+2.34.1
+

@@ -1,0 +1,197 @@
+From 198fb02e7063149f8841ef7b3a61f11ec4c675e2 Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Tue, 17 Jan 2023 04:43:24 -0800
+Subject: [PATCH 6/6] sigma-dut: add MLO configuration
+
+Add new attributes and checks to detect MLO setup for AP. Changes
+include ability to bring up multiple interfaces in MLO mode.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c        | 45 ++++++++++++++++++++++++++++++++++++---------
+ sigma_dut.h |  2 ++
+ 2 files changed, 38 insertions(+), 9 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -1062,6 +1062,20 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_is_dual = 1;
+ 	}
+ 
++	if (dut->ap_is_dual) {
++		if (!dut->dual_ap_ifname) {
++			dut->ap_is_mld = 1;
++			/* CH width values need to be swapped in
++			 * order to correspond to correct config */
++			chwidth = dut->ap_chwidth;
++			dut->ap_chwidth = dut->ap_chwidth_1;
++			dut->ap_chwidth_1 = chwidth;
++
++			if (dut->ap_mode)
++				dut->ap_mode_1 = dut->ap_mode;
++		}
++	}
++
+ 	val = get_param(cmd, "CountryCode");
+ 	if (val) {
+ 		if (strlen(val) > sizeof(dut->ap_countrycode) - 1)
+@@ -1113,7 +1127,10 @@ static enum sigma_cmd_result cmd_ap_set_
+ 
+ 	val = get_param(cmd, "CHANNEL");
+ 	if (val) {
+-		if (wlan_tag == 1) {
++		if (dut->ap_is_mld) {
++			dut->ap_tag_channel[0] = atoi(val);
++			dut->ap_channel_1 = atoi(val);
++		} else if (wlan_tag == 1) {
+ 			const char *pos;
+ 
+ 			dut->ap_channel = atoi(val);
+@@ -1259,7 +1276,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	if (dut->ap_is_dual)
+ 		dut->use_5g = 1;
+ 
+-	if (wlan_tag > 1 && dut->ap_band_1 == BAND_UNKNOWN) {
++	if ((wlan_tag > 1 && dut->ap_band_1 == BAND_UNKNOWN) ||
++	    (dut->ap_is_mld && dut->ap_band_1 == BAND_UNKNOWN)) {
+ 		if (is_6g)
+ 			dut->ap_band_1 = BAND_6G;
+ 		else if (dut->ap_channel_1 >= 1 && dut->ap_channel_1 <= 14)
+@@ -1268,7 +1286,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_band_1 = BAND_5G;
+ 
+ 		if (dut->ap_band_1 != BAND_2G && (dut->ap_mode_1 == AP_11ac ||
+-		    dut->ap_mode_1 == AP_11ax || dut->ap_mode == AP_11be))
++		    dut->ap_mode_1 == AP_11ax || dut->ap_mode == AP_11be) &&
++		    !chwidth_check)
+ 			dut->ap_chwidth_1 = AP_80;
+ 	} else if (dut->ap_band == BAND_UNKNOWN) {
+ 		if (is_6g)
+@@ -9211,6 +9230,7 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 	int chan;
+ 	unsigned char main_bssid[6];
+ 	char ifname2[50];
++	bool mld_sae_set = false;
+ 
+ 	drv = get_driver_type(dut);
+ 	mode = dut->ap_mode;
+@@ -9456,10 +9476,12 @@ write_conf:
+ 
+ 		if (dut->dual_ap_ifname)
+ 			snprintf(ifname2, sizeof(ifname2), "%s", dut->dual_ap_ifname);
++		else if (dut->ap_is_mld)
++			snprintf(ifname2, sizeof(ifname2), "%s", ifname);
+ 		else
+ 			snprintf(ifname2, sizeof(ifname2), "%s_1", ifname);
+ 
+-		if (if_nametoindex(ifname2) == 0) {
++		if (if_nametoindex(ifname2) == 0 && !dut->ap_is_mld) {
+ 			if (ap_create_or_remove_interface(dut, ifname2, true)
+ 			    >= 0) {
+ 				fprintf(f, "interface=%s\n", ifname2);
+@@ -9485,7 +9507,8 @@ write_conf:
+ 	else
+ 		fprintf(f, "ctrl_interface=/var/run/hostapd\n");
+ 
+-	if (dut->ap_ssid[0] && conf_counter == 0)
++	if ((dut->ap_ssid[0] && conf_counter == 0) ||
++	    (dut->ap_ssid[0] && dut->ap_is_mld))
+ 		fprintf(f, "ssid=%s\n", dut->ap_ssid);
+ 	else if (dut->ap_tag_ssid[0][0] && conf_counter == 1)
+ 		fprintf(f, "ssid=%s\n", dut->ap_tag_ssid[0]);
+@@ -9510,9 +9533,12 @@ write_conf:
+ 		return -2;
+ 	}
+ 
+-	fprintf(f, "bssid=%02x:%02x:%02x:%02x:%02x:%02x\n",
+-		main_bssid[0], main_bssid[1], main_bssid[2], main_bssid[3],
+-		main_bssid[4], main_bssid[5]);
++	fprintf(f, "bssid=%02x:%02x:%02x:%02x",
++		main_bssid[0], main_bssid[1], main_bssid[2], main_bssid[3]);
++	if (dut->ap_is_mld && conf_counter == 1)
++		fprintf(f, ":%02x:%02x\n", main_bssid[4] + 1, main_bssid[5] + 1);
++	else
++		fprintf(f, ":%02x:%02x\n", main_bssid[4], main_bssid[5]);
+ 
+ 	if (dut->ap_akm_values) {
+ 		struct {
+@@ -9586,7 +9612,11 @@ write_conf:
+ 		goto skip_key_mgmt;
+ 	}
+ 
+-	if (dut->ap_is_dual && conf_counter == 1) {
++	/* Case where all MLDs are set to the same KEYMGNT */
++	if (dut->ap_is_mld && !dut->ap_tag_key_mgmt[0])
++		mld_sae_set = true;
++
++	if (dut->ap_is_dual && conf_counter == 1 && !mld_sae_set) {
+ 		set_second_ap_security_conf(f, dut);
+ 		goto skip_key_mgmt;
+ 	}
+@@ -9920,14 +9950,16 @@ skip_key_mgmt:
+ 		fprintf(f, "sae_groups=%s\n", dut->ap_sae_groups);
+ 
+ 	if (dut->sae_pwe != SAE_PWE_DEFAULT || dut->sae_h2e_default ||
+-	    check_band(dut, BAND_6G, conf_counter)) {
++	    check_band(dut, BAND_6G, conf_counter) ||
++	    (mld_sae_set && dut->ap_key_mgmt == AP_WPA2_SAE)) {
+ 		const char *sae_pwe = NULL;
+ 
+ 		if (dut->sae_pwe == SAE_PWE_LOOP && sae_pw_id_used(dut))
+ 			sae_pwe = "3";
+ 		else if (dut->sae_pwe == SAE_PWE_LOOP)
+ 			sae_pwe = "0";
+-		else if (dut->sae_pwe == SAE_PWE_H2E || dut->ap_band_6g)
++		else if (dut->sae_pwe == SAE_PWE_H2E || dut->ap_band_6g ||
++			 (mld_sae_set && dut->ap_key_mgmt == AP_WPA2_SAE))
+ 			sae_pwe = "1";
+ 		else if (dut->sae_h2e_default)
+ 			sae_pwe = "2";
+@@ -10314,6 +10346,9 @@ skip_vht_parameters_set:
+ 		}
+ 	}
+ 
++	if (dut->program == PROGRAM_EHT)
++		fprintf(f, "mld_ap=1\n");
++
+ 	if (dut->ap_key_mgmt == AP_WPA2_OWE && dut->ap_tag_ssid[0][0] &&
+ 	    dut->ap_tag_key_mgmt[0] == AP2_OPEN) {
+ 		/* OWE transition mode */
+@@ -10615,6 +10650,10 @@ skip_vht_parameters_set:
+ 					  "errorCode,Failed to add second hapd iface");
+ 				return 0;
+ 			}
++		} else if (dut->ap_is_mld) {
++			snprintf(buf, sizeof(buf),
++				 "hostapd -B %s/sigma_dut-ap.conf %s/sigma_dut-ap_0.conf &",
++				 dut->sigma_tmpdir, dut->sigma_tmpdir);
+ 		} else {
+ 			if (add_hapd_ctrl_iface(dut, ifname, "sigma_dut-ap.conf")) {
+ 				send_resp(dut, conn, SIGMA_ERROR,
+@@ -11381,6 +11420,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_is_dual = 0;
+ 	dut->ap_mode = AP_inval;
+ 	dut->ap_mode_1 = AP_inval;
++	dut->ap_is_mld = 0;
+ 	dut->ap_channel_1 = 0;
+ 
+ 	dut->ap_allow_vht_wep = 0;
+@@ -11394,6 +11434,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_txBF = 0;
+ 	dut->ap_mu_txBF = 0;
+ 	dut->ap_su_txBF = 1;
++	dut->ap_channel = -1;
+ 	dut->ap_chwidth = AP_AUTO;
+ 	dut->ap_ampdu_exp = 0;
+ 	dut->ap_max_mpdu_len = 0;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1248,6 +1248,8 @@ struct sigma_dut {
+ 
+ 	const char *dual_ap_ifname;
+ 	enum if_band ap_band, ap_band_1;
++
++	int ap_is_mld;
+ 	int i2rlmr_iftmr;
+ 	int i2rlmrpolicy;
+ 	int rnm_mfp;

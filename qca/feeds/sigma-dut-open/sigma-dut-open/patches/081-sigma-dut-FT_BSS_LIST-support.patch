@@ -1,0 +1,202 @@
+From 2302e0311ee5ab5426e012541c2777c97d48ba05 Mon Sep 17 00:00:00 2001
+From: Karthik M <quic_karm@quicinc.com>
+Date: Thu, 4 Apr 2024 12:37:43 +0530
+Subject: [PATCH] sigma-dut: FT_BSS_LIST support for WPA3 program
+
+Add support for FT_BSS_LIST for WPA3 program
+
+Signed-off-by: Karthik M <quic_karm@quicinc.com>
+---
+ ap.c        | 90 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ dev.c       | 17 ++++++++++
+ sigma_dut.h |  5 +++
+ 3 files changed, 112 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -13896,6 +13896,32 @@ enum sigma_cmd_result cmd_ap_send_frame(
+ }
+ 
+ 
++static int fetch_ap_mac_address(struct sigma_dut *dut, struct sigma_conn *conn,
++				char *ifname, unsigned char *addr,
++				char *resp, size_t resp_len)
++{
++	int s;
++	struct ifreq ifr;
++
++	s = socket(AF_INET, SOCK_DGRAM, 0);
++	if (s < 0)
++		return -1;
++	memset(&ifr, 0, sizeof(ifr));
++	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
++	if (ioctl(s, SIOCGIFHWADDR, &ifr) < 0) {
++		perror("ioctl");
++		close(s);
++		snprintf(resp, resp_len,
++			 "errorCode,Could not find interface %s", ifname);
++		send_resp(dut, conn, SIGMA_ERROR, resp);
++		return -1;
++	}
++	close(s);
++	memcpy(addr, ifr.ifr_hwaddr.sa_data, 6);
++	return 0;
++}
++
++
+ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 						    struct sigma_conn *conn,
+ 						    struct sigma_cmd *cmd)
+@@ -13906,8 +13932,7 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	char resp[100];
+ 	unsigned char addr[6];
+ 	char ifname[50];
+-	struct ifreq ifr;
+-	int s, wlan_tag = 1;
++	int wlan_tag = 1;
+ 	const char *val;
+ 	int link_id = -1;
+ 	int mld_id = 0;
+@@ -13994,21 +14019,8 @@ static enum sigma_cmd_result cmd_ap_get_
+ 		}
+ 	}
+ 
+-	s = socket(AF_INET, SOCK_DGRAM, 0);
+-	if (s < 0)
++	if (fetch_ap_mac_address(dut, conn, ifname, addr, resp, sizeof(resp)) < 0)
+ 		return -1;
+-	memset(&ifr, 0, sizeof(ifr));
+-	strlcpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+-	if (ioctl(s, SIOCGIFHWADDR, &ifr) < 0) {
+-		perror("ioctl");
+-		close(s);
+-		snprintf(resp, sizeof(resp),
+-			 "errorCode,Could not find interface %s", ifname);
+-		send_resp(dut, conn, SIGMA_ERROR, resp);
+-		return 0;
+-	}
+-	close(s);
+-	memcpy(addr, ifr.ifr_hwaddr.sa_data, 6);
+ 
+ 	if (get_driver_type(dut) == DRIVER_MAC80211 &&
+ 	    (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) && link_id > 0) {
+@@ -14062,6 +14074,74 @@ static enum sigma_cmd_result cmd_ap_get_
+ }
+ 
+ 
++
++enum sigma_cmd_result cmd_dev_ap_get_parameter(struct sigma_dut *dut,
++					       struct sigma_conn *conn,
++					       struct sigma_cmd *cmd)
++{
++	const char *val;
++	char ifname[50];
++	char resp[100];
++	unsigned char addr[6];
++	int wlan_tag = 1;
++	int mld_id = 0;
++
++	val = get_param(cmd, "WLAN_TAG");
++	if (val) {
++		wlan_tag = atoi(val);
++		if (wlan_tag < 1 || wlan_tag > 3) {
++			/*
++			 * The only valid WLAN Tags as of now as per the latest
++			 * WFA scripts are 1, 2, and 3.
++			 */
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,Unsupported WLAN_TAG");
++			return -1;
++		}
++	}
++
++	get_if_name(dut, ifname, sizeof(ifname), wlan_tag);
++
++	val = get_param(cmd, "MLD_ID");
++	if (val) {
++		mld_id = atoi(val);
++		if (mld_id == 2)
++			strlcat(ifname, "-1", sizeof(ifname));
++	}
++
++	val = get_param(cmd, "parameter");
++	if (val && (strcasecmp(val, "FT_BSS_LIST") == 0)) {
++		if (fetch_ap_mac_address(dut, conn, ifname, addr, resp, sizeof(resp)) < 0)
++			return -1;
++
++		if (get_driver_type(dut) == DRIVER_MAC80211 &&
++		    (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) &&
++		     dut->ap_is_dual) {
++			if (mld_id == 2) {
++				addr[0] = addr[0] - 2;
++				snprintf(resp, sizeof(resp),
++					 "FT_BSS_LIST,%02x:%02x:%02x:%02x:%02x:%02x %02x:%02x:%02x:%02x:%02x:%02x",
++					 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5],
++					 addr[0], addr[1], addr[2], addr[3], addr[4] - 1, addr[5]);
++			} else {
++				snprintf(resp, sizeof(resp),
++					 "FT_BSS_LIST,%02x:%02x:%02x:%02x:%02x:%02x %02x:%02x:%02x:%02x:%02x:%02x",
++					 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5],
++					 addr[0], addr[1], addr[2], addr[3], addr[4] - 1, addr[5] - 1);
++			}
++		} else
++			snprintf(resp, sizeof(resp), "FT_BSS_LIST,%02x:%02x:%02x:%02x:%02x:%02x",
++				 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
++
++		send_resp(dut, conn, SIGMA_COMPLETE, resp);
++		return 0;
++	}
++	send_resp(dut, conn, SIGMA_ERROR,
++		  "errorCode,Unsupported parameter");
++	return -1;
++}
++
++
+ int sta_cfon_get_mac_address(struct sigma_dut *dut, struct sigma_conn *conn,
+ 			     struct sigma_cmd *cmd)
+ {
+--- a/dev.c
++++ b/dev.c
+@@ -70,6 +70,22 @@ static enum sigma_cmd_result cmd_dev_set
+ }
+ 
+ 
++static enum sigma_cmd_result cmd_dev_get_parameter(struct sigma_dut *dut,
++						   struct sigma_conn *conn,
++						   struct sigma_cmd *cmd)
++{
++	if (dut->program == PROGRAM_WPA3) {
++		sigma_dut_print(dut, DUT_MSG_DEBUG, "Convert "
++				"dev_get_parameter to ap_get_parameter");
++		return cmd_dev_ap_get_parameter(dut, conn, cmd);
++	}
++
++	send_resp(dut, conn, SIGMA_ERROR,
++		  "errorCode,Unsupported dev_get_parameter");
++	return STATUS_SENT;
++}
++
++
+ static enum sigma_cmd_result sta_server_cert_trust(struct sigma_dut *dut,
+ 						   struct sigma_conn *conn,
+ 						   const char *val)
+@@ -858,6 +874,7 @@ void dev_register_cmds(void)
+ 			  cmd_dev_set_parameter);
+ 	sigma_dut_reg_cmd("dev_exec_action", req_prog,
+ 			  cmd_dev_exec_action);
++	sigma_dut_reg_cmd("dev_get_parameter", NULL, cmd_dev_get_parameter);
+ 	sigma_dut_reg_cmd("dev_configure_ie", req_intf, cmd_dev_configure_ie);
+ 	sigma_dut_reg_cmd("dev_start_test", NULL, cmd_dev_start_test);
+ 	sigma_dut_reg_cmd("dev_stop_test", NULL, cmd_dev_stop_test);
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1309,6 +1309,9 @@ int cmd_sta_set_parameter(struct sigma_d
+ enum sigma_cmd_result cmd_ap_send_frame(struct sigma_dut *dut,
+ 					struct sigma_conn *conn,
+ 					struct sigma_cmd *cmd);
++enum sigma_cmd_result cmd_dev_ap_get_parameter(struct sigma_dut *dut,
++					       struct sigma_conn *conn,
++					       struct sigma_cmd *cmd);
+ enum sigma_cmd_result cmd_wlantest_send_frame(struct sigma_dut *dut,
+ 					      struct sigma_conn *conn,
+ 					      struct sigma_cmd *cmd);

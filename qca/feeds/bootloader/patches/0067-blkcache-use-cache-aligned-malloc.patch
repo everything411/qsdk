@@ -1,0 +1,47 @@
+From 2d802ad6a46b059ff053cd0ea50bd1390d35841b Mon Sep 17 00:00:00 2001
+From: Badhrinath S <badhrina@qti.qualcomm.com>
+Date: Mon, 27 Oct 2025 12:40:14 +0530
+Subject: [PATCH] blkcache: use cache-aligned malloc
+
+Convert malloc to cache-aligned malloc in blkcache_fill to
+avoid undefined state during blkcache_invalidate on 32-bit
+systems. Verified on IPQ platform.
+
+Change-Id: Ic0382062826c351579f283ba9c7f6d16bed6d5ac
+Signed-off-by: Badhrinath S <badhrina@qti.qualcomm.com>
+---
+ drivers/block/blkcache.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/block/blkcache.c b/drivers/block/blkcache.c
+index 0e69160249c..cf07572d509 100644
+--- a/drivers/block/blkcache.c
++++ b/drivers/block/blkcache.c
+@@ -7,6 +7,7 @@
+ #include <blk.h>
+ #include <log.h>
+ #include <malloc.h>
++#include <memalign.h>
+ #include <part.h>
+ #include <asm/global_data.h>
+ #include <linux/ctype.h>
+@@ -99,14 +100,14 @@ void blkcache_fill(int iftype, int devnum,
+ 			node->cache = 0;
+ 		}
+ 	} else {
+-		node = malloc(sizeof(*node));
++		node = malloc_cache_aligned(sizeof(*node));
+ 		if (!node)
+ 			return;
+ 		node->cache = 0;
+ 	}
+ 
+ 	if (!node->cache) {
+-		node->cache = malloc(bytes);
++		node->cache = malloc_cache_aligned(bytes);
+ 		if (!node->cache) {
+ 			free(node);
+ 			return;
+-- 
+2.34.1
+

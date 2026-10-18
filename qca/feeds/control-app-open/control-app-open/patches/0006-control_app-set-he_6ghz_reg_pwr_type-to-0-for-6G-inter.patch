@@ -1,0 +1,31 @@
+From 1372f43e5716778da7c67fa7eaf147011722ba06 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Wed, 4 Dec 2024 14:57:54 +0530
+Subject: [PATCH] control_app: set he_6ghz_reg_pwr_type to 0 for 6G interfaces
+
+In the latest version of hostapd, to enable the ap in 6G band, the
+hostapd config he_6ghz_reg_pwr_type is needed to be set to 0. Hence,
+adding the config for 6G band while generating hostapd config file.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ indigo_api_callback_dut.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/indigo_api_callback_dut.c b/indigo_api_callback_dut.c
+index 3a92bcc..98cc1f2 100644
+--- a/indigo_api_callback_dut.c
++++ b/indigo_api_callback_dut.c
+@@ -770,6 +770,9 @@ static int generate_hostapd_config(char *output, int output_size, struct packet_
+         strlcat(output, "hs20_deauth_req_timeout=3\n", output_size);
+     }
+ 
++    if (is_band_enabled(BAND_6GHZ))
++        strlcat(output, "he_6ghz_reg_pwr_type=0\n", output_size);
++
+     /* vendor specific config, not via hostapd */
+     configure_ap_radio_params(band, country, channel, chwidth);
+ 
+-- 
+2.34.1
+

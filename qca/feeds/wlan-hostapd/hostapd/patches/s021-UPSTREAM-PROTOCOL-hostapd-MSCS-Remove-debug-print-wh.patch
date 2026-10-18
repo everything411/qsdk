@@ -1,0 +1,39 @@
+From eda9f6f77ef251baf266edc921d3b7efd1b82c5c Mon Sep 17 00:00:00 2001
+From: Ramanathan Choodamani <rchoodam@qti.qualcomm.com>
+Date: Fri, 3 Oct 2025 13:34:51 -0700
+Subject: [PATCH] UPSTREAM:PROTOCOL:hostapd:MSCS:Remove debug print while
+ returning default tid
+
+Remove debug print that dereferences sta without checking for NULL.
+This can lead to a crash if sta is NULL, making the log unsafe.
+
+Patch-dependency:
+r94-01-UPSTREAM-hostapd-MSCS-Add-protocol-support-for-mscs.patch
+Patch-work: NA
+Tag: MSCS
+
+Signed-off-by: Ramanathan Choodamani <rchoodam@qti.qualcomm.com>
+---
+ src/ap/robust_av.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/src/ap/robust_av.c b/src/ap/robust_av.c
+index ab8e3c101d16..1a8adab72416 100644
+--- a/src/ap/robust_av.c
++++ b/src/ap/robust_av.c
+@@ -1632,11 +1632,8 @@ u8 hostapd_mscs_get_tid(struct hostapd_data *hapd, struct sta_info *sta, u8 tid)
+ {
+ 	u8 up_bitmap, up_limit;
+ 
+-	if (!sta || !sta->mscs_ctxt) {
+-		wpa_printf(MSG_DEBUG, "MSCS: MSCS ctxt missing for" MACSTR "sta",
+-			   MAC2STR(sta->addr));
++	if (!sta || !sta->mscs_ctxt)
+ 		return 0;
+-	}
+ 
+ 	up_bitmap = sta->mscs_ctxt->user_priority_bitmap;
+ 	up_limit = sta->mscs_ctxt->user_priority_limit;
+-- 
+2.34.1
+

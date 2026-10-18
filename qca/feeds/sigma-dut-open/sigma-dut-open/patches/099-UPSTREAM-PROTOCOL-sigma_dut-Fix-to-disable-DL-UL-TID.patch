@@ -1,0 +1,43 @@
+From f6ba107ccedc69c623916ca4a61398a84f579b31 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Thu, 19 Dec 2024 11:11:03 +0530
+Subject: [PATCH] sigma_dut: Fix to disable DL/UL TID  weight-based
+optimization
+
+Firmware change has been made for DL/UL TID weight-based optimization.
+This is leading to failures when running sigma_dut UL OFDMA testcases.
+Hence, adding the firmware test command to disable the weight-based
+optimization when running UL OFDMA sigma_dut testcases.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 6 +++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index a3c9f30..0bc8de5 100644
+--- a/ap.c
++++ b/ap.c
+@@ -9439,6 +9439,9 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int
+ 		 * to enable OFDMA scheduling.
+ 		 */
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 17 1000000", ifname);
++
++		/* disable DL/UL TID weight-based optimization */
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 686 0 0", ifname);
+ 	}
+ 
+ 	/* sp_guard_interval_in_us WAR */
+@@ -9583,6 +9586,9 @@ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+ 			fwtest_linkid_cmd_wrapper(dut, "-m 0x00 -v 0 32770 111",
+ 						  ifname, link_id);
+ 		}
++		/* disable DL/UL TID weight-based optimization */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 686 0 0", ifname,
++					   link_id);
+ 	}
+ 
+ 	if (dut->he_set_sta_1x1 == VALUE_ENABLED) {
+-- 
+2.34.1
+

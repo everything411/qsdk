@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+Date: Mon, 02 Jun 2026 15:45:00 -0700
+Subject: [PATCH] UPSTREAM:PROTOCOL: sigma_dut: Fix stale RSNOE and ieee8021x_auth state across tests
+
+Two related reset issues in ap_reset_default():
+
+1. RSNOE fields not cleared (RSNXe missing after RSNOE sequence):
+   When a test using RSNOE parameters (RSNO1E/RSNO2E AKMs, e.g. SAE-23.1)
+   runs before a test that uses only the primary AKM (e.g. PE-17.4 with
+   EPPKE), the AP beacon is missing the RSNXe IE in the second test.
+   ap_reset_default() does not reset ap_akm_values_rsno1e,
+   ap_akm_values_rsno2e, ap_pmf_rsno1e, ap_pmf_rsno2e, ap_cipher_1,
+   or ap_cipher_2. These fields carry stale RSNOE state from the
+   previous test into ap_config_commit(), which then re-enters the
+   RSNOE code path and emits rsn_override_omit_rsnxe=1 even though
+   the new test did not request any RSN Override Elements.
+   Fix: clear all RSNOE-related dut fields in ap_reset_default().
+
+2. mld[i].ap_ieee8021x_auth not cleared (eap_using_authentication_frames
+   appearing in conf without being requested):
+   When a test sets IEEE8021x_Auth=enabled on an MLD per-link interface
+   (e.g. 5G link), that value persists across ap_reset_default() because
+   mld[i].ap_ieee8021x_auth is not in the MLD reset loop. A subsequent
+   test without IEEE8021x_Auth in its CAPI gets eap_using_authentication_
+   frames=1 written to the hostapd.conf.
+   Fix: add mld[i].ap_ieee8021x_auth = 0 to the MLD per-link reset loop.
+
+Signed-off-by: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+---
+ ap.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -14382,6 +14382,12 @@
+ 	dut->ap_tnc_time_stamp = 0;
+
+ 	dut->ap_akm_values = 0;
++	dut->ap_akm_values_rsno1e = 0;
++	dut->ap_akm_values_rsno2e = 0;
++	dut->ap_pmf_rsno1e = AP_PMF_DISABLED;
++	dut->ap_pmf_rsno2e = AP_PMF_DISABLED;
++	dut->ap_cipher_1 = AP_CCMP;
++	dut->ap_cipher_2 = AP_CCMP;
+ 	free(dut->ap_sae_passwords);
+ 	dut->ap_sae_passwords = NULL;
+ 	dut->ap_sae_pk = 0;
+@@ -14893,6 +14899,7 @@
+ 		dut->mld[i].ap_pmksa = 0;
+ 		dut->mld[i].ap_pmksa_caching = 0;
++		dut->mld[i].ap_ieee8021x_auth = 0;
+
+ 		if (dut->program == PROGRAM_EHT) {
+ 			dut->mld[i].ap_pmf_link = AP_PMF_OPTIONAL;

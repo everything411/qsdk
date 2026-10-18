@@ -1,0 +1,47 @@
+From eea5c0dfba6502c42d7c94eb860400bf9ea48085 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Fri, 3 Apr 2026 19:21:43 +0530
+Subject: [PATCH] phy: qcom: qmp-pcie: ipq9650: fix Gen3x2 offsets
+
+Add a dedicated QMP v4 Gen3x2 offset layout and
+use it for the IPQ9650 Gen3x2 PCIe PHY.
+
+Change-Id: I18313828ca18b809afe53eebbc6dd8c5add961b6
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/phy/qcom/phy-qcom-qmp-pcie.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/phy/qcom/phy-qcom-qmp-pcie.c b/drivers/phy/qcom/phy-qcom-qmp-pcie.c
+index 2931f56e2db..2c8994c0922 100644
+--- a/drivers/phy/qcom/phy-qcom-qmp-pcie.c
++++ b/drivers/phy/qcom/phy-qcom-qmp-pcie.c
+@@ -1094,6 +1094,16 @@ static const struct qmp_pcie_offsets qmp_pcie_offsets_9650_v4x1 = {
+ 	.rx		= 0x0400,
+ };
+ 
++static const struct qmp_pcie_offsets qmp_pcie_offsets_v4x2 = {
++	.serdes		= 0,
++	.pcs		= 0x0a00,
++	.pcs_misc	= 0x0e00,
++	.tx		= 0x0200,
++	.rx		= 0x0400,
++	.tx2		= 0x0600,
++	.rx2		= 0x0800,
++};
++
+ static const struct qmp_pcie_cfg sm8550_qmp_gen3x2_pciephy_cfg = {
+ 	.lanes = 2,
+ 
+@@ -1295,7 +1305,7 @@ static const struct qmp_pcie_cfg ipq9650_gen3x1_pciephy_cfg = {
+ static const struct qmp_pcie_cfg ipq9650_gen3x2_pciephy_cfg = {
+ 	.lanes			= 2,
+ 
+-	.offsets		= &qmp_pcie_offsets_9574_v4x2,
++	.offsets		= &qmp_pcie_offsets_v4x2,
+ 
+ 	.tbls = {
+ 		.serdes		= ipq9650_pcie_serdes_tbl,
+-- 
+2.34.1
+

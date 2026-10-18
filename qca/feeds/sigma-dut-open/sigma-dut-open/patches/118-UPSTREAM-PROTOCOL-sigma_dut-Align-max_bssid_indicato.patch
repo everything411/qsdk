@@ -1,0 +1,119 @@
+From b32489ceb2f2813d4d4851c7067cafe959e493a2 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Fri, 27 Feb 2026 17:18:49 +0530
+Subject: [PATCH] UPSTREAM: PROTOCOL: sigma_dut: Align MAX_BSS_COUNT
+ value with hostapd update
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A recent hostapd update changed how max_bssid_indicator is derived for
+MBSSID. Previously, both sigma_dut and hostapd used the same logic,
+deriving max_bssid_indicator based on the number of configured non-TX
+VAPs. However, the new hostapd behavior now bases this value on the
+maximum supported BSSes (depending on memory profile) rather than the
+configured number of non-TX BSSes.
+
+This mismatch causes issues with WFA's WTS application during MBSSID
+testing. For example, with 1 non-TX VAP configured:
+
+Old logic (before hostapd change):
+  - max_bssid_indicator: 1 (2^1 = 2 BSSes)
+  - TX BSSID:            00:03:7f:04:35:25
+  - Non-TX BSSID:        00:03:7f:04:35:24 (derived by sigma_dut)
+  - WTS expectation:     00:03:7f:04:35:24 (matches)
+  - Result:              Test passes
+
+New logic (after hostapd change):
+  - max_bssid_indicator: 3 or 4 (based on memory profile)
+  - TX BSSID:            00:03:7f:04:35:25
+  - Non-TX BSSID:        00:03:7f:04:35:24 (still using old sigma_dut logic)
+  - WTS expectation:     00:03:7f:04:35:26 (based on new indicator value)
+  - Result:              BSSID mismatch - test fails
+
+To maintain compatibility and ensure consistent MBSSID handling,
+sigma_dut now derives MAX_BSS_COUNT from the build-time MEM_PROFILE:
+ - 1G profile:   MAX_BSS_COUNT = 16 (max_bssid_indicator = 4)
+ - 512M profile: MAX_BSS_COUNT = 8  (max_bssid_indicator = 3)
+
+This restores alignment with hostapd and ensures correct computation
+of max_bss_count and BSSID mask.
+
+Additionally, the Makefile now defines a build flag corresponding to
+the selected memory profile.
+
+Patch-dependency: none
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 22 +++++++++++++++-------
+ 1 file changed, 15 insertions(+), 7 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -11981,20 +11981,16 @@ skip_vht_parameters_set:
+ 			}
+ 		} else if ((dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) &&
+ 		    dut->ap_mbssid == VALUE_ENABLED && !link_id) {
+-			uint8_t num_bss, bssid_mask, max_bss_count;
++			uint8_t bssid_mask;
+ 			uint8_t init_val, base_val;
+-			uint8_t max_bssid_ind = 0;
+ 			unsigned char bssid[6];
+ 			char ifname2[50];
+ 			int i;
+ 
+ 			if (get_hwaddr(ifname, bssid)) {
+ 				fclose(f);
+-			return -2;
+-		}
+-
+-			if (!dut->mbss.num_non_tx_bss)
+ 				return -2;
++			}
+ 
+ 			/* Sanity check to indicate below logic holds good
+ 			 * for upto 256 bss(including tx,non-tx bss) support in sigma-dut
+@@ -12003,13 +11999,7 @@ skip_vht_parameters_set:
+ 			if (!dut->mbss.num_non_tx_bss)
+ 				return -2;
+ 
+-			do {
+-				max_bssid_ind++;
+-				num_bss = num_bss >> 1;
+-			} while (num_bss);
+-
+-			max_bss_count = 1 << max_bssid_ind;
+-			bssid_mask = max_bss_count - 1;
++			bssid_mask = MAX_BSS_COUNT - 1;
+ 
+ 			base_val = bssid[5] & ~bssid_mask;
+ 			init_val = bssid[5] & bssid_mask;
+@@ -12020,7 +12010,7 @@ skip_vht_parameters_set:
+ 				fprintf(f, "\n");
+ 
+ 				/* start from 1 for non tx bssid */
+-				bssid[5] = base_val + ((init_val + i + 1) % max_bss_count);
++				bssid[5] = base_val + ((init_val + i + 1) % MAX_BSS_COUNT);
+ 
+ 				snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, i+1);
+ 				fprintf(f, "bss=%s\n", ifname2);
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -711,6 +711,16 @@ struct multi_mbss_config {
+ 	enum if_band ap_band;
+ };
+ 
++/* For MBSSID testcase, there will only be one MBSS group, hence
++ * number of non tx bss is MAX_BSS - 1. MAX_BSS of 1G profile is 16
++ * and MAX_BSS of 512M profile is 8
++ */
++#if defined(MEM_PROFILE) && (MEM_PROFILE == 512)
++#define MAX_BSS_COUNT   (8)
++#else
++#define MAX_BSS_COUNT   (16)
++#endif
++
+ struct mbss_support {
+ 	int num_non_tx_bss;
+ 	struct mbss_config conf[MAX_NON_TX_BSS_COUNT];

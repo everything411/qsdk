@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: ISC
+#
+
+[ "$ACTION" = "ifup" ] || exit 0
+
+#  Pick primary interfaces only
+case "$INTERFACE" in
+        lan|wan)
+        MEMFREE=$(awk '/MemFree\+FreePCP/ {print $2}' /proc/meminfo)
+        PREV=$(awk '/MemFree\+FreePCP/ {print $2}' /tmp/meminfo.net)
+        [ ! -f /tmp/meminfo.min ] && {
+                cat /proc/meminfo > /tmp/meminfo.net
+        }
+        [ "$MEMFREE" -gt "$PREV" ] && {
+            cat /proc/meminfo > /tmp/meminfo.net
+        }
+        ;;
+esac

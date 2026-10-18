@@ -1,0 +1,323 @@
+/*
+ * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#ifndef _HTTPPE_L2_VP_REG_H_
+#define _HTTPPE_L2_VP_REG_H_
+
+/*[register] PORT_ISOL_ACTION*/
+#define PORT_ISOL_ACTION
+#define PORT_ISOL_ACTION_ADDRESS 0x1840
+#define PORT_ISOL_ACTION_NUM     9
+#define PORT_ISOL_ACTION_INC     0x4
+#define PORT_ISOL_ACTION_TYPE    REG_TYPE_RW
+#define PORT_ISOL_ACTION_DEFAULT 0x0
+	/*[field] ACTION*/
+	#define PORT_ISOL_ACTION_ACTION
+	#define PORT_ISOL_ACTION_ACTION_OFFSET  0
+	#define PORT_ISOL_ACTION_ACTION_LEN     18
+	#define PORT_ISOL_ACTION_ACTION_DEFAULT 0x0
+
+struct port_isol_action {
+	a_uint32_t  action:18;
+	a_uint32_t  _reserved0:14;
+};
+
+union port_isol_action_u {
+	a_uint32_t val;
+	struct port_isol_action bf;
+};
+
+/*[table] L2_VP_PORT_TBL*/
+#define L2_VP_PORT_TBL
+#define L2_VP_PORT_TBL_ADDRESS 0x23000
+#define L2_VP_PORT_TBL_NUM     256
+#define L2_VP_PORT_TBL_INC     0x10
+#define L2_VP_PORT_TBL_TYPE    REG_TYPE_RW
+#define L2_VP_PORT_TBL_DEFAULT 0x0
+	/*[field] INVALID_VSI_FORWARDING_EN*/
+	#define L2_VP_PORT_TBL_INVALID_VSI_FORWARDING_EN
+	#define L2_VP_PORT_TBL_INVALID_VSI_FORWARDING_EN_OFFSET  0
+	#define L2_VP_PORT_TBL_INVALID_VSI_FORWARDING_EN_LEN     1
+	#define L2_VP_PORT_TBL_INVALID_VSI_FORWARDING_EN_DEFAULT 0x0
+	/*[field] PROMISC_EN*/
+	#define L2_VP_PORT_TBL_PROMISC_EN
+	#define L2_VP_PORT_TBL_PROMISC_EN_OFFSET  1
+	#define L2_VP_PORT_TBL_PROMISC_EN_LEN     1
+	#define L2_VP_PORT_TBL_PROMISC_EN_DEFAULT 0x0
+	/*[field] DST_INFO*/
+	#define L2_VP_PORT_TBL_DST_INFO
+	#define L2_VP_PORT_TBL_DST_INFO_OFFSET  2
+	#define L2_VP_PORT_TBL_DST_INFO_LEN     8
+	#define L2_VP_PORT_TBL_DST_INFO_DEFAULT 0x0
+	/*[field] NEW_ADDR_LRN_EN*/
+	#define L2_VP_PORT_TBL_NEW_ADDR_LRN_EN
+	#define L2_VP_PORT_TBL_NEW_ADDR_LRN_EN_OFFSET  10
+	#define L2_VP_PORT_TBL_NEW_ADDR_LRN_EN_LEN     1
+	#define L2_VP_PORT_TBL_NEW_ADDR_LRN_EN_DEFAULT 0x0
+	/*[field] NEW_ADDR_FWD_CMD*/
+	#define L2_VP_PORT_TBL_NEW_ADDR_FWD_CMD
+	#define L2_VP_PORT_TBL_NEW_ADDR_FWD_CMD_OFFSET  11
+	#define L2_VP_PORT_TBL_NEW_ADDR_FWD_CMD_LEN     2
+	#define L2_VP_PORT_TBL_NEW_ADDR_FWD_CMD_DEFAULT 0x0
+	/*[field] STATION_MOVE_LRN_EN*/
+	#define L2_VP_PORT_TBL_STATION_MOVE_LRN_EN
+	#define L2_VP_PORT_TBL_STATION_MOVE_LRN_EN_OFFSET  13
+	#define L2_VP_PORT_TBL_STATION_MOVE_LRN_EN_LEN     1
+	#define L2_VP_PORT_TBL_STATION_MOVE_LRN_EN_DEFAULT 0x0
+	/*[field] STATION_MOVE_FWD_CMD*/
+	#define L2_VP_PORT_TBL_STATION_MOVE_FWD_CMD
+	#define L2_VP_PORT_TBL_STATION_MOVE_FWD_CMD_OFFSET  14
+	#define L2_VP_PORT_TBL_STATION_MOVE_FWD_CMD_LEN     2
+	#define L2_VP_PORT_TBL_STATION_MOVE_FWD_CMD_DEFAULT 0x0
+	/*[field] LRN_LMT_CNT*/
+	#define L2_VP_PORT_TBL_LRN_LMT_CNT
+	#define L2_VP_PORT_TBL_LRN_LMT_CNT_OFFSET  16
+	#define L2_VP_PORT_TBL_LRN_LMT_CNT_LEN     12
+	#define L2_VP_PORT_TBL_LRN_LMT_CNT_DEFAULT 0x0
+	/*[field] LRN_LMT_EN*/
+	#define L2_VP_PORT_TBL_LRN_LMT_EN
+	#define L2_VP_PORT_TBL_LRN_LMT_EN_OFFSET  28
+	#define L2_VP_PORT_TBL_LRN_LMT_EN_LEN     1
+	#define L2_VP_PORT_TBL_LRN_LMT_EN_DEFAULT 0x0
+	/*[field] LRN_LMT_EXCEED_FWD*/
+	#define L2_VP_PORT_TBL_LRN_LMT_EXCEED_FWD
+	#define L2_VP_PORT_TBL_LRN_LMT_EXCEED_FWD_OFFSET  29
+	#define L2_VP_PORT_TBL_LRN_LMT_EXCEED_FWD_LEN     2
+	#define L2_VP_PORT_TBL_LRN_LMT_EXCEED_FWD_DEFAULT 0x0
+	/*[field] PORT_ISOLATION_BITMAP*/
+	#define L2_VP_PORT_TBL_PORT_ISOLATION_BITMAP
+	#define L2_VP_PORT_TBL_PORT_ISOLATION_BITMAP_OFFSET  31
+	#define L2_VP_PORT_TBL_PORT_ISOLATION_BITMAP_LEN     9
+	#define L2_VP_PORT_TBL_PORT_ISOLATION_BITMAP_DEFAULT 0x0
+	/*[field] ISOL_PROFILE*/
+	#define L2_VP_PORT_TBL_ISOL_PROFILE
+	#define L2_VP_PORT_TBL_ISOL_PROFILE_OFFSET  40
+	#define L2_VP_PORT_TBL_ISOL_PROFILE_LEN     6
+	#define L2_VP_PORT_TBL_ISOL_PROFILE_DEFAULT 0x0
+	/*[field] ISOL_PROFILE_EN*/
+	#define L2_VP_PORT_TBL_ISOL_PROFILE_EN
+	#define L2_VP_PORT_TBL_ISOL_PROFILE_EN_OFFSET  46
+	#define L2_VP_PORT_TBL_ISOL_PROFILE_EN_LEN     1
+	#define L2_VP_PORT_TBL_ISOL_PROFILE_EN_DEFAULT 0x0
+	/*[field] POLICER_EN*/
+	#define L2_VP_PORT_TBL_POLICER_EN
+	#define L2_VP_PORT_TBL_POLICER_EN_OFFSET  47
+	#define L2_VP_PORT_TBL_POLICER_EN_LEN     1
+	#define L2_VP_PORT_TBL_POLICER_EN_DEFAULT 0x0
+	/*[field] POLICER_INDEX*/
+	#define L2_VP_PORT_TBL_POLICER_INDEX
+	#define L2_VP_PORT_TBL_POLICER_INDEX_OFFSET  48
+	#define L2_VP_PORT_TBL_POLICER_INDEX_LEN     9
+	#define L2_VP_PORT_TBL_POLICER_INDEX_DEFAULT 0x0
+	/*[field] EXCEPTION_FMT_CTRL*/
+	#define L2_VP_PORT_TBL_EXCEPTION_FMT_CTRL
+	#define L2_VP_PORT_TBL_EXCEPTION_FMT_CTRL_OFFSET  57
+	#define L2_VP_PORT_TBL_EXCEPTION_FMT_CTRL_LEN     1
+	#define L2_VP_PORT_TBL_EXCEPTION_FMT_CTRL_DEFAULT 0x0
+	/*[field] APP_CTRL_PROFILE*/
+	#define L2_VP_PORT_TBL_APP_CTRL_PROFILE
+	#define L2_VP_PORT_TBL_APP_CTRL_PROFILE_OFFSET  58
+	#define L2_VP_PORT_TBL_APP_CTRL_PROFILE_LEN     8
+	#define L2_VP_PORT_TBL_APP_CTRL_PROFILE_DEFAULT 0x0
+	/*[field] MIRROR_EN*/
+	#define L2_VP_PORT_TBL_MIRROR_EN
+	#define L2_VP_PORT_TBL_MIRROR_EN_OFFSET  66
+	#define L2_VP_PORT_TBL_MIRROR_EN_LEN     1
+	#define L2_VP_PORT_TBL_MIRROR_EN_DEFAULT 0x0
+
+struct l2_vp_port_tbl {
+	a_uint32_t  invalid_vsi_forwarding_en:1;
+	a_uint32_t  promisc_en:1;
+	a_uint32_t  dst_info:8;
+	a_uint32_t  new_addr_lrn_en:1;
+	a_uint32_t  new_addr_fwd_cmd:2;
+	a_uint32_t  station_move_lrn_en:1;
+	a_uint32_t  station_move_fwd_cmd:2;
+	a_uint32_t  lrn_lmt_cnt:12;
+	a_uint32_t  lrn_lmt_en:1;
+	a_uint32_t  lrn_lmt_exceed_fwd:2;
+	a_uint32_t  port_isolation_bitmap_0:1;
+	a_uint32_t  port_isolation_bitmap_1:8;
+	a_uint32_t  isol_profile:6;
+	a_uint32_t  isol_profile_en:1;
+	a_uint32_t  policer_en:1;
+	a_uint32_t  policer_index:9;
+	a_uint32_t  exception_fmt_ctrl:1;
+	a_uint32_t  app_ctrl_profile_0:6;
+	a_uint32_t  app_ctrl_profile_1:2;
+	a_uint32_t  mirror_en:1;
+	a_uint32_t  _reserved0:29;
+};
+
+union l2_vp_port_tbl_u {
+	a_uint32_t val[3];
+	struct l2_vp_port_tbl bf;
+};
+
+/*[table] L2_VP_PORT_POST_TBL*/
+#define L2_VP_PORT_POST_TBL
+#define L2_VP_PORT_POST_TBL_ADDRESS 0x26000
+#define L2_VP_PORT_POST_TBL_NUM     256
+#define L2_VP_PORT_POST_TBL_INC     0x10
+#define L2_VP_PORT_POST_TBL_TYPE    REG_TYPE_RW
+#define L2_VP_PORT_POST_TBL_DEFAULT 0x0
+	/*[field] PHYSICAL_PORT*/
+	#define L2_VP_PORT_POST_TBL_PHYSICAL_PORT
+	#define L2_VP_PORT_POST_TBL_PHYSICAL_PORT_OFFSET  0
+	#define L2_VP_PORT_POST_TBL_PHYSICAL_PORT_LEN     4
+	#define L2_VP_PORT_POST_TBL_PHYSICAL_PORT_DEFAULT 0x0
+	/*[field] EG_VLAN_FLTR_CMD*/
+	#define L2_VP_PORT_POST_TBL_EG_VLAN_FLTR_CMD
+	#define L2_VP_PORT_POST_TBL_EG_VLAN_FLTR_CMD_OFFSET  4
+	#define L2_VP_PORT_POST_TBL_EG_VLAN_FLTR_CMD_LEN     1
+	#define L2_VP_PORT_POST_TBL_EG_VLAN_FLTR_CMD_DEFAULT 0x0
+	/*[field] ISOL_PROFILE*/
+	#define L2_VP_PORT_POST_TBL_ISOL_PROFILE
+	#define L2_VP_PORT_POST_TBL_ISOL_PROFILE_OFFSET  5
+	#define L2_VP_PORT_POST_TBL_ISOL_PROFILE_LEN     6
+	#define L2_VP_PORT_POST_TBL_ISOL_PROFILE_DEFAULT 0x0
+	/*[field] ISOL_PROFILE_EN*/
+	#define L2_VP_PORT_POST_TBL_ISOL_PROFILE_EN
+	#define L2_VP_PORT_POST_TBL_ISOL_PROFILE_EN_OFFSET  11
+	#define L2_VP_PORT_POST_TBL_ISOL_PROFILE_EN_LEN     1
+	#define L2_VP_PORT_POST_TBL_ISOL_PROFILE_EN_DEFAULT 0x0
+	/*[field] VP_STATE_CHECK_EN*/
+	#define L2_VP_PORT_POST_TBL_VP_STATE_CHECK_EN
+	#define L2_VP_PORT_POST_TBL_VP_STATE_CHECK_EN_OFFSET  12
+	#define L2_VP_PORT_POST_TBL_VP_STATE_CHECK_EN_LEN     1
+	#define L2_VP_PORT_POST_TBL_VP_STATE_CHECK_EN_DEFAULT 0x0
+	/*[field] VP_TYPE*/
+	#define L2_VP_PORT_POST_TBL_VP_TYPE
+	#define L2_VP_PORT_POST_TBL_VP_TYPE_OFFSET  13
+	#define L2_VP_PORT_POST_TBL_VP_TYPE_LEN     1
+	#define L2_VP_PORT_POST_TBL_VP_TYPE_DEFAULT 0x0
+	/*[field] VP_CONTEXT_ACTIVE*/
+	#define L2_VP_PORT_POST_TBL_VP_CONTEXT_ACTIVE
+	#define L2_VP_PORT_POST_TBL_VP_CONTEXT_ACTIVE_OFFSET  14
+	#define L2_VP_PORT_POST_TBL_VP_CONTEXT_ACTIVE_LEN     1
+	#define L2_VP_PORT_POST_TBL_VP_CONTEXT_ACTIVE_DEFAULT 0x0
+	/*[field] VP_EG_DATA_VALID*/
+	#define L2_VP_PORT_POST_TBL_VP_EG_DATA_VALID
+	#define L2_VP_PORT_POST_TBL_VP_EG_DATA_VALID_OFFSET  15
+	#define L2_VP_PORT_POST_TBL_VP_EG_DATA_VALID_LEN     1
+	#define L2_VP_PORT_POST_TBL_VP_EG_DATA_VALID_DEFAULT 0x0
+	/*[field] PHYSICAL_PORT_MTU_CHECK_EN*/
+	#define L2_VP_PORT_POST_TBL_PHYSICAL_PORT_MTU_CHECK_EN
+	#define L2_VP_PORT_POST_TBL_PHYSICAL_PORT_MTU_CHECK_EN_OFFSET  16
+	#define L2_VP_PORT_POST_TBL_PHYSICAL_PORT_MTU_CHECK_EN_LEN     1
+	#define L2_VP_PORT_POST_TBL_PHYSICAL_PORT_MTU_CHECK_EN_DEFAULT 0x0
+	/*[field] MTU_CHECK_TYPE*/
+	#define L2_VP_PORT_POST_TBL_MTU_CHECK_TYPE
+	#define L2_VP_PORT_POST_TBL_MTU_CHECK_TYPE_OFFSET  17
+	#define L2_VP_PORT_POST_TBL_MTU_CHECK_TYPE_LEN     1
+	#define L2_VP_PORT_POST_TBL_MTU_CHECK_TYPE_DEFAULT 0x0
+	/*[field] EXTRA_HEADER_LEN*/
+	#define L2_VP_PORT_POST_TBL_EXTRA_HEADER_LEN
+	#define L2_VP_PORT_POST_TBL_EXTRA_HEADER_LEN_OFFSET  18
+	#define L2_VP_PORT_POST_TBL_EXTRA_HEADER_LEN_LEN     8
+	#define L2_VP_PORT_POST_TBL_EXTRA_HEADER_LEN_DEFAULT 0x0
+	/*[field] EG_VLAN_FMT_VALID*/
+	#define L2_VP_PORT_POST_TBL_EG_VLAN_FMT_VALID
+	#define L2_VP_PORT_POST_TBL_EG_VLAN_FMT_VALID_OFFSET  26
+	#define L2_VP_PORT_POST_TBL_EG_VLAN_FMT_VALID_LEN     1
+	#define L2_VP_PORT_POST_TBL_EG_VLAN_FMT_VALID_DEFAULT 0x0
+	/*[field] EG_STAG_FMT*/
+	#define L2_VP_PORT_POST_TBL_EG_STAG_FMT
+	#define L2_VP_PORT_POST_TBL_EG_STAG_FMT_OFFSET  27
+	#define L2_VP_PORT_POST_TBL_EG_STAG_FMT_LEN     1
+	#define L2_VP_PORT_POST_TBL_EG_STAG_FMT_DEFAULT 0x0
+	/*[field] EG_CTAG_FMT*/
+	#define L2_VP_PORT_POST_TBL_EG_CTAG_FMT
+	#define L2_VP_PORT_POST_TBL_EG_CTAG_FMT_OFFSET  28
+	#define L2_VP_PORT_POST_TBL_EG_CTAG_FMT_LEN     1
+	#define L2_VP_PORT_POST_TBL_EG_CTAG_FMT_DEFAULT 0x0
+	/*[field] ENQ_SERVICE_CODE_EN*/
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_EN
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_EN_OFFSET  29
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_EN_LEN     1
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_EN_DEFAULT 0x0
+	/*[field] ENQ_SERVICE_CODE*/
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_OFFSET  30
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_LEN     8
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_DEFAULT 0x0
+	/*[field] ENQ_PHY_PORT*/
+	#define L2_VP_PORT_POST_TBL_ENQ_PHY_PORT
+	#define L2_VP_PORT_POST_TBL_ENQ_PHY_PORT_OFFSET  38
+	#define L2_VP_PORT_POST_TBL_ENQ_PHY_PORT_LEN     4
+	#define L2_VP_PORT_POST_TBL_ENQ_PHY_PORT_DEFAULT 0x0
+	/*[field] MIRROR_EN*/
+	#define L2_VP_PORT_POST_TBL_MIRROR_EN
+	#define L2_VP_PORT_POST_TBL_MIRROR_EN_OFFSET  42
+	#define L2_VP_PORT_POST_TBL_MIRROR_EN_LEN     1
+	#define L2_VP_PORT_POST_TBL_MIRROR_EN_DEFAULT 0x0
+	/*[field] ENQ_SERVICE_CODE_QUEUE_DIS*/
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_QUEUE_DIS
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_QUEUE_DIS_OFFSET  43
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_QUEUE_DIS_LEN     1
+	#define L2_VP_PORT_POST_TBL_ENQ_SERVICE_CODE_QUEUE_DIS_DEFAULT 0x0
+	/*[field] VP_PROFILE*/
+	#define L2_VP_PORT_POST_TBL_VP_PROFILE
+	#define L2_VP_PORT_POST_TBL_VP_PROFILE_OFFSET  44
+	#define L2_VP_PORT_POST_TBL_VP_PROFILE_LEN     8
+	#define L2_VP_PORT_POST_TBL_VP_PROFILE_DEFAULT 0x0
+
+struct l2_vp_port_post_tbl {
+	a_uint32_t  physical_port:4;
+	a_uint32_t  eg_vlan_fltr_cmd:1;
+	a_uint32_t  isol_profile:6;
+	a_uint32_t  isol_profile_en:1;
+	a_uint32_t  vp_state_check_en:1;
+	a_uint32_t  vp_type:1;
+	a_uint32_t  vp_context_active:1;
+	a_uint32_t  vp_eg_data_valid:1;
+	a_uint32_t  physical_port_mtu_check_en:1;
+	a_uint32_t  mtu_check_type:1;
+	a_uint32_t  extra_header_len:8;
+	a_uint32_t  eg_vlan_fmt_valid:1;
+	a_uint32_t  eg_stag_fmt:1;
+	a_uint32_t  eg_ctag_fmt:1;
+	a_uint32_t  enq_service_code_en:1;
+	a_uint32_t  enq_service_code_0:2;
+	a_uint32_t  enq_service_code_1:6;
+	a_uint32_t  enq_phy_port:4;
+	a_uint32_t  mirror_en:1;
+	a_uint32_t  enq_service_code_queue_dis:1;
+	a_uint32_t  vp_profile:8;
+	a_uint32_t  _reserved0:12;
+};
+
+union l2_vp_port_post_tbl_u {
+	a_uint32_t val[2];
+	struct l2_vp_port_post_tbl bf;
+};
+
+/*[table] VP_ISOL_ACTION_TBL*/
+#define VP_ISOL_ACTION_TBL
+#define VP_ISOL_ACTION_TBL_ADDRESS 0x28800
+#define VP_ISOL_ACTION_TBL_NUM     64
+#define VP_ISOL_ACTION_TBL_INC     0x10
+#define VP_ISOL_ACTION_TBL_TYPE    REG_TYPE_RW
+#define VP_ISOL_ACTION_TBL_DEFAULT 0x0
+	/*[field] VP_PROFILE_ACTION*/
+	#define VP_ISOL_ACTION_TBL_VP_PROFILE_ACTION
+	#define VP_ISOL_ACTION_TBL_VP_PROFILE_ACTION_OFFSET  0
+	#define VP_ISOL_ACTION_TBL_VP_PROFILE_ACTION_LEN     128
+	#define VP_ISOL_ACTION_TBL_VP_PROFILE_ACTION_DEFAULT 0x0
+
+struct vp_isol_action_tbl {
+	a_uint32_t  vp_profile_action_0:32;
+	a_uint32_t  vp_profile_action_1:32;
+	a_uint32_t  vp_profile_action_2:32;
+	a_uint32_t  vp_profile_action_3:32;
+};
+
+union vp_isol_action_tbl_u {
+	a_uint32_t val[4];
+	struct vp_isol_action_tbl bf;
+};
+
+#endif

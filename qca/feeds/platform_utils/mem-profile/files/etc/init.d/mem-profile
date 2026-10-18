@@ -1,0 +1,314 @@
+#!/bin/sh /etc/rc.common
+# mem-profile — Boot-time memory profile validator
+# START=00 | Validates mem-profile= bootarg against physical MemTotal
+
+START=00
+#STOP=99
+
+LOG_TAG="mem-profile"
+MEM_PROFILE_JSON="/etc/mem-profile.json"
+
+# Mirror to /dev/kmsg so messages appear in dmesg at START=00
+_kmsg() { echo "<$1>$LOG_TAG: $2" > /dev/kmsg 2>/dev/null; }
+log_info() { logger -t "$LOG_TAG" -p daemon.info  "$1"; _kmsg 6 "$1"; }
+log_warn() { logger -t "$LOG_TAG" -p daemon.warn  "$1"; _kmsg 4 "$1"; }
+log_err()  { logger -t "$LOG_TAG" -p daemon.error "$1"; _kmsg 3 "$1"; }
+
+board_name() {
+	[ -e /tmp/sysinfo/board_name ] && cat /tmp/sysinfo/board_name || echo "generic"
+}
+
+# Physical DDR size in MB from device tree memory nodes.
+# Iterates all memory@* nodes and sums all size cells to get total DDR.
+# Each reg entry is a 32-byte cell: [addr_hi:8][addr_lo:8][size_hi:8][size_lo:8]
+# Falls back to /proc/meminfo MemTotal if DT nodes are unavailable.
+get_physical_ddr_mb() {
+	local total=0 found=0
+
+	for mem in /sys/firmware/devicetree/base/memory@*/reg; do
+		[ -e "$mem" ] || continue
+		found=1
+		local hex cell size_hi size_lo size
+		hex=$(hexdump -v -e '1/1 "%02x"' "$mem" 2>/dev/null)
+		while [ ${#hex} -ge 32 ]; do
+			cell=${hex:0:32}
+			size_hi=${cell:16:8}
+			size_lo=${cell:24:8}
+			size=$(( 0x${size_hi}${size_lo} ))
+			total=$(( total + size ))
+			hex=${hex:32}
+		done
+	done
+
+	if [ "$found" -eq 0 ]; then
+		log_warn "Memory DT node not found — falling back to /proc/meminfo"
+		awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo
+		return
+	fi
+
+	echo $(( total / 1024 / 1024 ))
+}
+
+# Max allowed profile for a given physical DDR size (MB).
+# Reads threshold from /etc/config/mem-profile (UCI).
+# Iterates optimized→balanced; returns the first profile whose
+# threshold >= mem_mb.  Falls back to high if none match.
+get_max_profile() {
+	local mem_mb="$1"
+	local profile threshold
+
+	for profile in optimized balanced; do
+		threshold=$(jsonfilter -i "$MEM_PROFILE_JSON" -e "@.profiles.${profile}.threshold_mb")
+		[ -z "$threshold" ] && continue
+		if [ "$mem_mb" -le "$threshold" ]; then
+			echo "$profile"
+			return
+		fi
+	done
+	echo "high"
+}
+
+get_mem_profile_details() {
+	local JSON_FILE="$MEM_PROFILE_JSON"
+
+	case $1 in
+		"min")
+			info_value=$(jsonfilter -i $JSON_FILE -e '@.mem_profile.min')
+			;;
+		"max")
+			info_value=$(jsonfilter -i $JSON_FILE -e '@.mem_profile.max')
+			;;
+		*)
+			info_value=$(jsonfilter -i $JSON_FILE -e '@.$1')
+			;;
+	esac
+	echo $info_value
+}
+
+# Numeric level for profile comparison (higher = more resources)
+profile_level() {
+	case "$1" in
+		optimized) echo 1 ;;
+		balanced)  echo 2 ;;
+		high)      echo 3 ;;
+		"")        echo 0 ;;  # not set
+		*)         echo -1 ;; # unknown / invalid
+	esac
+}
+
+# First mem-profile= token from /proc/cmdline
+get_cmdline_profile() {
+	grep -o 'mem-profile=[^ ]*' /proc/cmdline 2>/dev/null | head -1 | cut -d= -f2
+}
+
+# Write the active mem-profile to /etc/mem-profile
+export_active_profile() {
+	echo "$1" > /etc/mem-profile
+}
+
+# Ensure /etc/fw_env.config exists using the same process as /etc/init.d/boot:
+#   1. Run /bin/config_generate to create /etc/board.json (missing at START=00)
+#   2. Source 30_uboot-envtools — now board.json exists so it creates fw_env.config
+ensure_fw_env_config() {
+	[ -f /etc/fw_env.config ] && return 0
+	# Generate board.json if not yet available (normally done by /etc/init.d/boot)
+	[ ! -f /etc/board.json ] && [ -x /bin/config_generate ] && /bin/config_generate
+	# Source 30_uboot-envtools — board.json now exists so uboot-envtool check passes
+	[ -f /etc/uci-defaults/30_uboot-envtools ] && (. /etc/uci-defaults/30_uboot-envtools)
+	[ -f /etc/fw_env.config ] && log_info "fw_env.config created via uboot-envtools" && return 0
+	return 1
+}
+
+# Replace/append mem-profile= in u-boot bootargs (removes duplicates)
+update_bootargs() {
+	local profile="$1"
+	local cur new
+
+	if ! command -v fw_setenv >/dev/null 2>&1 || \
+	   ! command -v fw_printenv >/dev/null 2>&1; then
+		log_warn "fw_setenv unavailable — set mem-profile=${profile} in bootargs manually"
+		return 1
+	fi
+
+	ensure_fw_env_config || log_warn "fw_env.config: could not be created"
+
+	cur=$(fw_printenv 2>/dev/null | grep '^bootargs=' | cut -d= -f2-)
+	[ -z "$cur" ] && log_warn "fw_printenv: could not read bootargs" && return 1
+
+	new=$(echo "$cur" | sed 's/mem-profile=[^ ]*//g' \
+	                  | sed 's/  */ /g' \
+	                  | sed 's/^ //;s/ $//')
+	new="${new} mem-profile=${profile}"
+
+	fw_setenv bootargs "$new" 2>/dev/null && \
+		log_info "fw_setenv: bootargs set — mem-profile=${profile}" && return 0
+
+	log_warn "fw_setenv: failed to update bootargs"
+	return 1
+}
+
+# Update bootargs and reboot if needed.
+# bad = "none" → no reboot (kernel already at DEFAULT = correct level).
+# Any other wrong profile → reboot to apply corrected profile to drivers.
+auto_correct() {
+	local bad="$1"
+	local good="$2"
+
+	log_warn "Auto-correcting: '${bad}' → '${good}'"
+
+	if update_bootargs "$good"; then
+		# Skip reboot only when bad="none" AND good="high":
+		# kernel already loaded with DEFAULT = high, so current boot is correct.
+		# For balanced/optimized, kernel loaded with DEFAULT=high (wrong) → reboot needed.
+		if [ "$bad" = "none" ] && [ "$good" = "high" ]; then
+			export_active_profile "$good"
+			log_warn "Bootargs set to '${good}' — takes effect on next boot (no reboot needed)"
+		else
+			log_warn "Rebooting in 2 seconds..."
+			sleep 2; sync; reboot
+		fi
+	else
+		log_warn "Bootargs not updated (fw_setenv unavailable) — UCI override set, continuing boot"
+	fi
+}
+
+legacy_board() {
+	local profile min_profile max_profile
+	local cplval min_plval max_plval mem_mb
+
+	profile=$(get_cmdline_profile)
+	log_info "Current mem-profile in cmdline: ${profile:-<not set>}"
+
+	cplval=$(profile_level "$profile")
+
+	# Read min/max from board.json (set by 03_mem_profile during board_detect).
+	# Falls back to physical DDR if board.json has no mem_profile entry.
+	min_profile=$(get_mem_profile_details min)
+	max_profile=$(get_mem_profile_details max)
+
+	if [ -z "$max_profile" ]; then
+		mem_mb=$(get_physical_ddr_mb)
+		max_profile=$(get_max_profile "$mem_mb")
+		log_info "PhysicalDDR=${mem_mb}MB  max_allowed=${max_profile} (fallback)"
+	else
+		log_info "$MEM_PROFILE_JSON: min=${min_profile} max=${max_profile}"
+	fi
+
+	min_plval=$(profile_level "$min_profile")
+	max_plval=$(profile_level "$max_profile")
+
+	# ── Valid cmdline profile: boot normally ──────────────────────────
+	# A profile is valid if min ≤ profile ≤ max.
+	if [ -n "$profile" ] && [ "$cplval" -ge "$min_plval" ] && [ "$cplval" -le "$max_plval" ]; then
+		export_active_profile "$profile"
+		log_info "Curent Profile: '${profile}' is within the supported range (min='${min_profile}' max='${max_profile}')— boot OK"
+		return 0
+	fi
+
+	# ── Auto-correct ──────────────────────────────────────────────────
+	if [ -z "$profile" ]; then
+		log_warn "No mem-profile in cmdline — auto-setting to '${max_profile}'"
+		auto_correct "none" "$max_profile"
+	elif [ "$cplval" -lt 1 ]; then
+		log_err "Unknown/Invalid profile '${profile}' — auto-correcting to '${max_profile}'"
+		auto_correct "$profile" "$max_profile"
+	else
+		log_err "Profile '${profile}' out of range (min='${min_profile}' max='${max_profile}')"
+		auto_correct "$profile" "$max_profile"
+	fi
+}
+
+wifi8_mem_board() {
+	local profile min_profile max_profile
+	local cplval min_plval max_plval mem_mb
+
+	profile=$(get_cmdline_profile)
+	cplval=$(profile_level "$profile")
+
+	min_profile=$(get_mem_profile_details min)
+	max_profile=$(get_mem_profile_details max)
+
+	[ -z "$max_profile" ] && {
+		mem_mb=$(get_physical_ddr_mb)
+		max_profile=$(get_max_profile "$mem_mb")
+	}
+
+	min_plval=$(profile_level "$min_profile")
+	max_plval=$(profile_level "$max_profile")
+	mem_mb=$(get_physical_ddr_mb)
+
+	echo " *** profile min:$min_profile max:$max_profile cmdline:$profile"
+	echo " *** c:$cplval min:$min_plval max:$max_plval"
+
+	if [ -z "$profile" ]; then
+		log_warn "No mem-profile in cmdline — auto-setting to '${max_profile}'"
+		auto_correct "none" "$max_profile"
+	elif [ "$cplval" -lt 1 ]; then
+		log_err "Unknown/Invalid profile '${profile}' — auto-correcting to '${max_profile}'"
+		auto_correct "$profile" "$max_profile"
+	elif [ "$cplval" -ge "$min_plval" ] && [ "$cplval" -le "$max_plval" ]; then
+		export_active_profile "$profile"
+		log_info "Curent Profile: '${profile}' is within the supported range (min='${min_profile}' max='${max_profile}')"
+		log_info "Profile '${profile}' valid for ${mem_mb}MB (max='${max_profile}') — boot OK"
+		return 0
+	else
+		log_err "Profile '${profile}' exceeds hardware limit (max='${max_profile}' for ${mem_mb}MB)"
+		auto_correct "$profile" "$max_profile"
+	fi
+}
+
+start() {
+	# For static memory profile platforms, skip DDR validation but enforce
+	# the correct mem-profile in bootargs (no reboot — kernel already loaded
+	# with the correct static profile).
+	#   MP_512 / CONFIG_IPQ_MEM_PROFILE=512 → enforce balanced
+	#   MP_256 / CONFIG_IPQ_MEM_PROFILE=256 → enforce optimized
+	local static_profile=""
+	if [ -e /proc/device-tree/MP_512 ]; then
+		static_profile="balanced"
+	elif [ -e /proc/device-tree/MP_256 ]; then
+		static_profile="optimized"
+	elif [ -f /proc/config.gz ]; then
+		if zcat /proc/config.gz 2>/dev/null | grep -q "CONFIG_IPQ_MEM_PROFILE=512"; then
+			static_profile="balanced"
+		elif zcat /proc/config.gz 2>/dev/null | grep -q "CONFIG_IPQ_MEM_PROFILE=256"; then
+			static_profile="optimized"
+		fi
+	fi
+
+	if [ -n "$static_profile" ]; then
+		local cur_profile
+		cur_profile=$(get_cmdline_profile)
+		if [ "$cur_profile" = "$static_profile" ]; then
+			log_info "Static platform: mem-profile=${static_profile} already set — boot OK"
+			export_active_profile "$static_profile"
+		else
+			if update_bootargs "$static_profile"; then
+				export_active_profile "$static_profile"
+				log_info "Static platform: bootargs updated to '${static_profile}' — takes effect on next boot"
+			else
+				log_warn "Static platform: bootargs not updated — continuing boot"
+			fi
+		fi
+		return 0
+	fi
+
+	[ ! -f "$MEM_PROFILE_JSON" ] && [ -x /etc/board.d/03_mem_profile ] && /etc/board.d/03_mem_profile
+
+	local board
+	board=$(board_name)
+
+	case "$board" in
+		qcom,ipq95* |\
+		qcom,ipq53* |\
+		qcom,ipq54*)
+			legacy_board
+			;;
+		qcom,ipq96* |\
+		qcom,ipq52*)
+			wifi8_mem_board
+			;;
+	esac
+}
+
+stop() { return 0; }

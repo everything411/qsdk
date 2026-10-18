@@ -1,0 +1,40 @@
+From 3ed06fe80714e92adeb1c73dbde18d1de498a8c8 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 28 May 2025 22:48:02 +0530
+Subject: [PATCH] cyclic: Throttle schedule to improve boot time
+
+The schedule() function takes approximately 1 millisecond
+to execute. To optimize boot performance, its invocation
+is now restricted to once every 2000 iterations.
+
+Change-Id: Ib1cd9bd83560a6337d771e96a776b9deee4b4fe5
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ common/cyclic.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/common/cyclic.c b/common/cyclic.c
+index fad071a39c6..7a0191e4dca 100644
+--- a/common/cyclic.c
++++ b/common/cyclic.c
+@@ -90,6 +90,17 @@ static void cyclic_run(void)
+ 
+ void schedule(void)
+ {
++	static uint32_t iter;
++	/*
++	 * schedule() function takes ~1 milli seconds so to improve the
++	 * boot-time, the schedule() function is restricted to execute
++	 * for every 2000 iterations once.
++	*/
++	if (likely(++iter != 2000))
++		return;
++	else
++		iter = 0;
++
+ 	/* The HW watchdog is not integrated into the cyclic IF (yet) */
+ 	if (IS_ENABLED(CONFIG_HW_WATCHDOG))
+ 		hw_watchdog_reset();
+-- 
+2.34.1
+

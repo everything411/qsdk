@@ -1,0 +1,98 @@
+From f7a4ff50dc804d2db414167f221d9901cf184f1f Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Thu, 29 Feb 2024 12:22:22 +0530
+Subject: [PATCH] sigma_dut: Enable required fwtest commands for OFDMA
+
+Currently less number of MU data packets were observed when
+OFDMA is enabled.
+
+This can be fixed by enabling dl_ofdma airtime fwtest command,
+which will help to enable the OFDMA in the forced mode.
+
+Disable efficiency check for UL OFDMA. We do not send TBPPDU
+for one user. Enabling fwtest command to send OFDMA even
+for one user to allow testing to be done without requiring
+more than one station.
+
+Full band probing command is not required when EHT is enabled and
+needed only when HE is enbaled as per firmware.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -9180,6 +9180,11 @@ static void fwtest_set_he_params(struct
+ 
+ 		/* UL trigger duration */
+ 		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000", ifname);
++
++		/* Increase the max TX time limit for DL OFDMA
++		 * to enable OFDMA scheduling.
++		 */
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 17 1000000", ifname);
+ 	}
+ 
+ 	/* sp_guard_interval_in_us WAR */
+@@ -9219,6 +9224,9 @@ static void fwtest_set_he_params(struct
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 427 0", ifname);
+ 		/* Enable to sort RU allocation */
+ 		fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 2 1", ifname);
++		/*Enable MU-BAR for DL OFDMA*/
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 670 1", ifname);
++
+ 	}
+ 
+ 	if (dut->ap_txBF) {
+@@ -9280,6 +9288,12 @@ static void fwtest_set_he_params(struct
+ 		/* Enable MU MIMO */
+ 		run_system_wrapper(dut, "ath11k-fwtest -i %s -m 0x47 -v 0 641 1", ifname);
+ 	}
++
++	if (dut->ap_he_dlofdma == VALUE_ENABLED) {
++		/* disable enable_ul_ofdma_efficiency_check */
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 131 0", ifname);
++	}
++
+ }
+ 
+ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+@@ -9293,8 +9307,6 @@ static void fwtest_set_eht_params(struct
+ 	/* enable preferred AC */
+ 	fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 186 1", ifname, link_id);
+ 
+-	/* disbale sending basic triggers */
+-	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 42 0", ifname, link_id);
+ 	/* he_dynamic_muedca 0 */
+ 	run_system_wrapper(dut,
+ 			   "ath11k-fwtest -t 2 -i %s -l %d -m 0x00 -p %d 0xBF 0x00",
+@@ -9305,9 +9317,6 @@ static void fwtest_set_eht_params(struct
+ 			   "ath11k-fwtest -t 2 -i %s -l %d -m 0x00 -p %d 0xA2 0x02",
+ 			   ifname, link_id, pdev_id);
+ 
+-	/* enable full_band_probing */
+-	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 194 0", ifname, link_id);
+-
+ 	if (dut->ap_he_ulofdma == VALUE_ENABLED) {
+ 		/* Disable DL OFDMA */
+ 		if (dut->ap_he_dlofdma != VALUE_ENABLED) {
+@@ -9357,6 +9366,17 @@ static void fwtest_set_eht_params(struct
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 579 0", ifname, link_id);
+ 		/* boolean for each link (primary / secondary) where scheduling is allowed */
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 580 1 1", ifname, link_id);
++
++		/* Increase the min TX time limit for MU MIMO to
++		 * disable MU MIMO scheduling.
++		 */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 11 1000000", ifname, link_id);
++		/* Increase the max TX time limit for DL OFDMA
++		 * to enable OFDMA scheduling.
++		 */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 17 1000000", ifname, link_id);
++		/* disable enable_ul_ofdma_efficiency_check */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 131 0", ifname, link_id);
+ 	}
+ 
+ 	if (dut->ap_txBF) {

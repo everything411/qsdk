@@ -1,0 +1,35 @@
+#!/bin/sh /etc/rc.common
+#
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: ISC
+#
+
+start() {
+	local kernel_version=$(uname -r)
+
+	if [ ! -e "/lib/modules/$kernel_version/qca-sdc-drv.ko" ]; then
+		echo "SDC driver module not found"
+		return
+	fi
+
+	insmod qca-sdc-drv
+	sleep 1
+	sdc &
+
+	#
+	# TODO: Make the interface configurable.
+	#
+	echo "add br-lan" > /sys/kernel/debug/sdc/tracked_ifaces
+}
+
+stop() {
+	if [ ! -d /sys/module/qca_sdc_drv ]; then
+		echo "SDC driver is not loaded"
+		return
+	fi
+
+	echo "del br-lan" > /sys/kernel/debug/sdc/tracked_ifaces
+	killall sdc
+	sleep 1
+	rmmod qca-sdc-drv
+}

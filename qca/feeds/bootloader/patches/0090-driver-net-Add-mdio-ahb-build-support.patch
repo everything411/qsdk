@@ -1,0 +1,48 @@
+From 1a91657695fc80cead906be15403a729d0c3e5bf Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Tue, 3 Mar 2026 23:54:32 +0530
+Subject: [PATCH] driver: net: Add mdio-ahb build support
+
+Change-Id: Ic52aa8336e896b3157ac16f5045b41101dbf72ed
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+(cherry picked from commit df970cb80b01b958ef51845f7e3d4e89b7d21314)
+---
+ drivers/net/Kconfig  | 9 +++++++++
+ drivers/net/Makefile | 1 +
+ 2 files changed, 10 insertions(+)
+
+diff --git a/drivers/net/Kconfig b/drivers/net/Kconfig
+index dcc18283c12..b4e4e17fd2e 100644
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -1049,6 +1049,15 @@ config MDIO_QCOM_I2C
+ 	  This driver supports the MDIO - I2C interface software driver for
+ 	  Qualcomm IPQ series Soc-s.
+ 
++config MDIO_AHB
++	bool "Qualcomm MDIO - AHB memory-mapped PHY interface support"
++	depends on DM_MDIO
++	help
++	  This driver supports the AHB memory-mapped MDIO interface for
++	  Qualcomm IPQ52xx SoC internal PHY access. It provides direct
++	  register access to the internal PHY via AHB bus mapping, used
++	  for the IPQ52xx built-in Ethernet PHY (IPQ52XX_PHY_TYPE).
++
+ config MVMDIO
+ 	bool "Marvell MDIO interface support"
+ 	depends on DM_MDIO
+diff --git a/drivers/net/Makefile b/drivers/net/Makefile
+index 7b368ce7077..024f6b9b25f 100644
+--- a/drivers/net/Makefile
++++ b/drivers/net/Makefile
+@@ -65,6 +65,7 @@ obj-$(CONFIG_MDIO_IPQ4019) += mdio-ipq4019.o
+ obj-$(CONFIG_MDIO_GPIO_BITBANG) += mdio_gpio.o
+ obj-$(CONFIG_MDIO_IPQ_BITBANGMII) += mdio-ipq-bb.o
+ obj-$(CONFIG_MDIO_QCOM_I2C) += mdio-qcom-i2c.o
++obj-$(CONFIG_MDIO_AHB) += mdio-ahb.o
+ obj-$(CONFIG_MDIO_MUX_I2CREG) += mdio_mux_i2creg.o
+ obj-$(CONFIG_MDIO_MUX_MESON_G12A) += mdio_mux_meson_g12a.o
+ obj-$(CONFIG_MDIO_MUX_MESON_GXL) += mdio_mux_meson_gxl.o
+-- 
+2.34.1
+

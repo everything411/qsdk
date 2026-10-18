@@ -1,0 +1,2030 @@
+/*
+ * wpa_supplicant - Radio Measurements
+ * Copyright (c) 2003-2016, Jouni Malinen <j@w1.fi>
+ *
+ * This software may be distributed under the terms of the BSD license.
+ * See README for more details.
+ */
+
+#include "includes.h"
+
+#include "utils/common.h"
+#include "utils/eloop.h"
+#include "common/ieee802_11_common.h"
+#include "common/wpa_ctrl.h"
+#include "wpa_supplicant_i.h"
+#include "driver_i.h"
+#include "bss.h"
+#include "scan.h"
+#include "p2p_supplicant.h"
+#ifdef CONFIG_QCN_EXTN
+#include "../qcn_extns/wpa_supplicant_extn.h"
+#endif
+
+/* Forward declarations */
+static void wpas_rrm_channel_load_timeout(void *eloop_ctx, void *timeout_ctx);
+static int wpas_rrm_handle_channel_load_req(struct wpa_supplicant *wpa_s,
+					    const struct rrm_measurement_request_element *req,
+					    struct wpabuf **buf);
+static void wpas_rrm_noise_histogram_timeout(void *eloop_ctx, void *timeout_ctx);
+static int wpas_rrm_handle_noise_histogram_req(struct wpa_supplicant *wpa_s,
+					       const struct rrm_measurement_request_element *req,
+					       struct wpabuf **buf);
+
+
+static void wpas_rrm_neighbor_rep_timeout_handler(void *data, void *user_ctx)
+{
+	struct rrm_data *rrm = data;
+
+	if (!rrm->notify_neighbor_rep) {
+		wpa_printf(MSG_ERROR,
+			   "RRM: Unexpected neighbor report timeout");
+		return;
+	}
+
+	wpa_printf(MSG_DEBUG, "RRM: Notifying neighbor report - NONE");
+	rrm->notify_neighbor_rep(rrm->neighbor_rep_cb_ctx, NULL);
+
+	rrm->notify_neighbor_rep = NULL;
+	rrm->neighbor_rep_cb_ctx = NULL;
+}
+
+
+/*
+ * wpas_rrm_reset - Clear and reset all RRM data in wpa_supplicant
+ * @wpa_s: Pointer to wpa_supplicant
+ */
+void wpas_rrm_reset(struct wpa_supplicant *wpa_s)
+{
+	wpa_s->rrm.rrm_used = 0;
+
+	eloop_cancel_timeout(wpas_rrm_neighbor_rep_timeout_handler, &wpa_s->rrm,
+			     NULL);
+	if (wpa_s->rrm.notify_neighbor_rep)
+		wpas_rrm_neighbor_rep_timeout_handler(&wpa_s->rrm, NULL);
+	wpa_s->rrm.next_neighbor_rep_token = 1;
+	wpas_clear_beacon_rep_data(wpa_s);
+	eloop_cancel_timeout(wpas_rrm_channel_load_timeout, wpa_s, NULL);
+	wpa_s->rrm.chan_load_token = 0;
+	eloop_cancel_timeout(wpas_rrm_noise_histogram_timeout, wpa_s, NULL);
+	wpa_s->rrm.noise_hist_token = 0;
+}
+
+
+/*
+ * wpas_rrm_process_neighbor_rep - Handle incoming neighbor report
+ * @wpa_s: Pointer to wpa_supplicant
+ * @da: DA of the received frame
+ * @sa: SA of the received frame
+ * @report: Neighbor report buffer, prefixed by a 1-byte dialog token
+ * @report_len: Length of neighbor report buffer
+ */
+void wpas_rrm_process_neighbor_rep(struct wpa_supplicant *wpa_s,
+				   const u8 *da, const u8 *sa,
+				   const u8 *report, size_t report_len)
+{
+	struct wpabuf *neighbor_rep;
+
+	if (is_multicast_ether_addr(da)) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Ignore group-addressed Neighbor Report Response frame (A1="
+			   MACSTR " A2=" MACSTR ")",
+			   MAC2STR(da), MAC2STR(sa));
+		return;
+	}
+
+	wpa_hexdump(MSG_DEBUG, "RRM: New Neighbor Report", report, report_len);
+	if (report_len < 1)
+		return;
+
+	if (report[0] != wpa_s->rrm.next_neighbor_rep_token - 1) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Discarding neighbor report with token %d (expected %d)",
+			   report[0], wpa_s->rrm.next_neighbor_rep_token - 1);
+		return;
+	}
+
+	eloop_cancel_timeout(wpas_rrm_neighbor_rep_timeout_handler, &wpa_s->rrm,
+			     NULL);
+
+	if (!wpa_s->rrm.notify_neighbor_rep) {
+		wpa_msg(wpa_s, MSG_INFO, "RRM: Unexpected neighbor report");
+		return;
+	}
+
+	/* skipping the first byte, which is only an id (dialog token) */
+	neighbor_rep = wpabuf_alloc(report_len - 1);
+	if (!neighbor_rep) {
+		wpas_rrm_neighbor_rep_timeout_handler(&wpa_s->rrm, NULL);
+		return;
+	}
+	wpabuf_put_data(neighbor_rep, report + 1, report_len - 1);
+	wpa_dbg(wpa_s, MSG_DEBUG, "RRM: Notifying neighbor report (token = %d)",
+		report[0]);
+	wpa_s->rrm.notify_neighbor_rep(wpa_s->rrm.neighbor_rep_cb_ctx,
+				       neighbor_rep);
+	wpa_s->rrm.notify_neighbor_rep = NULL;
+	wpa_s->rrm.neighbor_rep_cb_ctx = NULL;
+}
+
+
+#if defined(__CYGWIN__) || defined(CONFIG_NATIVE_WINDOWS)
+/* Workaround different, undefined for Windows, error codes used here */
+#ifndef ENOTCONN
+#define ENOTCONN -1
+#endif
+#ifndef EOPNOTSUPP
+#define EOPNOTSUPP -1
+#endif
+#ifndef ECANCELED
+#define ECANCELED -1
+#endif
+#endif
+
+/* Measurement Request element + Location Subject + Maximum Age subelement */
+#define MEASURE_REQUEST_LCI_LEN (3 + 1 + 4)
+/* Measurement Request element + Location Civic Request */
+#define MEASURE_REQUEST_CIVIC_LEN (3 + 5)
+
+
+/**
+ * wpas_rrm_send_neighbor_rep_request - Request a neighbor report from our AP
+ * @wpa_s: Pointer to wpa_supplicant
+ * @ssid: if not null, this is sent in the request. Otherwise, no SSID IE
+ *	  is sent in the request.
+ * @lci: if set, neighbor request will include LCI request
+ * @civic: if set, neighbor request will include civic location request
+ * @cb: Callback function to be called once the requested report arrives, or
+ *	timed out after RRM_NEIGHBOR_REPORT_TIMEOUT seconds.
+ *	In the former case, 'neighbor_rep' is a newly allocated wpabuf, and it's
+ *	the requester's responsibility to free it.
+ *	In the latter case NULL will be sent in 'neighbor_rep'.
+ * @cb_ctx: Context value to send the callback function
+ * Returns: 0 in case of success, negative error code otherwise
+ *
+ * In case there is a previous request which has not been answered yet, the
+ * new request fails. The caller may retry after RRM_NEIGHBOR_REPORT_TIMEOUT.
+ * Request must contain a callback function.
+ */
+int wpas_rrm_send_neighbor_rep_request(struct wpa_supplicant *wpa_s,
+				       const struct wpa_ssid_value *ssid,
+				       int lci, int civic,
+				       void (*cb)(void *ctx,
+						  struct wpabuf *neighbor_rep),
+				       void *cb_ctx)
+{
+	struct wpabuf *buf;
+	const u8 *rrm_ie;
+
+	if (wpa_s->wpa_state != WPA_COMPLETED || wpa_s->current_ssid == NULL) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "RRM: No connection, no RRM.");
+		return -ENOTCONN;
+	}
+
+	if (!wpa_s->rrm.rrm_used) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "RRM: No RRM in current connection.");
+		return -EOPNOTSUPP;
+	}
+
+	rrm_ie = wpa_bss_get_ie(wpa_s->current_bss,
+				WLAN_EID_RRM_ENABLED_CAPABILITIES);
+	if (!rrm_ie || !(wpa_s->current_bss->caps & IEEE80211_CAP_RRM) ||
+	    rrm_ie[1] < 1 ||
+	    !(rrm_ie[2] & WLAN_RRM_CAPS_NEIGHBOR_REPORT)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"RRM: No network support for Neighbor Report.");
+		return -EOPNOTSUPP;
+	}
+
+	/* Refuse if there's a live request */
+	if (wpa_s->rrm.notify_neighbor_rep) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"RRM: Currently handling previous Neighbor Report.");
+		return -EBUSY;
+	}
+
+	/* 3 = action category + action code + dialog token */
+	buf = wpabuf_alloc(3 + (ssid ? 2 + ssid->ssid_len : 0) +
+			   (lci ? 2 + MEASURE_REQUEST_LCI_LEN : 0) +
+			   (civic ? 2 + MEASURE_REQUEST_CIVIC_LEN : 0));
+	if (buf == NULL) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"RRM: Failed to allocate Neighbor Report Request");
+		return -ENOMEM;
+	}
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"RRM: Neighbor report request (for %s), token=%d",
+		(ssid ? wpa_ssid_txt(ssid->ssid, ssid->ssid_len) : ""),
+		wpa_s->rrm.next_neighbor_rep_token);
+
+	/*
+	 * According to IEEE Std 802.11-2024, 11.10.10.2 (Requesting a neighbor
+	 * report) LCI and civic requests depend on FTM responder support.
+	 */
+	if (lci || civic) {
+		const u8 *ext_capab;
+
+		ext_capab = wpa_bss_get_ie(wpa_s->current_bss,
+					   WLAN_EID_EXT_CAPAB);
+		if (!ieee802_11_ext_capab(ext_capab,
+					  WLAN_EXT_CAPAB_FTM_RESPONDER)) {
+			wpa_printf(MSG_DEBUG,
+				   "AP doesn't support FTM responder, can't request LCI and civic");
+			lci = 0;
+			civic = 0;
+		}
+	}
+
+	wpabuf_put_u8(buf, WLAN_ACTION_RADIO_MEASUREMENT);
+	wpabuf_put_u8(buf, WLAN_RRM_NEIGHBOR_REPORT_REQUEST);
+	wpabuf_put_u8(buf, wpa_s->rrm.next_neighbor_rep_token);
+	if (ssid) {
+		wpabuf_put_u8(buf, WLAN_EID_SSID);
+		wpabuf_put_u8(buf, ssid->ssid_len);
+		wpabuf_put_data(buf, ssid->ssid, ssid->ssid_len);
+	}
+
+	if (lci && rrm_ie[1] >= 2 &&
+	    (rrm_ie[3] & WLAN_RRM_CAPS_LCI_MEASUREMENT)) {
+		/* IEEE Std 802.11-2024, 9.4.2.19 (Measurement Request element)
+		 */
+		wpabuf_put_u8(buf, WLAN_EID_MEASURE_REQUEST);
+		wpabuf_put_u8(buf, MEASURE_REQUEST_LCI_LEN);
+
+		/*
+		 * Measurement token; nonzero number that is unique among the
+		 * Measurement Request elements in a particular frame.
+		 */
+		wpabuf_put_u8(buf, 1); /* Measurement Token */
+
+		/*
+		 * Parallel, Enable, Request, and Report bits are 0, Duration is
+		 * reserved.
+		 */
+		wpabuf_put_u8(buf, 0); /* Measurement Request Mode */
+		wpabuf_put_u8(buf, MEASURE_TYPE_LCI); /* Measurement Type */
+
+		/* IEEE Std 802.11-2024, 9.4.2.19.10 (LCI request) */
+		/* Location Subject */
+		wpabuf_put_u8(buf, LOCATION_SUBJECT_REMOTE);
+
+		/* Optional Subelements */
+		/*
+		 * IEEE Std 802.11-2024, Figure 9-265 (Maximum Age subelement
+		 * format)
+		 * The Maximum Age subelement is required, otherwise the AP can
+		 * send only data that was determined after receiving the
+		 * request. Setting it here to unlimited age.
+		 */
+		wpabuf_put_u8(buf, LCI_REQ_SUBELEM_MAX_AGE);
+		wpabuf_put_u8(buf, 2);
+		wpabuf_put_le16(buf, 0xffff);
+	} else if (lci) {
+		wpa_printf(MSG_DEBUG, "RRM: LCI request isn't supported by AP");
+	}
+
+	if (civic && rrm_ie[1] >= 5 &&
+	    (rrm_ie[6] & WLAN_RRM_CAPS_CIVIC_LOCATION_MEASUREMENT)) {
+		/* IEEE Std 802.11-2024, 9.4.2.19 (Measurement Request element)
+		 */
+		wpabuf_put_u8(buf, WLAN_EID_MEASURE_REQUEST);
+		wpabuf_put_u8(buf, MEASURE_REQUEST_CIVIC_LEN);
+
+		/*
+		 * Measurement token; nonzero number that is unique among the
+		 * Measurement Request elements in a particular frame.
+		 */
+		wpabuf_put_u8(buf, 2); /* Measurement Token */
+
+		/*
+		 * Parallel, Enable, Request, and Report bits are 0, Duration is
+		 * reserved.
+		 */
+		wpabuf_put_u8(buf, 0); /* Measurement Request Mode */
+		/* Measurement Type */
+		wpabuf_put_u8(buf, MEASURE_TYPE_LOCATION_CIVIC);
+
+		/* IEEE Std 802.11-2024, 9.4.2.19.14 (Location Civic request) */
+		/* Location Subject */
+		wpabuf_put_u8(buf, LOCATION_SUBJECT_REMOTE);
+		wpabuf_put_u8(buf, 0); /* Civic Location Type: IETF RFC 4776 */
+		/* Location Service Interval Units: Seconds */
+		wpabuf_put_u8(buf, 0);
+		/* Location Service Interval: 0 - Only one report is requested
+		 */
+		wpabuf_put_le16(buf, 0);
+		/* No optional subelements */
+	} else if (civic) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Civic request isn't supported by AP");
+	}
+
+	wpa_s->rrm.next_neighbor_rep_token++;
+
+	if (wpa_drv_send_action(wpa_s, wpa_s->assoc_freq, 0, wpa_s->bssid,
+				wpa_s->own_addr, wpa_s->bssid,
+				wpabuf_head(buf), wpabuf_len(buf), 0) < 0) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"RRM: Failed to send Neighbor Report Request");
+		wpabuf_free(buf);
+		return -ECANCELED;
+	}
+
+	wpa_s->rrm.neighbor_rep_cb_ctx = cb_ctx;
+	wpa_s->rrm.notify_neighbor_rep = cb;
+	eloop_register_timeout(RRM_NEIGHBOR_REPORT_TIMEOUT, 0,
+			       wpas_rrm_neighbor_rep_timeout_handler,
+			       &wpa_s->rrm, NULL);
+
+	wpabuf_free(buf);
+	return 0;
+}
+
+
+static int wpas_rrm_report_elem(struct wpabuf **buf, u8 token, u8 mode, u8 type,
+				const u8 *data, size_t data_len)
+{
+	if (wpabuf_resize(buf, 5 + data_len))
+		return -1;
+
+	wpabuf_put_u8(*buf, WLAN_EID_MEASURE_REPORT);
+	wpabuf_put_u8(*buf, 3 + data_len);
+	wpabuf_put_u8(*buf, token);
+	wpabuf_put_u8(*buf, mode);
+	wpabuf_put_u8(*buf, type);
+
+	if (data_len)
+		wpabuf_put_data(*buf, data, data_len);
+
+	return 0;
+}
+
+
+static int
+wpas_rrm_build_lci_report(struct wpa_supplicant *wpa_s,
+			  const struct rrm_measurement_request_element *req,
+			  struct wpabuf **buf)
+{
+	u8 subject;
+	u16 max_age = 0;
+	struct os_reltime t, diff;
+	unsigned long diff_l;
+	const u8 *subelem;
+	const u8 *request = req->variable;
+	size_t len = req->len - 3;
+
+	if (len < 1)
+		return -1;
+
+	if (!wpa_s->lci)
+		goto reject;
+
+	subject = *request++;
+	len--;
+
+	wpa_printf(MSG_DEBUG, "Measurement request location subject=%u",
+		   subject);
+
+	if (subject != LOCATION_SUBJECT_REMOTE) {
+		wpa_printf(MSG_INFO,
+			   "Not building LCI report - bad location subject");
+		return 0;
+	}
+
+	/* Subelements are formatted exactly like elements */
+	wpa_hexdump(MSG_DEBUG, "LCI request subelements", request, len);
+	subelem = get_ie(request, len, LCI_REQ_SUBELEM_MAX_AGE);
+	if (subelem && subelem[1] == 2)
+		max_age = WPA_GET_LE16(subelem + 2);
+
+	if (os_get_reltime(&t))
+		goto reject;
+
+	os_reltime_sub(&t, &wpa_s->lci_time, &diff);
+	/* LCI age is calculated in 10th of a second units. */
+	diff_l = diff.sec * 10 + diff.usec / 100000;
+
+	if (max_age != 0xffff && max_age < diff_l)
+		goto reject;
+
+	if (wpas_rrm_report_elem(buf, req->token,
+				 MEASUREMENT_REPORT_MODE_ACCEPT, req->type,
+				 wpabuf_head_u8(wpa_s->lci),
+				 wpabuf_len(wpa_s->lci)) < 0) {
+		wpa_printf(MSG_DEBUG, "Failed to add LCI report element");
+		return -1;
+	}
+
+	return 0;
+
+reject:
+	if (!is_multicast_ether_addr(wpa_s->rrm.dst_addr) &&
+	    wpas_rrm_report_elem(buf, req->token,
+				 MEASUREMENT_REPORT_MODE_REJECT_INCAPABLE,
+				 req->type, NULL, 0) < 0) {
+		wpa_printf(MSG_DEBUG, "RRM: Failed to add report element");
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static void wpas_rrm_send_msr_report_mpdu(struct wpa_supplicant *wpa_s,
+					  const u8 *data, size_t len)
+{
+	struct wpabuf *report = wpabuf_alloc(len + 3);
+
+	if (!report)
+		return;
+
+	wpabuf_put_u8(report, WLAN_ACTION_RADIO_MEASUREMENT);
+	wpabuf_put_u8(report, WLAN_RRM_RADIO_MEASUREMENT_REPORT);
+	wpabuf_put_u8(report, wpa_s->rrm.token);
+
+	wpabuf_put_data(report, data, len);
+#ifdef CONFIG_QCN_EXTN
+	if (wpa_drv_send_rrm_action_extn(wpa_s, wpabuf_head(report),
+					 wpabuf_len(report), 0)) {
+#else /* CONFIG_QCN_EXTN */
+	if (wpa_drv_send_action(wpa_s, wpa_s->assoc_freq, 0, wpa_s->bssid,
+				wpa_s->own_addr, wpa_s->bssid,
+				wpabuf_head(report), wpabuf_len(report), 0)) {
+#endif
+		wpa_printf(MSG_ERROR,
+			   "RRM: Radio measurement report failed: Sending Action frame failed");
+	}
+
+	wpabuf_free(report);
+}
+
+
+static int wpas_rrm_beacon_rep_update_last_frame(u8 *pos, size_t len)
+{
+	struct rrm_measurement_report_element *msr_rep;
+	u8 *end = pos + len;
+	u8 *msr_rep_end;
+	struct rrm_measurement_beacon_report *rep = NULL;
+	u8 *subelem;
+
+	/* Find the last beacon report element */
+	while (end - pos >= (int) sizeof(*msr_rep)) {
+		msr_rep = (struct rrm_measurement_report_element *) pos;
+		msr_rep_end = pos + msr_rep->len + 2;
+
+		if (msr_rep->eid != WLAN_EID_MEASURE_REPORT ||
+		    msr_rep_end > end) {
+			/* Should not happen. This indicates a bug. */
+			wpa_printf(MSG_ERROR,
+				   "RRM: non-measurement report element in measurement report frame");
+			return -1;
+		}
+
+		if (msr_rep->type == MEASURE_TYPE_BEACON)
+			rep = (struct rrm_measurement_beacon_report *)
+				msr_rep->variable;
+
+		pos += pos[1] + 2;
+	}
+
+	if (!rep)
+		return 0;
+
+	subelem = rep->variable;
+	while (subelem + 2 < msr_rep_end &&
+	       subelem[0] != WLAN_BEACON_REPORT_SUBELEM_LAST_INDICATION)
+		subelem += 2 + subelem[1];
+
+	if (subelem + 2 < msr_rep_end &&
+	    subelem[0] == WLAN_BEACON_REPORT_SUBELEM_LAST_INDICATION &&
+	    subelem[1] == 1 &&
+	    subelem + BEACON_REPORT_LAST_INDICATION_SUBELEM_LEN <= end)
+		subelem[2] = 1;
+
+	return 0;
+}
+
+
+static void wpas_rrm_send_msr_report(struct wpa_supplicant *wpa_s,
+				     struct wpabuf *buf)
+{
+	int len = wpabuf_len(buf);
+	u8 *pos = wpabuf_mhead_u8(buf), *next = pos;
+#ifndef CONFIG_QCN_EXTN
+#define MPDU_REPORT_LEN (int) (IEEE80211_MAX_MMPDU_SIZE - IEEE80211_HDRLEN - 3)
+#else
+/* WAR for target limitation of max 2048 size of packet */
+#define MPDU_REPORT_LEN (int) (1500 - IEEE80211_HDRLEN - 3)
+#endif
+
+	while (len) {
+		int send_len = (len > MPDU_REPORT_LEN) ? next - pos : len;
+
+		if (send_len == len)
+			wpas_rrm_beacon_rep_update_last_frame(pos, len);
+
+		if (send_len == len ||
+		    (send_len + next[1] + 2) > MPDU_REPORT_LEN) {
+			wpas_rrm_send_msr_report_mpdu(wpa_s, pos, send_len);
+			len -= send_len;
+			pos = next;
+		}
+
+		if (len)
+			next += next[1] + 2;
+	}
+#undef MPDU_REPORT_LEN
+}
+
+
+static int wpas_add_channel(u8 op_class, u8 chan, u8 num_primary_channels,
+			    int *freqs)
+{
+	size_t i;
+
+	for (i = 0; i < num_primary_channels; i++) {
+		u8 primary_chan = chan - (2 * num_primary_channels - 2) + i * 4;
+
+		freqs[i] = ieee80211_chan_to_freq(NULL, op_class, primary_chan);
+		/* ieee80211_chan_to_freq() is not really meant for this
+		 * conversion of 20 MHz primary channel numbers for wider VHT
+		 * channels, so handle those as special cases here for now. */
+		if (freqs[i] < 0 &&
+		    (op_class == 128 || op_class == 129 || op_class == 130))
+			freqs[i] = 5000 + 5 * primary_chan;
+		if (freqs[i] < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "Beacon Report: Invalid channel %u",
+				   chan);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+
+static int * wpas_add_channels(const struct oper_class_map *op,
+			       struct hostapd_hw_modes *mode,
+			       const u8 *channels, const u8 size)
+{
+	int *freqs, *next_freq;
+	u8 num_primary_channels, i;
+	u8 num_chans;
+
+	num_chans = channels ? size :
+		(op->max_chan - op->min_chan) / op->inc + 1;
+
+	if (op->bw == BW80 || op->bw == BW80P80)
+		num_primary_channels = 4;
+	else if (op->bw == BW160)
+		num_primary_channels = 8;
+	else if (op->bw == BW320)
+		num_primary_channels = 16;
+	else
+		num_primary_channels = 1;
+
+	/* one extra place for the zero-terminator */
+	freqs = os_calloc(num_chans * num_primary_channels + 1, sizeof(*freqs));
+	if (!freqs) {
+		wpa_printf(MSG_ERROR,
+			   "Beacon Report: Failed to allocate freqs array");
+		return NULL;
+	}
+
+	next_freq = freqs;
+	for  (i = 0; i < num_chans; i++) {
+		u8 chan = channels ? channels[i] : op->min_chan + i * op->inc;
+		enum chan_allowed res = verify_channel(mode, op->op_class, chan,
+						       op->bw);
+
+		if (res == NOT_ALLOWED)
+			continue;
+
+		if (wpas_add_channel(op->op_class, chan, num_primary_channels,
+				     next_freq) < 0) {
+			os_free(freqs);
+			return NULL;
+		}
+
+		next_freq += num_primary_channels;
+	}
+
+	if (!freqs[0]) {
+		os_free(freqs);
+		return NULL;
+	}
+
+	return freqs;
+}
+
+
+static int * wpas_op_class_freqs(const struct oper_class_map *op,
+				 struct hostapd_hw_modes *mode)
+{
+	u8 channels_80mhz_5ghz[] = { 42, 58, 106, 122, 138, 155, 171 };
+	u8 channels_160mhz_5ghz[] = { 50, 114, 163 };
+	u8 channels_80mhz_6ghz[] = { 7, 23, 39, 55, 71, 87, 103, 119, 135, 151,
+				     167, 183, 199, 215 };
+	u8 channels_160mhz_6ghz[] = { 15, 47, 79, 111, 143, 175, 207 };
+	u8 channels_320mhz_6ghz[] = { 31, 63, 95, 127, 159, 191 };
+	const u8 *channels = NULL;
+	size_t num_chan = 0;
+	bool is_6ghz = is_6ghz_op_class(op->op_class);
+
+	/*
+	 * When adding all channels in the operating class, 80 + 80 MHz
+	 * operating classes are like 80 MHz channels because we add all valid
+	 * channels anyway.
+	 */
+	if (op->bw == BW80 || op->bw == BW80P80) {
+		channels = is_6ghz ? channels_80mhz_6ghz : channels_80mhz_5ghz;
+		num_chan = is_6ghz ? ARRAY_SIZE(channels_80mhz_6ghz) :
+			ARRAY_SIZE(channels_80mhz_5ghz);
+	} else if (op->bw == BW160) {
+		channels = is_6ghz ? channels_160mhz_6ghz :
+			channels_160mhz_5ghz;
+		num_chan =  is_6ghz ? ARRAY_SIZE(channels_160mhz_6ghz) :
+			ARRAY_SIZE(channels_160mhz_5ghz);
+	} else if (op->bw == BW320) {
+		channels = channels_320mhz_6ghz;
+		num_chan = ARRAY_SIZE(channels_320mhz_6ghz);
+	}
+
+	return wpas_add_channels(op, mode, channels, num_chan);
+}
+
+
+static int * wpas_channel_report_freqs(struct wpa_supplicant *wpa_s,
+				       const char *country, const u8 *subelems,
+				       size_t len)
+{
+	int *freqs = NULL, *new_freqs;
+	const u8 *end = subelems + len;
+
+	while (end - subelems > 2) {
+		const struct oper_class_map *op;
+		const u8 *ap_chan_elem, *pos;
+		u8 left;
+		struct hostapd_hw_modes *mode;
+
+		ap_chan_elem = get_ie(subelems, end - subelems,
+				      WLAN_BEACON_REQUEST_SUBELEM_AP_CHANNEL);
+		if (!ap_chan_elem)
+			break;
+		pos = ap_chan_elem + 2;
+		left = ap_chan_elem[1];
+		if (left < 1)
+			break;
+		subelems = ap_chan_elem + 2 + left;
+
+		op = get_oper_class(country, *pos);
+		if (!op) {
+			wpa_printf(MSG_DEBUG,
+				   "Beacon request: unknown operating class in AP Channel Report subelement %u",
+				   *pos);
+			goto out;
+		}
+		pos++;
+		left--;
+
+		mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, op->mode,
+				is_6ghz_op_class(op->op_class));
+		if (!mode)
+			continue;
+
+		/*
+		 * For 80 + 80 MHz operating classes, this AP Channel Report
+		 * element should be followed by another element specifying
+		 * the second 80 MHz channel. For now just add this 80 MHz
+		 * channel, the second 80 MHz channel will be added when the
+		 * next element is parsed.
+		 * TODO: Verify that this AP Channel Report element is followed
+		 * by a corresponding AP Channel Report element as specified in
+		 * IEEE Std 802.11-2016, 11.11.9.1.
+		 */
+		new_freqs = wpas_add_channels(op, mode, pos, left);
+		if (new_freqs)
+			int_array_concat(&freqs, new_freqs);
+
+		os_free(new_freqs);
+	}
+
+	return freqs;
+out:
+	os_free(freqs);
+	return NULL;
+}
+
+
+static int * wpas_beacon_request_freqs(struct wpa_supplicant *wpa_s,
+				       u8 op_class, u8 chan,
+				       const u8 *subelems, size_t len)
+{
+	int *freqs = NULL, *ext_freqs = NULL;
+	struct hostapd_hw_modes *mode;
+	const char *country = NULL;
+	const struct oper_class_map *op;
+	const u8 *elem;
+
+	if (!wpa_s->current_bss)
+		return NULL;
+	elem = wpa_bss_get_ie(wpa_s->current_bss, WLAN_EID_COUNTRY);
+	if (elem && elem[1] >= 2)
+		country = (const char *) (elem + 2);
+
+	op = get_oper_class(country, op_class);
+	if (!op) {
+		wpa_printf(MSG_DEBUG,
+			   "Beacon request: invalid operating class %d",
+			   op_class);
+		return NULL;
+	}
+
+	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, op->mode,
+			is_6ghz_op_class(op->op_class));
+	if (!mode)
+		return NULL;
+
+	switch (chan) {
+	case 0:
+		freqs = wpas_op_class_freqs(op, mode);
+		if (!freqs)
+			return NULL;
+		break;
+	case 255:
+		/* freqs will be added from AP channel subelements */
+		break;
+	default:
+		freqs = wpas_add_channels(op, mode, &chan, 1);
+		if (!freqs)
+			return NULL;
+		break;
+	}
+
+	ext_freqs = wpas_channel_report_freqs(wpa_s, country, subelems, len);
+	if (ext_freqs) {
+		int_array_concat(&freqs, ext_freqs);
+		os_free(ext_freqs);
+		int_array_sort_unique(freqs);
+	}
+
+	return freqs;
+}
+
+
+int wpas_get_op_chan_phy(int freq, const u8 *ies, size_t ies_len,
+			 u8 *op_class, u8 *chan, u8 *phy_type)
+{
+	int sec_chan = 0, chanwidth;
+	struct ieee802_11_elems elems;
+	struct ieee80211_ht_operation *ht_oper;
+
+	if (ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed)
+		return -1;
+
+	chanwidth = get_operation_channel_width(&elems);
+	if (chanwidth == CHAN_WIDTH_UNKNOWN) {
+		wpa_printf(MSG_DEBUG, "Cannot determine channel width");
+		return -1;
+	}
+
+	ht_oper = (struct ieee80211_ht_operation *) elems.ht_operation;
+	if (ht_oper) {
+		u8 sec_chan_offset = ht_oper->ht_param &
+			HT_INFO_HT_PARAM_SECONDARY_CHNL_OFF_MASK;
+		if (sec_chan_offset == HT_INFO_HT_PARAM_SECONDARY_CHNL_ABOVE)
+			sec_chan = 1;
+		else if (sec_chan_offset ==
+			 HT_INFO_HT_PARAM_SECONDARY_CHNL_BELOW)
+			sec_chan = -1;
+	} else if (chanwidth == CHAN_WIDTH_40) {
+		/* 6 GHz BSSes have no HT operation IE; derive sec_chan from
+		 * the channel width so that ieee80211_freq_to_channel_ext()
+		 * selects op_class 132 (40 MHz) instead of 131 (20 MHz). */
+		sec_chan = 1;
+	}
+
+	if (ieee80211_chaninfo_to_channel(freq, chanwidth, sec_chan, op_class,
+					  chan) != 0) {
+		wpa_printf(MSG_DEBUG,
+			   "Cannot determine operating class and channel");
+		return -1;
+	}
+
+	*phy_type = ieee80211_get_phy_type(freq, elems.ht_operation != NULL,
+					   elems.vht_operation != NULL,
+					   elems.eht_operation != NULL);
+	if (*phy_type == PHY_TYPE_UNSPECIFIED) {
+		wpa_printf(MSG_DEBUG, "Cannot determine phy type");
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static int wpas_beacon_rep_add_frame_body(struct bitfield *eids,
+					  struct bitfield *ext_eids,
+					  enum beacon_report_detail detail,
+					  struct wpa_bss *bss, u8 *buf,
+					  size_t buf_len, const u8 **ies_buf,
+					  size_t *ie_len, int add_fixed)
+{
+	const u8 *ies = *ies_buf;
+	size_t ies_len = *ie_len;
+	u8 *pos = buf;
+	int rem_len;
+
+	rem_len = 255 - sizeof(struct rrm_measurement_beacon_report) -
+		sizeof(struct rrm_measurement_report_element) - 2 -
+		REPORTED_FRAME_BODY_SUBELEM_LEN;
+
+	if (detail > BEACON_REPORT_DETAIL_ALL_FIELDS_AND_ELEMENTS) {
+		wpa_printf(MSG_DEBUG,
+			   "Beacon Request: Invalid reporting detail: %d",
+			   detail);
+		return -1;
+	}
+
+	if (detail == BEACON_REPORT_DETAIL_NONE)
+		return 0;
+
+	/*
+	 * Minimal frame body subelement size: EID(1) + length(1) + TSF(8) +
+	 * beacon interval(2) + capabilities(2) = 14 bytes
+	 */
+	if (add_fixed && buf_len < 14)
+		return -1;
+
+	*pos++ = WLAN_BEACON_REPORT_SUBELEM_FRAME_BODY;
+	/* The length will be filled later */
+	pos++;
+
+	if (add_fixed) {
+		WPA_PUT_LE64(pos, bss->tsf);
+		pos += sizeof(bss->tsf);
+		WPA_PUT_LE16(pos, bss->beacon_int);
+		pos += 2;
+		WPA_PUT_LE16(pos, bss->caps);
+		pos += 2;
+	}
+
+	rem_len -= pos - buf;
+
+	/*
+	 * According to IEEE Std 802.11-2016, 9.4.2.22.7, if the reported frame
+	 * body subelement causes the element to exceed the maximum element
+	 * size, the subelement is truncated so that the last IE is a complete
+	 * IE. So even when required to report all IEs, add elements one after
+	 * the other and stop once there is no more room in the measurement
+	 * element.
+	 */
+	while (ies_len > 2 && 2U + ies[1] <= ies_len && rem_len > 0) {
+		if (detail == BEACON_REPORT_DETAIL_ALL_FIELDS_AND_ELEMENTS ||
+		    (eids && bitfield_is_set(eids, ies[0])) ||
+		    (ext_eids && ies[0] == WLAN_EID_EXTENSION && ies[1] &&
+		     bitfield_is_set(ext_eids, ies[2]))) {
+			u8 elen = ies[1];
+
+			if (2 + elen > buf + buf_len - pos ||
+			    2 + elen > rem_len)
+				break;
+
+			*pos++ = ies[0];
+			*pos++ = elen;
+			os_memcpy(pos, ies + 2, elen);
+			pos += elen;
+			rem_len -= 2 + elen;
+		}
+
+		ies_len -= 2 + ies[1];
+		ies += 2 + ies[1];
+	}
+
+	*ie_len = ies_len;
+	*ies_buf = ies;
+
+	/* Now the length is known */
+	buf[1] = pos - buf - 2;
+	return pos - buf;
+}
+
+
+static int wpas_add_beacon_rep_elem(struct beacon_rep_data *data,
+				    struct wpa_bss *bss,
+				    struct wpabuf **wpa_buf,
+				    struct rrm_measurement_beacon_report *rep,
+				    const u8 **ie, size_t *ie_len, u8 idx)
+{
+	int ret;
+	u8 *buf, *pos;
+	u32 subelems_len = REPORTED_FRAME_BODY_SUBELEM_LEN +
+		(data->last_indication ?
+		 BEACON_REPORT_LAST_INDICATION_SUBELEM_LEN : 0);
+
+	/* Maximum element length: Beacon Report element + Reported Frame Body
+	 * subelement + all IEs of the reported Beacon frame + Reported Frame
+	 * Body Fragment ID subelement */
+	buf = os_malloc(sizeof(*rep) + 14 + *ie_len + subelems_len);
+	if (!buf)
+		return -1;
+
+	os_memcpy(buf, rep, sizeof(*rep));
+
+	ret = wpas_beacon_rep_add_frame_body(data->eids, data->ext_eids,
+					     data->report_detail,
+					     bss, buf + sizeof(*rep),
+					     14 + *ie_len, ie, ie_len,
+					     idx == 0);
+	if (ret < 0)
+		goto out;
+
+	pos = buf + ret + sizeof(*rep);
+	pos[0] = WLAN_BEACON_REPORT_SUBELEM_FRAME_BODY_FRAGMENT_ID;
+	pos[1] = 2;
+
+	/*
+	 * Only one Beacon Report Measurement is supported at a time, so
+	 * the Beacon Report ID can always be set to 1.
+	 */
+	pos[2] = 1;
+
+	/* Fragment ID Number (bits 0..6) and More Frame Body Fragments (bit 7)
+ */
+	pos[3] = idx;
+	if (data->report_detail != BEACON_REPORT_DETAIL_NONE && *ie_len)
+		pos[3] |= REPORTED_FRAME_BODY_MORE_FRAGMENTS;
+	else
+		pos[3] &= ~REPORTED_FRAME_BODY_MORE_FRAGMENTS;
+
+	pos += REPORTED_FRAME_BODY_SUBELEM_LEN;
+
+	if (data->last_indication) {
+		pos[0] = WLAN_BEACON_REPORT_SUBELEM_LAST_INDICATION;
+		pos[1] = 1;
+
+		/* This field will be updated later if this is the last frame */
+		pos[2] = 0;
+	}
+
+	ret = wpas_rrm_report_elem(wpa_buf, data->token,
+				   MEASUREMENT_REPORT_MODE_ACCEPT,
+				   MEASURE_TYPE_BEACON, buf,
+				   ret + sizeof(*rep) + subelems_len);
+out:
+	os_free(buf);
+	return ret;
+}
+
+
+static int wpas_add_beacon_rep(struct wpa_supplicant *wpa_s,
+			       struct wpabuf **wpa_buf, struct wpa_bss *bss,
+			       u64 start, u64 parent_tsf)
+{
+	struct beacon_rep_data *data = &wpa_s->beacon_rep_data;
+	const u8 *ies = wpa_bss_ie_ptr(bss);
+	const u8 *pos = ies;
+	size_t ies_len = bss->ie_len ? bss->ie_len : bss->beacon_ie_len;
+	struct rrm_measurement_beacon_report rep;
+	u8 idx = 0;
+
+	if (!ether_addr_equal(data->bssid, broadcast_ether_addr) &&
+	    !ether_addr_equal(data->bssid, bss->bssid))
+		return 0;
+
+	if (data->ssid_len &&
+	    (data->ssid_len != bss->ssid_len ||
+	     os_memcmp(data->ssid, bss->ssid, bss->ssid_len) != 0))
+		return 0;
+
+	if (wpas_get_op_chan_phy(bss->freq, ies, ies_len, &rep.op_class,
+				 &rep.channel, &rep.report_info) < 0)
+		return 0;
+
+	rep.start_time = host_to_le64(start);
+	rep.duration = host_to_le16(data->scan_params.duration);
+	rep.rcpi = rssi_to_rcpi(bss->level);
+	rep.rsni = 255; /* 255 indicates that RSNI is not available */
+	os_memcpy(rep.bssid, bss->bssid, ETH_ALEN);
+	rep.antenna_id = 0; /* unknown */
+	rep.parent_tsf = host_to_le32(parent_tsf);
+
+	do {
+		int ret;
+
+		ret = wpas_add_beacon_rep_elem(data, bss, wpa_buf, &rep,
+					       &pos, &ies_len, idx++);
+		if (ret)
+			return ret;
+	} while (data->report_detail != BEACON_REPORT_DETAIL_NONE &&
+		 ies_len >= 2);
+
+	return 0;
+}
+
+
+static int wpas_beacon_rep_no_results(struct wpa_supplicant *wpa_s,
+				      struct wpabuf **buf)
+{
+	return wpas_rrm_report_elem(buf, wpa_s->beacon_rep_data.token,
+				    MEASUREMENT_REPORT_MODE_ACCEPT,
+				    MEASURE_TYPE_BEACON, NULL, 0);
+}
+
+
+static void wpas_beacon_rep_table(struct wpa_supplicant *wpa_s,
+				  struct wpabuf **buf)
+{
+	size_t i;
+
+	for (i = 0; i < wpa_s->last_scan_res_used; i++) {
+		if (wpas_add_beacon_rep(wpa_s, buf, wpa_s->last_scan_res[i],
+					0, 0) < 0)
+			break;
+	}
+
+	if (!(*buf))
+		wpas_beacon_rep_no_results(wpa_s, buf);
+
+	wpa_hexdump_buf(MSG_DEBUG, "RRM: Radio Measurement report", *buf);
+}
+
+
+void wpas_rrm_refuse_request(struct wpa_supplicant *wpa_s)
+{
+	if (!is_multicast_ether_addr(wpa_s->rrm.dst_addr)) {
+		struct wpabuf *buf = NULL;
+
+		if (wpas_rrm_report_elem(&buf, wpa_s->beacon_rep_data.token,
+					 MEASUREMENT_REPORT_MODE_REJECT_REFUSED,
+					 MEASURE_TYPE_BEACON, NULL, 0)) {
+			wpa_printf(MSG_ERROR, "RRM: Memory allocation failed");
+			wpabuf_free(buf);
+			return;
+		}
+
+		wpas_rrm_send_msr_report(wpa_s, buf);
+		wpabuf_free(buf);
+	}
+
+	wpas_clear_beacon_rep_data(wpa_s);
+}
+
+
+static void wpas_rrm_scan_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+	struct wpa_driver_scan_params *params =
+		&wpa_s->beacon_rep_data.scan_params;
+	u16 prev_duration = params->duration;
+
+	if (!wpa_s->current_bss)
+		return;
+
+	if (!(wpa_s->drv_rrm_flags & WPA_DRIVER_FLAGS_SUPPORT_SET_SCAN_DWELL) &&
+	    params->duration) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Cannot set scan duration due to missing driver support");
+		params->duration = 0;
+	}
+	os_get_reltime(&wpa_s->beacon_rep_scan);
+	if (wpa_s->scanning || wpas_p2p_in_progress(wpa_s) ||
+	    wpa_supplicant_trigger_scan(wpa_s, params, true, false))
+		wpas_rrm_refuse_request(wpa_s);
+	params->duration = prev_duration;
+}
+
+
+static int wpas_rm_handle_beacon_req_subelem(struct wpa_supplicant *wpa_s,
+					     struct beacon_rep_data *data,
+					     u8 sid, u8 slen, const u8 *subelem)
+{
+	struct bitfield *eids;
+	u8 report_info, i;
+
+	switch (sid) {
+	case WLAN_BEACON_REQUEST_SUBELEM_SSID:
+		if (!slen) {
+			wpa_printf(MSG_DEBUG,
+				   "SSID subelement with zero length - wildcard SSID");
+			break;
+		}
+
+		if (slen > SSID_MAX_LEN) {
+			wpa_printf(MSG_DEBUG,
+				   "Invalid SSID subelement length: %u", slen);
+			return -1;
+		}
+
+		data->ssid_len = slen;
+		os_memcpy(data->ssid, subelem, data->ssid_len);
+		break;
+	case WLAN_BEACON_REQUEST_SUBELEM_INFO:
+		if (slen != 2) {
+			wpa_printf(MSG_DEBUG,
+				   "Invalid reporting information subelement length: %u",
+				   slen);
+			return -1;
+		}
+
+		report_info = subelem[0];
+		if (report_info != 0) {
+			wpa_printf(MSG_DEBUG,
+				   "reporting information=%u is not supported",
+				   report_info);
+			return 0;
+		}
+		break;
+	case WLAN_BEACON_REQUEST_SUBELEM_DETAIL:
+		if (slen != 1) {
+			wpa_printf(MSG_DEBUG,
+				   "Invalid reporting detail subelement length: %u",
+				   slen);
+			return -1;
+		}
+
+		data->report_detail = subelem[0];
+		if (data->report_detail >
+		    BEACON_REPORT_DETAIL_ALL_FIELDS_AND_ELEMENTS) {
+			wpa_printf(MSG_DEBUG, "Invalid reporting detail: %u",
+				   subelem[0]);
+			return -1;
+		}
+
+		break;
+	case WLAN_BEACON_REQUEST_SUBELEM_REQUEST:
+	case WLAN_BEACON_REQUEST_SUBELEM_EXT_REQUEST:
+		if (data->report_detail !=
+		    BEACON_REPORT_DETAIL_REQUESTED_ONLY) {
+			wpa_printf(MSG_DEBUG,
+				   "Beacon request: request subelement is present but report detail is %u",
+				   data->report_detail);
+			return -1;
+		}
+
+		if (!slen) {
+			wpa_printf(MSG_DEBUG,
+				   "Invalid request subelement length: %u",
+				   slen);
+			return -1;
+		}
+
+		if (sid == WLAN_BEACON_REQUEST_SUBELEM_EXT_REQUEST) {
+			if (slen < 2) {
+				wpa_printf(MSG_DEBUG,
+					   "Invalid extended request");
+				return -1;
+			}
+			if (subelem[0] != WLAN_EID_EXTENSION) {
+				wpa_printf(MSG_DEBUG,
+					   "Skip unknown Requested Element ID %u in Extended Request subelement",
+					   subelem[0]);
+				break;
+			}
+
+			/* Skip the Requested Element ID field */
+			subelem++;
+			slen--;
+		}
+
+		if ((sid == WLAN_BEACON_REQUEST_SUBELEM_REQUEST &&
+		     data->eids) ||
+		    (sid == WLAN_BEACON_REQUEST_SUBELEM_EXT_REQUEST &&
+		    data->ext_eids)) {
+			wpa_printf(MSG_DEBUG,
+				   "Beacon Request: Request sub elements appear more than once");
+			return -1;
+		}
+
+		eids = bitfield_alloc(255);
+		if (!eids) {
+			wpa_printf(MSG_DEBUG, "Failed to allocate EIDs bitmap");
+			return -1;
+		}
+
+		if (sid == WLAN_BEACON_REQUEST_SUBELEM_REQUEST)
+			data->eids = eids;
+		else
+			data->ext_eids = eids;
+
+		for (i = 0; i < slen; i++)
+			bitfield_set(eids, subelem[i]);
+		break;
+	case WLAN_BEACON_REQUEST_SUBELEM_AP_CHANNEL:
+		/* Skip - it will be processed when freqs are added */
+		break;
+	case WLAN_BEACON_REQUEST_SUBELEM_LAST_INDICATION:
+		if (slen != 1) {
+			wpa_printf(MSG_DEBUG,
+				   "Beacon request: Invalid last indication request subelement length: %u",
+				   slen);
+			return -1;
+		}
+
+		data->last_indication = subelem[0];
+		break;
+	default:
+		wpa_printf(MSG_DEBUG,
+			   "Beacon request: Unknown subelement id %u", sid);
+		break;
+	}
+
+	return 1;
+}
+
+
+/**
+ * Returns 0 if the next element can be processed, 1 if some operation was
+ * triggered, and -1 if processing failed (i.e., the element is in invalid
+ * format or an internal error occurred).
+ */
+static int
+wpas_rm_handle_beacon_req(struct wpa_supplicant *wpa_s,
+			  u8 elem_token, int duration_mandatory,
+			  const struct rrm_measurement_beacon_request *req,
+			  size_t len, struct wpabuf **buf)
+{
+	struct beacon_rep_data *data = &wpa_s->beacon_rep_data;
+	struct wpa_driver_scan_params *params = &data->scan_params;
+	const u8 *subelems;
+	size_t elems_len;
+	u16 rand_interval;
+	u32 interval_usec;
+	u32 _rand;
+	int ret = 0, res;
+	u8 reject_mode;
+
+	if (len < sizeof(*req))
+		return -1;
+
+	if (req->mode != BEACON_REPORT_MODE_PASSIVE &&
+	    req->mode != BEACON_REPORT_MODE_ACTIVE &&
+	    req->mode != BEACON_REPORT_MODE_TABLE)
+		return 0;
+
+	subelems = req->variable;
+	elems_len = len - sizeof(*req);
+	rand_interval = le_to_host16(req->rand_interval);
+
+	os_free(params->freqs);
+	os_memset(params, 0, sizeof(*params));
+
+	data->token = elem_token;
+
+	/* default reporting detail is all fixed length fields and all
+	 * elements */
+	data->report_detail = BEACON_REPORT_DETAIL_ALL_FIELDS_AND_ELEMENTS;
+	os_memcpy(data->bssid, req->bssid, ETH_ALEN);
+
+	while (elems_len >= 2) {
+		if (subelems[1] > elems_len - 2) {
+			wpa_printf(MSG_DEBUG,
+				   "Beacon Request: Truncated subelement");
+			ret = -1;
+			goto out;
+		}
+
+		res = wpas_rm_handle_beacon_req_subelem(
+			wpa_s, data, subelems[0], subelems[1], &subelems[2]);
+		if (res < 0) {
+			ret = res;
+			goto out;
+		} else if (!res) {
+			reject_mode = MEASUREMENT_REPORT_MODE_REJECT_INCAPABLE;
+			goto out_reject;
+		}
+
+		elems_len -= 2 + subelems[1];
+		subelems += 2 + subelems[1];
+	}
+
+	if (req->mode == BEACON_REPORT_MODE_TABLE) {
+		wpas_beacon_rep_table(wpa_s, buf);
+		goto out;
+	}
+
+	params->freqs = wpas_beacon_request_freqs(wpa_s, req->oper_class,
+						  req->channel, req->variable,
+						  len - sizeof(*req));
+	if (!params->freqs) {
+		wpa_printf(MSG_DEBUG, "Beacon request: No valid channels");
+		reject_mode = MEASUREMENT_REPORT_MODE_REJECT_REFUSED;
+		goto out_reject;
+	}
+
+	if (params->freqs[0])
+		wpa_s->rrm.req_freq = params->freqs[0];
+
+	params->duration = le_to_host16(req->duration);
+	params->duration_mandatory = duration_mandatory;
+	if (!params->duration) {
+		wpa_printf(MSG_DEBUG, "Beacon request: Duration is 0");
+		ret = -1;
+		goto out;
+	}
+
+	params->only_new_results = 1;
+
+	if (req->mode == BEACON_REPORT_MODE_ACTIVE) {
+		params->ssids[params->num_ssids].ssid = data->ssid;
+		params->ssids[params->num_ssids++].ssid_len = data->ssid_len;
+	}
+
+	if (os_get_random((u8 *) &_rand, sizeof(_rand)) < 0)
+		_rand = os_random();
+	interval_usec = (_rand % (rand_interval + 1)) * 1024;
+	eloop_register_timeout(0, interval_usec, wpas_rrm_scan_timeout, wpa_s,
+			       NULL);
+	return 1;
+out_reject:
+	if (!is_multicast_ether_addr(wpa_s->rrm.dst_addr) &&
+	    wpas_rrm_report_elem(buf, elem_token, reject_mode,
+				 MEASURE_TYPE_BEACON, NULL, 0) < 0) {
+		wpa_printf(MSG_DEBUG, "RRM: Failed to add report element");
+		ret = -1;
+	}
+out:
+	wpas_clear_beacon_rep_data(wpa_s);
+	return ret;
+}
+
+
+static int
+wpas_rrm_handle_msr_req_element(
+	struct wpa_supplicant *wpa_s,
+	const struct rrm_measurement_request_element *req,
+	struct wpabuf **buf)
+{
+	int duration_mandatory;
+
+	wpa_printf(MSG_DEBUG, "Measurement request type %d token %d",
+		   req->type, req->token);
+
+	if (req->mode & MEASUREMENT_REQUEST_MODE_ENABLE) {
+		/* Enable bit is not supported for now */
+		wpa_printf(MSG_DEBUG, "RRM: Enable bit not supported, ignore");
+		return 0;
+	}
+
+	if ((req->mode & MEASUREMENT_REQUEST_MODE_PARALLEL) &&
+	    req->type > MEASURE_TYPE_RPI_HIST) {
+		/* Parallel measurements are not supported for now */
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Parallel measurements are not supported, reject");
+		goto reject;
+	}
+
+	duration_mandatory =
+		!!(req->mode & MEASUREMENT_REQUEST_MODE_DURATION_MANDATORY);
+
+	switch (req->type) {
+	case MEASURE_TYPE_LCI:
+		return wpas_rrm_build_lci_report(wpa_s, req, buf);
+	case MEASURE_TYPE_CHANNEL_LOAD:
+		return wpas_rrm_handle_channel_load_req(wpa_s, req, buf);
+	case MEASURE_TYPE_NOISE_HIST:
+		return wpas_rrm_handle_noise_histogram_req(wpa_s, req, buf);
+	case MEASURE_TYPE_BEACON:
+		if (duration_mandatory &&
+		    !(wpa_s->drv_rrm_flags &
+		      WPA_DRIVER_FLAGS_SUPPORT_SET_SCAN_DWELL)) {
+			wpa_printf(MSG_DEBUG,
+				   "RRM: Driver does not support dwell time configuration - reject beacon report with mandatory duration");
+			goto reject;
+		}
+		return wpas_rm_handle_beacon_req(wpa_s, req->token,
+						 duration_mandatory,
+						 (const void *) req->variable,
+						 req->len - 3, buf);
+	default:
+		wpa_printf(MSG_INFO,
+			   "RRM: Unsupported radio measurement type %u",
+			   req->type);
+		break;
+	}
+
+reject:
+	if (!is_multicast_ether_addr(wpa_s->rrm.dst_addr) &&
+	    wpas_rrm_report_elem(buf, req->token,
+				 MEASUREMENT_REPORT_MODE_REJECT_INCAPABLE,
+				 req->type, NULL, 0) < 0) {
+		wpa_printf(MSG_DEBUG, "RRM: Failed to add report element");
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static struct wpabuf *
+wpas_rrm_process_msr_req_elems(struct wpa_supplicant *wpa_s, const u8 *pos,
+			       size_t len)
+{
+	struct wpabuf *buf = NULL;
+
+	while (len) {
+		const struct rrm_measurement_request_element *req;
+		int res;
+
+		if (len < 2) {
+			wpa_printf(MSG_DEBUG, "RRM: Truncated element");
+			goto out;
+		}
+
+		req = (const struct rrm_measurement_request_element *) pos;
+		if (req->eid != WLAN_EID_MEASURE_REQUEST) {
+			wpa_printf(MSG_DEBUG,
+				   "RRM: Expected Measurement Request element, but EID is %u",
+				   req->eid);
+			goto out;
+		}
+
+		if (req->len < 3) {
+			wpa_printf(MSG_DEBUG, "RRM: Element length too short");
+			goto out;
+		}
+
+		if (req->len > len - 2) {
+			wpa_printf(MSG_DEBUG, "RRM: Element length too long");
+			goto out;
+		}
+
+		res = wpas_rrm_handle_msr_req_element(wpa_s, req, &buf);
+		if (res < 0)
+			goto out;
+
+		pos += req->len + 2;
+		len -= req->len + 2;
+	}
+
+	return buf;
+
+out:
+	wpabuf_free(buf);
+	return NULL;
+}
+
+
+void wpas_rrm_handle_radio_measurement_request(struct wpa_supplicant *wpa_s,
+					       const u8 *src, const u8 *dst,
+					       const u8 *frame, size_t len)
+{
+	struct wpabuf *report;
+
+	if (wpa_s->wpa_state != WPA_COMPLETED) {
+		wpa_printf(MSG_INFO,
+			   "RRM: Ignoring radio measurement request: Not associated");
+		return;
+	}
+
+	if (!wpa_s->rrm.rrm_used) {
+		wpa_printf(MSG_INFO,
+			   "RRM: Ignoring radio measurement request: Not RRM network");
+		return;
+	}
+
+	if (len < 3) {
+		wpa_printf(MSG_INFO,
+			   "RRM: Ignoring too short radio measurement request");
+		return;
+	}
+
+	wpa_s->rrm.token = *frame;
+	os_memcpy(wpa_s->rrm.dst_addr, dst, ETH_ALEN);
+
+	wpa_s->rrm.req_freq = 0;
+
+	/* Number of repetitions is not supported */
+	report = wpas_rrm_process_msr_req_elems(wpa_s, frame + 3, len - 3);
+	if (!report)
+		return;
+
+	wpas_rrm_send_msr_report(wpa_s, report);
+	wpabuf_free(report);
+}
+
+
+void wpas_rrm_handle_link_measurement_request(struct wpa_supplicant *wpa_s,
+					      const u8 *src,
+					      const u8 *frame, size_t len,
+					      int rssi)
+{
+	struct wpabuf *buf;
+	const struct rrm_link_measurement_request *req;
+	struct rrm_link_measurement_report report;
+
+	if (wpa_s->wpa_state != WPA_COMPLETED) {
+		wpa_printf(MSG_INFO,
+			   "RRM: Ignoring link measurement request. Not associated");
+		return;
+	}
+
+	if (!wpa_s->rrm.rrm_used) {
+		wpa_printf(MSG_INFO,
+			   "RRM: Ignoring link measurement request. Not RRM network");
+		return;
+	}
+
+	if (!(wpa_s->drv_rrm_flags & WPA_DRIVER_FLAGS_TX_POWER_INSERTION)) {
+		wpa_printf(MSG_INFO,
+			   "RRM: Measurement report failed. TX power insertion not supported");
+		return;
+	}
+
+	req = (const struct rrm_link_measurement_request *) frame;
+	if (len < sizeof(*req)) {
+		wpa_printf(MSG_INFO,
+			   "RRM: Link measurement report failed. Request too short");
+		return;
+	}
+
+	os_memset(&report, 0, sizeof(report));
+	report.dialog_token = req->dialog_token;
+	report.tpc.eid = WLAN_EID_TPC_REPORT;
+	report.tpc.len = 2;
+	/* Note: The driver is expected to update report.tpc.tx_power and
+	 * report.tpc.link_margin subfields when sending out this frame.
+	 * Similarly, the driver would need to update report.rx_ant_id and
+	 * report.tx_ant_id subfields. */
+	report.rsni = 255; /* 255 indicates that RSNI is not available */
+	report.rcpi = rssi_to_rcpi(rssi);
+
+	/* action_category + action_code */
+	buf = wpabuf_alloc(2 + sizeof(report));
+	if (buf == NULL) {
+		wpa_printf(MSG_ERROR,
+			   "RRM: Link measurement report failed. Buffer allocation failed");
+		return;
+	}
+
+	wpabuf_put_u8(buf, WLAN_ACTION_RADIO_MEASUREMENT);
+	wpabuf_put_u8(buf, WLAN_RRM_LINK_MEASUREMENT_REPORT);
+	wpabuf_put_data(buf, &report, sizeof(report));
+	wpa_hexdump_buf(MSG_DEBUG, "RRM: Link measurement report", buf);
+
+	if (wpa_drv_send_action(wpa_s, wpa_s->assoc_freq, 0, src,
+				wpa_s->own_addr, wpa_s->bssid,
+				wpabuf_head(buf), wpabuf_len(buf), 0)) {
+		wpa_printf(MSG_ERROR,
+			   "RRM: Link measurement report failed. Send action failed");
+	}
+	wpabuf_free(buf);
+}
+
+
+static bool wpas_beacon_rep_scan_match(struct wpa_supplicant *wpa_s,
+				       const u8 *bssid)
+{
+	u8 i;
+
+	if (!wpa_s->valid_links)
+		return ether_addr_equal(wpa_s->current_bss->bssid, bssid);
+
+	for_each_link(wpa_s->valid_links, i) {
+		if (ether_addr_equal(wpa_s->links[i].bssid, bssid))
+			return true;
+	}
+
+	wpa_printf(MSG_DEBUG, "RRM: MLD: no match for TSF BSSID=" MACSTR,
+		   MAC2STR(bssid));
+
+	return false;
+}
+
+
+int wpas_beacon_rep_scan_process(struct wpa_supplicant *wpa_s,
+				 struct wpa_scan_results *scan_res,
+				 struct scan_info *info)
+{
+	size_t i = 0;
+	struct wpabuf *buf = NULL;
+
+	if (!wpa_s->beacon_rep_data.token)
+		return 0;
+
+	if (!wpa_s->current_bss)
+		goto out;
+
+	/* If the measurement was aborted, don't report partial results */
+	if (info->aborted)
+		goto out_refuse;
+
+	wpa_printf(MSG_DEBUG, "RRM: TSF BSSID: " MACSTR " current BSS: " MACSTR,
+		   MAC2STR(info->scan_start_tsf_bssid),
+		   MAC2STR(wpa_s->current_bss->bssid));
+	if ((wpa_s->drv_rrm_flags & WPA_DRIVER_FLAGS_SUPPORT_BEACON_REPORT) &&
+	    !wpas_beacon_rep_scan_match(wpa_s, info->scan_start_tsf_bssid)) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Ignore scan results due to mismatching TSF BSSID");
+		goto out_refuse;
+	}
+
+	for (i = 0; i < scan_res->num; i++) {
+		struct wpa_bss *bss =
+			wpa_bss_get_bssid(wpa_s, scan_res->res[i]->bssid);
+
+		if (!bss)
+			continue;
+
+		if ((wpa_s->drv_rrm_flags &
+		     WPA_DRIVER_FLAGS_SUPPORT_BEACON_REPORT) &&
+		    !wpas_beacon_rep_scan_match(wpa_s,
+						scan_res->res[i]->tsf_bssid)) {
+			wpa_printf(MSG_DEBUG,
+				   "RRM: Ignore scan result for " MACSTR
+				   " due to mismatching TSF BSSID" MACSTR,
+				   MAC2STR(scan_res->res[i]->bssid),
+				   MAC2STR(scan_res->res[i]->tsf_bssid));
+			continue;
+		}
+
+		/*
+		 * Don't report results that were not received during the
+		 * current measurement.
+		 */
+		if (!(wpa_s->drv_rrm_flags &
+		      WPA_DRIVER_FLAGS_SUPPORT_BEACON_REPORT)) {
+			struct os_reltime update_time, diff;
+
+			/* For now, allow 8 ms older results due to some
+			 * unknown issue with cfg80211 BSS table updates during
+			 * a scan with the current BSS.
+			 * TODO: Fix this more properly to avoid having to have
+			 * this type of hacks in place. */
+			calculate_update_time(&scan_res->fetch_time,
+					      scan_res->res[i]->age,
+					      &update_time);
+			os_reltime_sub(&wpa_s->beacon_rep_scan,
+				       &update_time, &diff);
+			if (os_reltime_before(&update_time,
+					      &wpa_s->beacon_rep_scan) &&
+			    (diff.sec || diff.usec >= 8000)) {
+				wpa_printf(MSG_DEBUG,
+					   "RRM: Ignore scan result for " MACSTR
+					   " due to old update (age(ms) %u, calculated age %u.%06u seconds)",
+					   MAC2STR(scan_res->res[i]->bssid),
+					   scan_res->res[i]->age,
+					   (unsigned int) diff.sec,
+					   (unsigned int) diff.usec);
+				continue;
+			}
+		} else if (info->scan_start_tsf >
+			   scan_res->res[i]->parent_tsf) {
+			continue;
+		}
+
+		if (wpas_add_beacon_rep(wpa_s, &buf, bss, info->scan_start_tsf,
+					scan_res->res[i]->parent_tsf) < 0)
+			break;
+	}
+
+	if (!buf && wpas_beacon_rep_no_results(wpa_s, &buf))
+		goto out;
+
+	wpa_hexdump_buf(MSG_DEBUG, "RRM: Radio Measurement report", buf);
+
+	wpas_rrm_send_msr_report(wpa_s, buf);
+	wpabuf_free(buf);
+
+	goto out;
+
+out_refuse:
+	wpas_rrm_refuse_request(wpa_s);
+out:
+	wpas_clear_beacon_rep_data(wpa_s);
+	return 1;
+}
+
+
+void wpas_clear_beacon_rep_data(struct wpa_supplicant *wpa_s)
+{
+	struct beacon_rep_data *data = &wpa_s->beacon_rep_data;
+
+	eloop_cancel_timeout(wpas_rrm_scan_timeout, wpa_s, NULL);
+	bitfield_free(data->eids);
+	bitfield_free(data->ext_eids);
+	os_free(data->scan_params.freqs);
+	os_memset(data, 0, sizeof(*data));
+}
+
+
+static void wpas_rrm_channel_load_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+	struct wpabuf *buf = NULL;
+
+	wpa_printf(MSG_DEBUG,
+		   "RRM: Channel Load measurement timeout, sending report");
+	wpas_rrm_build_channel_load_report(wpa_s, &buf);
+	if (buf) {
+		wpas_rrm_send_msr_report(wpa_s, buf);
+		wpabuf_free(buf);
+	}
+	wpa_s->rrm.chan_load_token = 0;
+}
+
+
+void wpas_rrm_build_channel_load_report(struct wpa_supplicant *wpa_s,
+					struct wpabuf **buf)
+{
+	struct rrm_data *rrm = &wpa_s->rrm;
+	u64 time_delta, busy_delta;
+	u8 channel_load;
+	u8 report[13]; /* op_class(1)+chan(1)+start_time(8)+duration(2)+load(1) */
+
+	if (!rrm->chan_load_token) {
+		wpa_printf(MSG_DEBUG, "RRM: No pending Channel Load measurement");
+		return;
+	}
+
+	if (rrm->chan_load_end_time == 0)
+		wpa_drv_get_survey(wpa_s, wpa_s->assoc_freq);
+
+	if (rrm->chan_load_last_time == 0 || rrm->chan_load_end_time == 0 ||
+	    rrm->chan_load_end_time <= rrm->chan_load_last_time) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Channel Load: insufficient survey data, sending Incapable");
+		goto incapable;
+	}
+
+	time_delta = rrm->chan_load_end_time - rrm->chan_load_last_time;
+	busy_delta = rrm->chan_load_end_time_busy - rrm->chan_load_last_time_busy;
+
+	/* Scale to 0-255 per IEEE Std 802.11-2020, 11.11.8.3 */
+	if (time_delta > 0)
+		channel_load = (u8) (busy_delta * 255 / time_delta);
+	else
+		channel_load = 0;
+
+	/* Build Channel Load Report body */
+	report[0] = rrm->chan_load_op_class;
+	report[1] = rrm->chan_load_channel;
+	/* Actual Measurement Start Time: TSF not available, use 0 */
+	os_memset(&report[2], 0, 8);
+	WPA_PUT_LE16(&report[10], rrm->chan_load_duration);
+	report[12] = channel_load;
+
+	wpa_printf(MSG_DEBUG,
+		   "RRM: Channel Load report: op_class=%u chan=%u load=%u",
+		   rrm->chan_load_op_class, rrm->chan_load_channel,
+		   channel_load);
+
+	if (wpas_rrm_report_elem(buf, rrm->chan_load_token,
+				 MEASUREMENT_REPORT_MODE_ACCEPT,
+				 MEASURE_TYPE_CHANNEL_LOAD,
+				 report, sizeof(report)) < 0)
+		wpa_printf(MSG_DEBUG, "RRM: Channel Load: failed to build report element");
+	rrm->chan_load_token = 0;
+	return;
+
+incapable:
+	if (!is_multicast_ether_addr(rrm->dst_addr))
+		wpas_rrm_report_elem(buf, rrm->chan_load_token,
+				     MEASUREMENT_REPORT_MODE_REJECT_INCAPABLE,
+				     MEASURE_TYPE_CHANNEL_LOAD, NULL, 0);
+	rrm->chan_load_token = 0;
+}
+
+
+void wpas_rrm_handle_survey_results(struct wpa_supplicant *wpa_s,
+				    struct survey_results *survey_results)
+{
+	struct rrm_data *rrm = &wpa_s->rrm;
+	struct freq_survey *survey;
+
+	if (!rrm->chan_load_token && !rrm->noise_hist_token)
+		return;
+
+	dl_list_for_each(survey, &survey_results->survey_list,
+			 struct freq_survey, list) {
+		if (survey->freq != wpa_s->assoc_freq)
+			continue;
+
+		/* Channel Load: capture cumulative counters */
+		if (rrm->chan_load_token &&
+		    (survey->filled & SURVEY_HAS_CHAN_TIME) &&
+		    (survey->filled & SURVEY_HAS_CHAN_TIME_BUSY)) {
+			rrm->chan_load_end_time = survey->channel_time;
+			rrm->chan_load_end_time_busy = survey->channel_time_busy;
+		}
+
+		/* Noise Histogram: capture point-in-time noise floor */
+		if (rrm->noise_hist_token &&
+		    (survey->filled & SURVEY_HAS_NF))
+			rrm->noise_hist_anpi = (s8) survey->nf;
+
+		break;
+	}
+}
+
+
+static int wpas_rrm_handle_channel_load_req(struct wpa_supplicant *wpa_s,
+					    const struct rrm_measurement_request_element *req,
+					    struct wpabuf **buf)
+{
+	struct rrm_data *rrm = &wpa_s->rrm;
+	const u8 *pos = req->variable;
+	size_t len = req->len - 3;
+	u8 op_class, channel;
+	u16 rand_interval, duration;
+	u32 interval_usec;
+	u32 _rand;
+
+	if (len < 6) {
+		wpa_printf(MSG_DEBUG, "RRM: Channel Load request too short (%zu)", len);
+		goto incapable;
+	}
+
+	op_class = pos[0];
+	channel = pos[1];
+	rand_interval = WPA_GET_LE16(&pos[2]);
+	duration = WPA_GET_LE16(&pos[4]);
+
+	wpa_printf(MSG_DEBUG,
+		   "RRM: Channel Load request: op_class=%u channel=%u rand_interval=%u duration=%u",
+		   op_class, channel, rand_interval, duration);
+
+	/* Only support measurement on the current operating channel */
+	if (wpa_s->wpa_state != WPA_COMPLETED || !wpa_s->current_bss ||
+	    ieee80211_chan_to_freq(NULL, op_class, channel) != (int) wpa_s->assoc_freq) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Channel Load: requested channel %u (op_class %u) is not current channel",
+			   channel, op_class);
+		goto incapable;
+	}
+
+	if (duration == 0) {
+		wpa_printf(MSG_DEBUG, "RRM: Channel Load: duration is 0");
+		goto incapable;
+	}
+
+	/* Cancel any pending measurement */
+	eloop_cancel_timeout(wpas_rrm_channel_load_timeout, wpa_s, NULL);
+
+	rrm->chan_load_token = req->token;
+	rrm->chan_load_op_class = op_class;
+	rrm->chan_load_channel = channel;
+	rrm->chan_load_duration = duration;
+	rrm->chan_load_last_time = 0;
+	rrm->chan_load_last_time_busy = 0;
+	rrm->chan_load_end_time = 0;
+	rrm->chan_load_end_time_busy = 0;
+
+	/* Trigger a baseline survey snapshot */
+	wpa_drv_get_survey(wpa_s, wpa_s->assoc_freq);
+
+	if (rrm->chan_load_end_time > 0) {
+		rrm->chan_load_last_time = rrm->chan_load_end_time;
+		rrm->chan_load_last_time_busy = rrm->chan_load_end_time_busy;
+		rrm->chan_load_end_time = 0;
+		rrm->chan_load_end_time_busy = 0;
+	}
+
+	os_get_reltime(&rrm->chan_load_start);
+
+	if (os_get_random((u8 *) &_rand, sizeof(_rand)) < 0)
+		_rand = os_random();
+	interval_usec = (_rand % (rand_interval + 1)) * 1024;
+
+	/* duration is in TUs (1024 us) */
+	eloop_register_timeout(0, interval_usec + (u32) duration * 1024,
+			       wpas_rrm_channel_load_timeout, wpa_s, NULL);
+
+	return 1;
+
+incapable:
+	if (!is_multicast_ether_addr(rrm->dst_addr) &&
+	    wpas_rrm_report_elem(buf, req->token,
+				 MEASUREMENT_REPORT_MODE_REJECT_INCAPABLE,
+				 MEASURE_TYPE_CHANNEL_LOAD, NULL, 0) < 0) {
+		wpa_printf(MSG_DEBUG, "RRM: Failed to add report element");
+		return -1;
+	}
+
+	return 0;
+}
+
+
+static void wpas_rrm_noise_histogram_timeout(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+	struct rrm_data *rrm = &wpa_s->rrm;
+	struct wpabuf *buf = NULL;
+	u8 report[22]; /* op_class(1)+chan(1)+start_time(8)+duration(2)+
+			* antenna_id(1)+anpi(1)+ipi[0..7](8) = 22 bytes */
+
+	wpa_printf(MSG_DEBUG,
+		   "RRM: Noise Histogram measurement window expired, sending report");
+
+	if (!rrm->noise_hist_token) {
+		wpa_printf(MSG_DEBUG, "RRM: No pending Noise Histogram measurement");
+		return;
+	}
+
+	/* End-of-window survey poll to get ANPI */
+	wpa_drv_get_survey(wpa_s, wpa_s->assoc_freq);
+
+	/* Build Noise Histogram Report body (IEEE Std 802.11-2020, 9.4.2.22.3) */
+	report[0] = rrm->noise_hist_op_class;
+	report[1] = rrm->noise_hist_channel;
+	/* Actual Measurement Start Time: TSF not available, use 0 */
+	os_memset(&report[2], 0, 8);
+	WPA_PUT_LE16(&report[10], rrm->noise_hist_duration);
+	report[12] = 0xFF; /* Antenna ID: unknown */
+	report[13] = (u8) rrm->noise_hist_anpi; /* ANPI (s8 as u8) */
+	/* IPI[0..7]: not available from ath12k, set to 0 */
+	os_memset(&report[14], 0, 8);
+
+	wpa_printf(MSG_DEBUG,
+		   "RRM: Noise Histogram report: op_class=%u chan=%u ANPI=%d dBm",
+		   rrm->noise_hist_op_class, rrm->noise_hist_channel,
+		   (int) rrm->noise_hist_anpi);
+
+	if (wpas_rrm_report_elem(&buf, rrm->noise_hist_token,
+				 MEASUREMENT_REPORT_MODE_ACCEPT,
+				 MEASURE_TYPE_NOISE_HIST,
+				 report, sizeof(report)) < 0) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Noise Histogram: failed to build report element");
+	} else {
+		wpas_rrm_send_msr_report(wpa_s, buf);
+		wpabuf_free(buf);
+	}
+
+	rrm->noise_hist_token = 0;
+}
+
+
+static int wpas_rrm_handle_noise_histogram_req(struct wpa_supplicant *wpa_s,
+					       const struct rrm_measurement_request_element *req,
+					       struct wpabuf **buf)
+{
+	struct rrm_data *rrm = &wpa_s->rrm;
+	const u8 *pos = req->variable;
+	size_t len = req->len - 3;
+	u8 op_class, channel;
+	u16 rand_interval, duration;
+	u32 interval_usec;
+	u32 _rand;
+
+	if (len < 6) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Noise Histogram request too short (%zu)", len);
+		goto incapable;
+	}
+
+	op_class = pos[0];
+	channel = pos[1];
+	rand_interval = WPA_GET_LE16(&pos[2]);
+	duration = WPA_GET_LE16(&pos[4]);
+
+	wpa_printf(MSG_DEBUG,
+		   "RRM: Noise Histogram request: op_class=%u channel=%u rand_interval=%u duration=%u",
+		   op_class, channel, rand_interval, duration);
+
+	/* Only support measurement on the current operating channel */
+	if (wpa_s->wpa_state != WPA_COMPLETED || !wpa_s->current_bss ||
+	    ieee80211_chan_to_freq(NULL, op_class, channel) != (int) wpa_s->assoc_freq) {
+		wpa_printf(MSG_DEBUG,
+			   "RRM: Noise Histogram: requested channel %u (op_class %u) is not current channel",
+			   channel, op_class);
+		goto incapable;
+	}
+
+	if (duration == 0) {
+		wpa_printf(MSG_DEBUG, "RRM: Noise Histogram: duration is 0");
+		goto incapable;
+	}
+
+	/* Cancel any pending measurement */
+	eloop_cancel_timeout(wpas_rrm_noise_histogram_timeout, wpa_s, NULL);
+
+	rrm->noise_hist_token = req->token;
+	rrm->noise_hist_op_class = op_class;
+	rrm->noise_hist_channel = channel;
+	rrm->noise_hist_duration = duration;
+	rrm->noise_hist_anpi = 0;
+
+	if (os_get_random((u8 *) &_rand, sizeof(_rand)) < 0)
+		_rand = os_random();
+	interval_usec = (_rand % (rand_interval + 1)) * 1024;
+
+	/* duration is in TUs (1024 us) */
+	eloop_register_timeout(0, interval_usec + (u32) duration * 1024,
+			       wpas_rrm_noise_histogram_timeout, wpa_s, NULL);
+
+	return 1;
+
+incapable:
+	if (!is_multicast_ether_addr(rrm->dst_addr) &&
+	    wpas_rrm_report_elem(buf, req->token,
+				 MEASUREMENT_REPORT_MODE_REJECT_INCAPABLE,
+				 MEASURE_TYPE_NOISE_HIST, NULL, 0) < 0) {
+		wpa_printf(MSG_DEBUG, "RRM: Failed to add report element");
+		return -1;
+	}
+
+	return 0;
+}

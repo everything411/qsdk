@@ -1,0 +1,7 @@
+if PACKAGE_omciibc
+
+config OMCIIBC_SWHOOK_ENABLE
+	bool "enable omciibc swhook feature"
+	default n
+
+endif

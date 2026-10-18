@@ -1,0 +1,87 @@
+From 325433640a5cd8bf80a14074534ef9c3dc36cfa8 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <quic_pgowtham@quicinc.com>
+Date: Tue, 10 Jan 2023 10:37:09 -0800
+Subject: [PATCH 3/6] sigma-dut: Set tx and rx mcs map for EHT program
+
+Set tx/rxmcs map for EHT program.
+
+Signed-off-by: Priyadharshini Gowthaman <quic_pgowtham@quicinc.com>
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ ap.c        | 109 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ sigma_dut.h |   4 +++
+ 2 files changed, 108 insertions(+), 5 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -1553,9 +1551,10 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	val = get_param(cmd, "nss_mcs_cap");
+ 	if (val) {
+ 		int nss, mcs;
+-		char token[20];
++		char token[60];
+ 		char *result = NULL;
+ 		char *saveptr;
++		char *saveptr1;
+ 
+ 		if (strlen(val) >= sizeof(token))
+ 			return INVALID_SEND_STATUS;
+@@ -1573,8 +1572,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				  "errorCode,VHTMCS not specified");
+ 			return STATUS_SENT;
+ 		}
+-		result = strtok_r(result, "-", &saveptr);
+-		result = strtok_r(NULL, "-", &saveptr);
++		result = strtok_r(result, "-", &saveptr1);
++		result = strtok_r(NULL, "-", &saveptr1);
+ 		if (!result) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+ 				  "errorCode,VHT MCS not specified");
+@@ -1584,10 +1583,11 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		if (dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+ 			uint16_t mcsnssmap = 0;
+ 
++			dut->he_ul_mcs = mcs;
++			dut->nss_mcs_set = 1;
+ 			/* To set mcs_nss_map for HE program */
+ 			get_he_mcs_nssmap((uint8_t *) &mcsnssmap, nss, mcs);
+ 			dut->he_mcsnssmap = (mcsnssmap << 16) | mcsnssmap;
+-			dut->he_ul_mcs = mcs;
+ 
+ 			/* To set mcs_nss_map for EHT program */
+ 			if (dut->ap_mode == AP_11be)
+@@ -2644,6 +2644,10 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "ForceEHTTXMCS");
++	if (val)
++		dut->eht_txmcs = atoi(val);
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -11835,8 +11839,13 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_fixed_rate = 0;
+ 	dut->he_mmss = 0;
+ 	dut->he_set_sta_1x1 = VALUE_DISABLED;
++	dut->nss_mcs_set = 0;
+ 	dut->he_srctrl_allow = -1;
+ 	dut->ap_mbssid_mu = VALUE_NOT_SET;
++
++	dut->eht_txmcs = 0;
++	dut->ap_ehtmcs_map = 0;
++
+ 	if (dut->device_type == AP_testbed) {
+ 		dut->ap_he_dlofdma = VALUE_DISABLED;
+ 		dut->ap_he_frag = VALUE_DISABLED;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -996,6 +996,7 @@ struct sigma_dut {
+ 	int he_ul_mcs;
+ 	int he_mmss;
+ 	int he_srctrl_allow;
++	int nss_mcs_set;
+ 
+ 	int ap_ocvc;
+ 	int ap_cad_unsolicited_proberesp;

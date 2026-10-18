@@ -1,0 +1,113 @@
+#!/bin/sh /etc/rc.common
+
+# Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+START=99
+USE_PROCD=1
+
+DEVICE_CONTROLLER="Device.LocalAgent.Controller.1"
+DEVICE_MTP="Device.LocalAgent.MTP.1"
+DEVICE_MQTT="Device.MQTT.Client.1"
+DEVICE_LOCALAGENT="Device.LocalAgent"
+
+dbset_function() {
+	#If dbfile location is different than the default, use the command obuspa -c dbset -f "filelocation" $1 $2
+	obuspa -c dbset $1 $2
+}
+
+localagent_config() {
+	local localagent=$1
+	local endpointid
+	config_get endpointid "$localagent" "endpointid" "$localagent"
+	dbset_function $DEVICE_LOCALAGENT.EndpointID $endpointid
+}
+
+mtp_config() {
+	local mtp=$1
+	local enable
+	local protocol
+	local reference
+	local responsetopicconfigured
+	config_get enable "$mtp" "enable" "$mtp"
+	config_get protocol "$mtp" "protocol" "$mtp"
+	config_get reference "$mtp" "reference" "$mtp"
+	config_get responsetopicconfigured "$mtp" "responsetopicconfigured" "$mtp" 
+	dbset_function $DEVICE_MTP.Enable $enable
+	dbset_function $DEVICE_MTP.Protocol $protocol
+	dbset_function $DEVICE_MTP.MQTT.Reference $reference
+	dbset_function $DEVICE_MTP.MQTT.ResponseTopicConfigured $responsetopicconfigured
+}
+
+controller_config() {
+	local controller=$1
+	local endpointid
+	local alias
+	local enable
+	config_get endpointid "$controller" "endpointid" "$controller"
+	config_get alias "$controller" "alias" "$controller"
+	config_get enable "$controller" "enable" "$controller"
+	dbset_function $DEVICE_CONTROLLER.EndpointID $endpointid
+	dbset_function $DEVICE_CONTROLLER.Alias $alias
+	dbset_function $DEVICE_CONTROLLER.Enable $enable
+}
+
+mqtt_config() {
+	local mqtt=$1
+	local brokeraddress
+	local protocolversion
+	local brokerport
+	local transportprotocol
+	local username
+	local password
+	local alias
+	local enable
+	local keepalivetime
+	local connectretrytime
+	local connectretryintervalmultiplier
+	local connectretrymaxinterval
+	config_get brokeraddress "$mqtt" "brokeraddress" "$mqtt"
+	config_get  protocolversion "$mqtt" "protocolversion" "$mqtt"
+	config_get brokerport "$mqtt" "brokerport" "$mqtt"
+	config_get transportprotocol "$mqtt" "transportprotocol" "$mqtt"
+	config_get username "$mqtt" "username" "$mqtt"
+	config_get password "$mqtt" "password" "$mqtt"
+	config_get alias "$mqtt" "alias" "$mqtt"
+	config_get  enable "$mqtt" "enable" "$mqtt"
+	config_get keepalivetime "$mqtt" "keepalivetime" "$mqtt"
+	config_get connectretrytime "$mqtt" "connectretrytime" "$mqtt"
+	config_get connectretryintervalmultiplier "$mqtt" "connectretryintervalmultiplier" "$mqtt"
+	config_get connectretrymaxinterval "$mqtt" "connectretrymaxinterval" "$mqtt"
+	dbset_function $DEVICE_MQTT.BrokerAddress $brokeraddress
+	dbset_function $DEVICE_MQTT.ProtocolVersion $protocolversion
+	dbset_function $DEVICE_MQTT.BrokerPort $brokerport
+	dbset_function $DEVICE_MQTT.TransportProtocol $transportprotocol
+	dbset_function $DEVICE_MQTT.Username $username
+	dbset_function $DEVICE_MQTT.Password $password
+	dbset_function $DEVICE_MQTT.Alias $alias
+	dbset_function $DEVICE_MQTT.Enable $enable
+	dbset_function $DEVICE_MQTT.KeepAliveTime $keepalivetime
+	dbset_function $DEVICE_MQTT.ConnectRetryTime $connectretrytime
+	dbset_function $DEVICE_MQTT.ConnectRetryIntervalMultiplier $connectretryintervalmultiplier
+	dbset_function $DEVICE_MQTT.ConnectRetryMaxInterval $connectretrymaxinterval
+}
+
+start_service() {
+	mkdir -p /var/obuspa
+	config_load obuspa
+	config_foreach localagent_config localagent
+	config_foreach mtp_config mtp
+	config_foreach controller_config controller
+	config_foreach mqtt_config mqtt
+}

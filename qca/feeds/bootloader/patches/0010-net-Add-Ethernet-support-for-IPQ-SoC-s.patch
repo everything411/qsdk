@@ -1,0 +1,399 @@
+From f91e66bf61d9668863eb59941eb5a4d3456bb973 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Tue, 18 Mar 2025 11:30:27 +0530
+Subject: [PATCH] net: Add Ethernet support for IPQ SoC's
+
+Supported platforms:
+- IPQ5424
+- IPQ5332
+- IPQ9574
+
+Change-Id: I9bad3b7284d0a691164d6bb380ec4fe7d6323cae
+Signed-off-by: Ram Kumar D <ramd@qti.qualcomm.com>
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/clk/qcom/clock-qcom.c                 | 43 +++++++++++++++
+ drivers/clk/qcom/clock-qcom.h                 |  2 +
+ drivers/net/Kconfig                           | 22 ++++++++
+ drivers/net/Makefile                          |  3 ++
+ drivers/net/mdio-ipq4019.c                    |  1 -
+ drivers/net/phy/Kconfig                       | 25 +++++++++
+ drivers/net/phy/Makefile                      |  5 ++
+ .../dt-bindings/clock/qcom,ipq5332-gcc.h      | 37 +++++++++++++
+ .../dt-bindings/clock/qcom,ipq9574-gcc.h      | 54 +++++++++++++++++++
+ .../dt-bindings/reset/qcom,ipq9574-gcc.h      | 36 ++++++++++++-
+ 10 files changed, 226 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/qcom/clock-qcom.c b/drivers/clk/qcom/clock-qcom.c
+index 4c70c71cb35..ddc8ed11b3e 100644
+--- a/drivers/clk/qcom/clock-qcom.c
++++ b/drivers/clk/qcom/clock-qcom.c
+@@ -40,6 +40,9 @@
+ #define CFG_GDSCR_OFFSET		0x4
+ #define GDSC_STATUS_POLL_TIMEOUT_US	1500
+ 
++__weak ulong msm_get_rate(struct clk *clk) {return 0; }
++__weak int msm_set_parent(struct clk *clk, struct clk *parent) {return 0; }
++
+ /* Enable clock controlled by CBC soft macro */
+ void clk_enable_cbc(phys_addr_t cbcr)
+ {
+@@ -93,6 +96,7 @@ void clk_bcr_update(phys_addr_t apps_cmd_rcgr)
+ 	     (void *)&apps_cmd_rcgr, readl(apps_cmd_rcgr));
+ }
+ 
++#define CFG_MASK		0x3FFF
+ #define CFG_SRC_DIV_MASK	0b11111
+ #define CFG_SRC_SEL_SHIFT	8
+ #define CFG_SRC_SEL_MASK	(0x7 << CFG_SRC_SEL_SHIFT)
+@@ -143,6 +147,33 @@ void clk_rcg_set_rate_mnd(phys_addr_t base, uint32_t cmd_rcgr,
+ 	clk_bcr_update(base + cmd_rcgr);
+ }
+ 
++/* root set rate for clocks without the MND divider */
++void clk_rcg_set_rate_v2(phys_addr_t base, uint32_t cmd_rcgr, uint32_t div_cdivr,
++			 int div, int cdiv, int source)
++{
++	u32 cfg;
++
++	/* setup src select and divider */
++	cfg  = readl(base + cmd_rcgr + RCG_CFG_REG);
++	cfg &= ~CFG_MASK;
++	cfg |= source & CFG_CLK_SRC_MASK; /* Select clock source */
++
++	/*
++	 * Set the divider
++	 */
++	if (div)
++		cfg |= div & CFG_SRC_DIV_MASK;
++
++	writel(cfg, base + cmd_rcgr + RCG_CFG_REG); /* Write new clock configuration */
++
++	/* Write the common divider clock configuration */
++	if (div_cdivr)
++		writel(cdiv, base + div_cdivr);
++
++	/* Inform h/w to start using the new config. */
++	clk_bcr_update(base + cmd_rcgr);
++}
++
+ /* root set rate for clocks with half integer and mnd_width=0 */
+ void clk_rcg_set_rate(phys_addr_t base, uint32_t cmd_rcgr, int div,
+ 		      int source)
+@@ -351,9 +382,21 @@ static void __maybe_unused msm_dump_clks(struct udevice *dev)
+ 	dump_rcgs(dev);
+ }
+ 
++static ulong msm_clk_get_rate(struct clk *clk)
++{
++	return msm_get_rate(clk);
++}
++
++static int msm_clk_set_parent(struct clk *clk, struct clk *parent)
++{
++	return msm_set_parent(clk, parent);
++}
++
+ static struct clk_ops msm_clk_ops = {
+ 	.set_rate = msm_clk_set_rate,
+ 	.enable = msm_clk_enable,
++	.get_rate = msm_clk_get_rate,
++	.set_parent = msm_clk_set_parent,
+ #if IS_ENABLED(CONFIG_CMD_CLK)
+ 	.dump = msm_dump_clks,
+ #endif
+diff --git a/drivers/clk/qcom/clock-qcom.h b/drivers/clk/qcom/clock-qcom.h
+index 74dd5435ef4..5883adf328b 100644
+--- a/drivers/clk/qcom/clock-qcom.h
++++ b/drivers/clk/qcom/clock-qcom.h
+@@ -106,6 +106,8 @@ void clk_rcg_set_rate_mnd(phys_addr_t base, uint32_t cmd_rcgr,
+ void clk_rcg_set_rate(phys_addr_t base, uint32_t cmd_rcgr, int div,
+ 		      int source);
+ void clk_phy_mux_enable(phys_addr_t base, uint32_t cmd_rcgr, bool enabled);
++void clk_rcg_set_rate_v2(phys_addr_t base, uint32_t cmd_rcgr, uint32_t div_cdivr,
++			 int div, int cdiv, int source);
+ 
+ static inline void qcom_gate_clk_en(const struct msm_clk_priv *priv, unsigned long id)
+ {
+diff --git a/drivers/net/Kconfig b/drivers/net/Kconfig
+index 1563404ca17..1c2e09a5bdd 100644
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -1035,6 +1035,20 @@ config MDIO_IPQ4019
+ 	  This driver supports the MDIO interface found in Qualcomm
+ 	  IPQ40xx series Soc-s.
+ 
++config MDIO_IPQ_BITBANGMII
++	bool "Qualcomm IPQ Bit-Bang MDIO interface support"
++	depends on DM_MDIO && BITBANGMII && BITBANGMII_MULTI
++	help
++	  This driver supports the MDIO interface found in Qualcomm
++	  IPQ series Soc-s.
++
++config MDIO_QCOM_I2C
++	bool "Qualcomm MDIO - I2C interface support"
++	depends on DM_MDIO
++	help
++	  This driver supports the MDIO - I2C interface software driver for
++	  Qualcomm IPQ series Soc-s.
++
+ config MVMDIO
+ 	bool "Marvell MDIO interface support"
+ 	depends on DM_MDIO
+@@ -1080,4 +1094,12 @@ config MDIO_MUX_MESON_GXL
+ 	  This driver is used for the MDIO mux found on the Amlogic GXL & compatible
+ 	  SoCs.
+ 
++config QCOM_NSS_SWITCH
++	bool "Qualcomm Ethernet support"
++	help
++	  This driver supports the NSS interface found in Qualcomm
++	  IPQ series SoC-s.
++
++source "drivers/net/qcom/Kconfig"
++
+ endif # NETDEVICES
+diff --git a/drivers/net/Makefile b/drivers/net/Makefile
+index 80d70212971..7b368ce7077 100644
+--- a/drivers/net/Makefile
++++ b/drivers/net/Makefile
+@@ -63,6 +63,8 @@ obj-$(CONFIG_MACB) += macb.o
+ obj-$(CONFIG_MCFFEC) += mcffec.o mcfmii.o
+ obj-$(CONFIG_MDIO_IPQ4019) += mdio-ipq4019.o
+ obj-$(CONFIG_MDIO_GPIO_BITBANG) += mdio_gpio.o
++obj-$(CONFIG_MDIO_IPQ_BITBANGMII) += mdio-ipq-bb.o
++obj-$(CONFIG_MDIO_QCOM_I2C) += mdio-qcom-i2c.o
+ obj-$(CONFIG_MDIO_MUX_I2CREG) += mdio_mux_i2creg.o
+ obj-$(CONFIG_MDIO_MUX_MESON_G12A) += mdio_mux_meson_g12a.o
+ obj-$(CONFIG_MDIO_MUX_MESON_GXL) += mdio_mux_meson_gxl.o
+@@ -110,3 +112,4 @@ obj-y += mscc_eswitch/
+ obj-y += phy/
+ obj-y += qe/
+ obj-y += ti/
++obj-y += qcom/
+diff --git a/drivers/net/mdio-ipq4019.c b/drivers/net/mdio-ipq4019.c
+index eb813aa9723..71a970ba5a8 100644
+--- a/drivers/net/mdio-ipq4019.c
++++ b/drivers/net/mdio-ipq4019.c
+@@ -12,7 +12,6 @@
+  */
+ 
+ #include <asm/io.h>
+-#include <common.h>
+ #include <dm.h>
+ #include <dm/device_compat.h>
+ #include <clk.h>
+diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
+index 3132718e4f8..7e54d85ab43 100644
+--- a/drivers/net/phy/Kconfig
++++ b/drivers/net/phy/Kconfig
+@@ -382,3 +382,28 @@ config PHY_RESET_DELAY
+ 	  Some PHYs need extra delay after reset before any MII register access
+ 	  is possible.  For such PHY, set this option to the usec delay
+ 	  required.
++
++config PHY_QCA_8X8X
++	bool "QCA Ethernet QCA808x(PHY)/QCA8386(Switch) support"
++	---help---
++	  Adds support for the QCA Ethernet QCA808x(PHY)/QCA8386(Switch).
++
++config PHY_QCA_8075
++	bool "QCA Ethernet QCA8075 support"
++	---help---
++	  Adds support for the QCA Ethernet QCA8075.
++
++config PHY_QCA_8081
++	bool "QCA Ethernet QCA8081 support"
++	---help---
++	  Adds support for the QCA Ethernet QCA8081.
++
++config PHY_QCA_81XX
++	bool "QCA Ethernet QCA81XX support"
++	---help---
++	  Adds support for the QCA Ethernet QCA81XX.
++
++config PHY_QCA_8033
++	bool "QCA Ethernet QCA8033 support"
++	---help---
++	  Adds support for the QCA Ethernet QCA8033.
+diff --git a/drivers/net/phy/Makefile b/drivers/net/phy/Makefile
+index 2487f366e1c..85e1da52714 100644
+--- a/drivers/net/phy/Makefile
++++ b/drivers/net/phy/Makefile
+@@ -28,6 +28,11 @@ obj-$(CONFIG_PHY_MOTORCOMM) += motorcomm.o
+ obj-$(CONFIG_PHY_NATSEMI) += natsemi.o
+ obj-$(CONFIG_PHY_NXP_C45_TJA11XX) += nxp-c45-tja11xx.o
+ obj-$(CONFIG_PHY_NXP_TJA11XX) += nxp-tja11xx.o
++obj-$(CONFIG_PHY_QCA_8X8X) += qcom_qca8x8x.o
++obj-$(CONFIG_PHY_QCA_8075) += qcom_qca8075.o
++obj-$(CONFIG_PHY_QCA_8081) += qcom_qca8081.o
++obj-$(CONFIG_PHY_QCA_81XX) += qcom_qca81xx.o
++obj-$(CONFIG_PHY_QCA_8033) += qcom_qca8033.o
+ obj-$(CONFIG_PHY_REALTEK) += realtek.o
+ obj-$(CONFIG_PHY_SMSC) += smsc.o
+ obj-$(CONFIG_PHY_TERANETICS) += teranetics.o
+diff --git a/dts/upstream/include/dt-bindings/clock/qcom,ipq5332-gcc.h b/dts/upstream/include/dt-bindings/clock/qcom,ipq5332-gcc.h
+index da9b507c30b..a50bafe06ea 100644
+--- a/dts/upstream/include/dt-bindings/clock/qcom,ipq5332-gcc.h
++++ b/dts/upstream/include/dt-bindings/clock/qcom,ipq5332-gcc.h
+@@ -127,6 +127,13 @@
+ #define GCC_SNOC_USB_CLK				126
+ #define GCC_SYS_NOC_AT_CLK				127
+ #define GCC_SYSTEM_NOC_BFDCD_CLK_SRC			129
++#define NSS_CC_CFG_CLK					130
++#define NSS_CC_PPE_CLK					131
++#define UNIPHY0_NSS_RX_CLK				132
++#define UNIPHY0_NSS_TX_CLK				133
++#define UNIPHY1_NSS_RX_CLK				134
++#define UNIPHY1_NSS_TX_CLK				135
++
+ #define GCC_UNIPHY0_AHB_CLK				130
+ #define GCC_UNIPHY0_SYS_CLK				131
+ #define GCC_UNIPHY1_AHB_CLK				132
+@@ -333,4 +340,34 @@
+ #define GCC_NSSNOC_PCNOC_1_CLK_ARES			170
+ #define GCC_UNIPHY0_XPCS_ARES				171
+ #define GCC_UNIPHY1_XPCS_ARES				172
++#define NSS_CC_NSS_CSR_CLK				173
++#define NSS_CC_NSSNOC_NSS_CSR_CLK			174
++#define NSS_CC_PORT1_MAC_CLK				175
++#define NSS_CC_PORT2_MAC_CLK				176
++#define NSS_CC_PPE_SWITCH_IPE_CLK			177
++#define NSS_CC_PPE_SWITCH_CLK				178
++#define NSS_CC_PPE_SWITCH_CFG_CLK			179
++#define NSS_CC_PPE_EDMA_CFG_CLK				180
++#define NSS_CC_NSSNOC_PPE_CLK				181
++#define NSS_CC_NSSNOC_PPE_CFG_CLK			182
++#define NSS_CC_PPE_SWITCH_BTQ_CLK			183
++#define NSS_CC_PORT1_RX_CLK				184
++#define NSS_CC_PORT1_TX_CLK				185
++#define NSS_CC_PORT2_RX_CLK				186
++#define NSS_CC_PORT2_TX_CLK				187
++#define NSS_CC_UNIPHY_PORT1_RX_CLK			188
++#define NSS_CC_UNIPHY_PORT1_TX_CLK			189
++#define NSS_CC_UNIPHY_PORT2_RX_CLK			190
++#define NSS_CC_UNIPHY_PORT2_TX_CLK			191
++#define GCC_UNIPHY0_SOFT_RESET				192
++#define GCC_UNIPHY1_SOFT_RESET				193
++#define GCC_UNIPHY0_XPCS_RESET				194
++#define GCC_UNIPHY1_XPCS_RESET				195
++#define NSS_CC_PPE_BCR					196
++#define NSS_CC_PORT1_RX_RESET				197
++#define NSS_CC_PORT1_TX_RESET				198
++#define NSS_CC_PORT2_RX_RESET				199
++#define NSS_CC_PORT2_TX_RESET				200
++#define GCC_MDIO_MASTER_AHB_CLK				201
++#define NSS_CC_PPE_EDMA_CLK				202
+ #endif
+diff --git a/dts/upstream/include/dt-bindings/clock/qcom,ipq9574-gcc.h b/dts/upstream/include/dt-bindings/clock/qcom,ipq9574-gcc.h
+index f238aa4794a..406ae2d901c 100644
+--- a/dts/upstream/include/dt-bindings/clock/qcom,ipq9574-gcc.h
++++ b/dts/upstream/include/dt-bindings/clock/qcom,ipq9574-gcc.h
+@@ -202,4 +202,58 @@
+ #define GCC_PCIE1_PIPE_CLK				211
+ #define GCC_PCIE2_PIPE_CLK				212
+ #define GCC_PCIE3_PIPE_CLK				213
++#define GCC_MEM_NOC_SNOC_AXI_CLK			214
++#define NSS_CC_NSS_CSR_CLK				215
++#define NSS_CC_NSSNOC_NSS_CSR_CLK			216
++#define NSS_CC_PORT1_MAC_CLK				217
++#define NSS_CC_PORT2_MAC_CLK				218
++#define NSS_CC_PORT3_MAC_CLK				219
++#define NSS_CC_PORT4_MAC_CLK				220
++#define NSS_CC_PORT5_MAC_CLK				221
++#define NSS_CC_PORT6_MAC_CLK				222
++#define NSS_CC_PPE_SWITCH_IPE_CLK			223
++#define NSS_CC_PPE_SWITCH_CLK				224
++#define NSS_CC_PPE_SWITCH_CFG_CLK			225
++#define NSS_CC_PPE_EDMA_CLK				226
++#define NSS_CC_PPE_EDMA_CFG_CLK				227
++#define NSS_CC_CRYPTO_PPE_CLK				228
++#define NSS_CC_NSSNOC_PPE_CLK				229
++#define NSS_CC_NSSNOC_PPE_CFG_CLK			230
++#define NSS_CC_PPE_SWITCH_BTQ_CLK			231
++#define NSS_CC_PORT1_RX_CLK				232
++#define NSS_CC_PORT1_TX_CLK				233
++#define NSS_CC_PORT2_RX_CLK				234
++#define NSS_CC_PORT2_TX_CLK				235
++#define NSS_CC_PORT3_RX_CLK				236
++#define NSS_CC_PORT3_TX_CLK				237
++#define NSS_CC_PORT4_RX_CLK				238
++#define NSS_CC_PORT4_TX_CLK				239
++#define NSS_CC_PORT5_RX_CLK				240
++#define NSS_CC_PORT5_TX_CLK				241
++#define NSS_CC_PORT6_RX_CLK				242
++#define NSS_CC_PORT6_TX_CLK				243
++#define NSS_CC_UNIPHY_PORT1_RX_CLK			244
++#define NSS_CC_UNIPHY_PORT1_TX_CLK			245
++#define NSS_CC_UNIPHY_PORT2_RX_CLK			246
++#define NSS_CC_UNIPHY_PORT2_TX_CLK			247
++#define NSS_CC_UNIPHY_PORT3_RX_CLK			248
++#define NSS_CC_UNIPHY_PORT3_TX_CLK			249
++#define NSS_CC_UNIPHY_PORT4_RX_CLK			250
++#define NSS_CC_UNIPHY_PORT4_TX_CLK			251
++#define NSS_CC_UNIPHY_PORT5_RX_CLK			252
++#define NSS_CC_UNIPHY_PORT5_TX_CLK			253
++#define NSS_CC_UNIPHY_PORT6_RX_CLK			254
++#define NSS_CC_UNIPHY_PORT6_TX_CLK			255
++#define UNIPHY0_NSS_RX_CLK				256
++#define UNIPHY0_NSS_TX_CLK				257
++#define UNIPHY1_NSS_RX_CLK				258
++#define UNIPHY1_NSS_TX_CLK				259
++#define UNIPHY2_NSS_RX_CLK				260
++#define UNIPHY2_NSS_TX_CLK				261
++#define GCC_UNIPHY_SYS_CLK                              262
++#define GCC_PCNOC_BFDCD_CLK				263
++#define GCC_SYSTEM_NOC_BFDCD_CLK			264
++#define GCC_NSSNOC_MEMNOC_BFDCD_CLK			265
++#define NSS_CC_CFG_CLK					266
++#define NSS_CC_PPE_CLK					267
+ #endif
+diff --git a/dts/upstream/include/dt-bindings/reset/qcom,ipq9574-gcc.h b/dts/upstream/include/dt-bindings/reset/qcom,ipq9574-gcc.h
+index c709d103673..2254975e63e 100644
+--- a/dts/upstream/include/dt-bindings/reset/qcom,ipq9574-gcc.h
++++ b/dts/upstream/include/dt-bindings/reset/qcom,ipq9574-gcc.h
+@@ -161,5 +161,39 @@
+ #define GCC_WCSS_Q6_TBU_BCR					152
+ #define GCC_TCSR_BCR						153
+ #define GCC_CRYPTO_BCR						154
+-
++#define GCC_UNIPHY0_SOFT_RESET					155
++#define GCC_UNIPHY1_SOFT_RESET					156
++#define GCC_UNIPHY2_SOFT_RESET					157
++#define NSS_CC_UNIPHY_PORT1_TX_RESET				158
++#define NSS_CC_UNIPHY_PORT1_RX_RESET				159
++#define NSS_CC_UNIPHY_PORT2_TX_RESET				160
++#define NSS_CC_UNIPHY_PORT2_RX_RESET				161
++#define NSS_CC_UNIPHY_PORT3_TX_RESET				162
++#define NSS_CC_UNIPHY_PORT3_RX_RESET				163
++#define NSS_CC_UNIPHY_PORT4_TX_RESET				164
++#define NSS_CC_UNIPHY_PORT4_RX_RESET				165
++#define NSS_CC_UNIPHY_PORT5_TX_RESET				166
++#define NSS_CC_UNIPHY_PORT5_RX_RESET				167
++#define NSS_CC_UNIPHY_PORT6_TX_RESET				168
++#define NSS_CC_UNIPHY_PORT6_RX_RESET				169
++#define NSS_CC_PORT1_TX_RESET					170
++#define NSS_CC_PORT1_RX_RESET					171
++#define NSS_CC_PORT2_TX_RESET					172
++#define NSS_CC_PORT2_RX_RESET					173
++#define NSS_CC_PORT3_TX_RESET					174
++#define NSS_CC_PORT3_RX_RESET					175
++#define NSS_CC_PORT4_TX_RESET					176
++#define NSS_CC_PORT4_RX_RESET					177
++#define NSS_CC_PORT5_TX_RESET					178
++#define NSS_CC_PORT5_RX_RESET					179
++#define NSS_CC_PORT6_TX_RESET					180
++#define NSS_CC_PORT6_RX_RESET					181
++#define NSS_CC_PPE_EDMA_RESET					182
++#define NSS_CC_PPE_CFG_RESET					183
++#define NSS_CC_PORT1_MAC_RESET					184
++#define NSS_CC_PORT2_MAC_RESET					185
++#define NSS_CC_PORT3_MAC_RESET					186
++#define NSS_CC_PORT4_MAC_RESET					187
++#define NSS_CC_PORT5_MAC_RESET					188
++#define NSS_CC_PORT6_MAC_RESET					189
+ #endif
+-- 
+2.34.1
+

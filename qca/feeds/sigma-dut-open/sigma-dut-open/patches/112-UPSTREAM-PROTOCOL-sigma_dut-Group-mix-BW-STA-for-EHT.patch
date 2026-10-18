@@ -1,0 +1,36 @@
+From e2cae3449bd71d1b6e6133e358b2942dac9c60fd Mon Sep 17 00:00:00 2001
+From: Kiran Venkatappa <kiranv@qti.qualcomm.com>
+Date: Mon, 22 Dec 2025 18:46:11 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Group mix BW STA for EHT mode
+
+Currently mix BW is enabled for HE only. This change enables this for
+EHT also. This was done for WFA 20MHz only test cases. For 20MHz only
+stations, this change along with disable latency aware tx selection
+and use legacy air time based tx selection is required for this test
+case. Latency aware tx selection is change is already included. Hence,
+add the grouping of mix BW sta fw test command.
+
+Patch-dependency:102-QSDK-PROTOCOL-sigma_dut-Use-old-time-air-tx-selection.patch
+
+Signed-off-by: Kiran Venkatappa <kiranv@qti.qualcomm.com>
+---
+ ap.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 2bd374b..4bef840 100644
+--- a/ap.c
++++ b/ap.c
+@@ -9932,6 +9932,9 @@ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+ 		/* SIFS Burst disable to handle short SP */
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 2 1", ifname, link_id);
+ 	}
++
++	/* Enable mix bw */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 141 1", ifname, link_id);
+ }
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))
+-- 
+2.34.1
+

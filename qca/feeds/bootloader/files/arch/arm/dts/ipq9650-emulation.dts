@@ -1,0 +1,144 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include "ipq9650-u-boot.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. IPQ9650-EMULATION";
+	compatible = "qcom,ipq9650-emulation", "qcom,ipq9650";
+	soc@0 {
+
+		usb3_0: usb3_0@8af8800 {
+			status = "okay";
+			dwc3@8a00000 {
+				phys = <>;
+				phy-names = "";
+                        };
+
+		};
+
+		usb2_0: usb2_0@1ef8800 {
+			status = "okay";
+			dwc3@1e00000 {
+				phys = <>;
+				phy-names = "";
+                        };
+
+		};
+
+		pcie0: pcie@70000000 {
+			max-link-speed = <1>;
+			phys = <>;
+			phy-names = "";
+			perst-gpios = <&tlmm 25 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		pcie4: pcie@60000000 {
+			max-link-speed = <1>;
+			phys = <>;
+			phy-names = "";
+			perst-gpios = <&tlmm 31 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		pcie3: pcie@30000000 {
+			max-link-speed = <1>;
+			phys = <>;
+			phy-names = "";
+			perst-gpios = <&tlmm 41 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		pcie1: pcie@50000000 {
+			max-link-speed = <1>;
+			phys = <>;
+			phy-names = "";
+			perst-gpios = <&tlmm 28 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		pcie2: pcie@40000000 {
+			max-link-speed = <1>;
+			phys = <>;
+			phy-names = "";
+			perst-gpios = <&tlmm 52 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			status = "disabled";
+
+			phy0: phy@0 {
+				id = <1>;
+			};
+
+			phy1: phy@1 {
+				id = <2>;
+			};
+
+			phy2: phy@2 {
+				id = <3>;
+			};
+
+			phy3: phy@3 {
+				id = <4>;
+			};
+
+			phy4: phy@4 {
+				id = <5>;
+			};
+
+			phy5: phy@5 {
+				id = <6>;
+			};
+		};
+
+		ess_instance: ess-instance {
+			qcom,emulation;
+			pinctrl-names = "default";
+			phy-handle0 = <&phy0>;
+			status = "okay";
+			tdm_mode = <0>;
+		};
+	};
+};
+
+&tmel_qmp {
+	status = "okay";
+};
+
+&tmelcom {
+	status = "okay";
+};
+
+&i2c0 {
+	status = "okay";
+};
+
+&i2c0_fw {
+	status = "okay";
+};
+
+&i2c1 {
+	status = "okay";
+};
+
+&i2c1_fw {
+	status = "okay";
+};
+
+&uart1 {
+	reg = <0 0x1a84000 0 0x4000>;
+	clocks = <&gcc GCC_QUPV3_UART1_CLK>;
+	clock-names = "se";
+};
+
+&uart1_fw {
+	reg = <0 0x01a84000 0 0x4000>;
+};

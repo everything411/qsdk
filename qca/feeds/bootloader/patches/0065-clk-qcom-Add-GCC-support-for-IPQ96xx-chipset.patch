@@ -1,0 +1,48 @@
+From 0b36b78218885e5f1cb4fe65e6cdd3620a7dc076 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Wed, 16 Jul 2025 12:39:32 +0530
+Subject: [PATCH] clk: qcom: Add GCC support for IPQ96xx chipset
+
+This patch adds the clock driver support for IPQ96xx chipset
+
+Change-Id: Ieca021976585ac39657b221a1f5a9b6eeeda12c0
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/clk/qcom/Kconfig  | 8 ++++++++
+ drivers/clk/qcom/Makefile | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index 4c60cc40314..b77e138a136 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -55,6 +55,14 @@ config CLK_QCOM_IPQ5200
+ 	  on the Snapdragon IPQ5200 SoC. This driver supports the clocks
+ 	  and resets exposed by the GCC hardware block.
+ 
++config CLK_QCOM_IPQ9670
++	bool "Qualcomm IPQ9670 GCC"
++	select CLK_QCOM
++	help
++	  Say Y here to enable support for the Global Clock Controller
++	  on the Snapdragon IPQ9670 SoC. This driver supports the clocks
++	  and resets exposed by the GCC hardware block.
++
+ config CLK_QCOM_IPQ9574
+ 	bool "Qualcomm IPQ9574 GCC"
+ 	select CLK_QCOM
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index 3f72a63f2e1..cd1f7ac3310 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -11,6 +11,7 @@ obj-$(CONFIG_CLK_QCOM_IPQ5332) += clock-ipq5332.o
+ obj-$(CONFIG_CLK_QCOM_IPQ5424) += clock-ipq5424.o
+ obj-$(CONFIG_CLK_QCOM_IPQ5200) += clock-ipq5200.o
+ obj-$(CONFIG_CLK_QCOM_IPQ9574) += clock-ipq9574.o
++obj-$(CONFIG_CLK_QCOM_IPQ9670) += clock-ipq9670.o
+ obj-$(CONFIG_CLK_QCOM_QCM2290) += clock-qcm2290.o
+ obj-$(CONFIG_CLK_QCOM_QCS404) += clock-qcs404.o
+ obj-$(CONFIG_CLK_QCOM_SA8775P) += clock-sa8775p.o
+-- 
+2.34.1
+

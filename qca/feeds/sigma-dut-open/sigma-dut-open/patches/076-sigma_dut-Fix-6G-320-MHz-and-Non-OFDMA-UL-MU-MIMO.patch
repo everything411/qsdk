@@ -1,0 +1,287 @@
+From be690ecf56c6c7e0ba0c28a891560246b930d3a9 Mon Sep 17 00:00:00 2001
+From: Sidhanta Sahu <quic_sidhanta@quicinc.com>
+Date: Fri, 19 Jan 2024 15:12:13 -0800
+Subject: [PATCH] sigma_dut: Fix 6G 320 MHz and Non-OFDMA UL MU MIMO.
+
+Currently, hostapd expects below fields to be updated in conf file so
+that hostapd doesn't forcefully disable the phy capability provided by
+firmware.
+        eht_ulmumimo_80mhz
+        eht_ulmumimo_160mhz
+        eht_ulmumimo_320mhz
+
+And, 6G 320 interface was not coming up as expected, added
+support to update below fields:
+        op_class
+        eht_oper_chwidth
+        eht_oper_centr_freq_seg0_idx
+
+Signed-off-by: Sidhanta Sahu <quic_sidhanta@quicinc.com>
+---
+ ap.c        | 46 ++++++++++++++++++++++++++++++++++++--------
+ sigma_dut.h | 23 ++++++++++++++++++-----
+ 2 files changed, 55 insertions(+), 14 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -9029,7 +9029,6 @@ static int check_channel(struct sigma_du
+ 	return -1;
+ }
+ 
+-
+ static int get_oper_center_freq_6g(int chwidth, int channel)
+ {
+ 	switch (chwidth) {
+@@ -9883,6 +9885,55 @@ static int add_hapd_ctrl_iface(struct si
+ 	return 0;
+ }
+ 
++static int get_center_freq_seg_index(struct sigma_dut *dut,
++				     const int channel_width,
++				     const int channel,
++				     const int conf_counter)
++{
++	int oper_centr_freq_idx;
++
++	switch (channel_width) {
++	case AP_20:
++		dut->ap_oper_chan_chwidth = AP_20_40_VHT_OPER_CHWIDTH;
++		oper_centr_freq_idx =
++			get_oper_centr_freq_seq_idx(dut, 20,
++						    channel, conf_counter);
++		break;
++	case AP_40:
++		dut->ap_oper_chan_chwidth = AP_20_40_VHT_OPER_CHWIDTH;
++		oper_centr_freq_idx =
++			get_oper_centr_freq_seq_idx(dut, 40,
++						    channel, conf_counter);
++		break;
++	case AP_80:
++		dut->ap_oper_chan_chwidth = AP_80_VHT_OPER_CHWIDTH;
++		oper_centr_freq_idx =
++			get_oper_centr_freq_seq_idx(dut, 80,
++						    channel, conf_counter);
++		break;
++	case AP_160:
++		dut->ap_oper_chan_chwidth = AP_160_VHT_OPER_CHWIDTH;
++		oper_centr_freq_idx =
++			get_oper_centr_freq_seq_idx(dut, 160,
++						    channel, conf_counter);
++		break;
++	case AP_320:
++		dut->ap_oper_chan_chwidth = AP_OPER_CHWIDTH_320MHZ;
++		oper_centr_freq_idx =
++			get_oper_centr_freq_seq_idx(dut, 320,
++					    channel, conf_counter);
++		break;
++	default:
++		dut->ap_oper_chan_chwidth = VHT_DEFAULT_OPER_CHWIDTH;
++		oper_centr_freq_idx =
++			get_oper_centr_freq_seq_idx(dut, 80,
++						    channel, conf_counter);
++		break;
++	}
++
++	return oper_centr_freq_idx;
++}
++
+ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 					   struct sigma_conn *conn,
+ 					   struct sigma_cmd *cmd)
+@@ -10986,37 +11037,37 @@ skip_key_mgmt:
+ 
+ 		switch (chwidth) {
+ 		case AP_20:
+-			dut->ap_vht_chwidth = AP_20_40_VHT_OPER_CHWIDTH;
++			dut->ap_oper_chan_chwidth = AP_20_40_VHT_OPER_CHWIDTH;
+ 			vht_oper_centr_freq_idx =
+ 				get_oper_centr_freq_seq_idx(dut, 20,
+ 							    chan, conf_counter);
+ 			break;
+ 		case AP_40:
+-			dut->ap_vht_chwidth = AP_20_40_VHT_OPER_CHWIDTH;
++			dut->ap_oper_chan_chwidth = AP_20_40_VHT_OPER_CHWIDTH;
+ 			vht_oper_centr_freq_idx =
+ 				get_oper_centr_freq_seq_idx(dut, 40,
+ 							    chan, conf_counter);
+ 			break;
+ 		case AP_80:
+-			dut->ap_vht_chwidth = AP_80_VHT_OPER_CHWIDTH;
++			dut->ap_oper_chan_chwidth = AP_80_VHT_OPER_CHWIDTH;
+ 			vht_oper_centr_freq_idx =
+ 				get_oper_centr_freq_seq_idx(dut, 80,
+ 							    chan, conf_counter);
+ 			break;
+ 		case AP_160:
+-			dut->ap_vht_chwidth = AP_160_VHT_OPER_CHWIDTH;
++			dut->ap_oper_chan_chwidth = AP_160_VHT_OPER_CHWIDTH;
+ 			vht_oper_centr_freq_idx =
+ 				get_oper_centr_freq_seq_idx(dut, 160,
+ 							    chan, conf_counter);
+ 			break;
+ 		case AP_320:
+-			dut->ap_vht_chwidth = AP_320_VHT_OPER_CHWIDTH;
++			dut->ap_oper_chan_chwidth = AP_320_VHT_OPER_CHWIDTH;
+ 			vht_oper_centr_freq_idx =
+ 				get_oper_centr_freq_seq_idx(dut, 320,
+ 							    chan, conf_counter);
+ 			break;
+ 		default:
+-			dut->ap_vht_chwidth = VHT_DEFAULT_OPER_CHWIDTH;
++			dut->ap_oper_chan_chwidth = VHT_DEFAULT_OPER_CHWIDTH;
+ 			vht_oper_centr_freq_idx =
+ 				get_oper_centr_freq_seq_idx(dut, 80,
+ 							    chan, conf_counter);
+@@ -11027,36 +11078,7 @@ set_center_freq_idx_conf:
+ 		if (!check_band(dut, BAND_6G, conf_counter)) {
+ 			fprintf(f, "vht_oper_centr_freq_seg0_idx=%d\n",
+ 				vht_oper_centr_freq_idx);
+-			fprintf(f, "vht_oper_chwidth=%d\n", dut->ap_vht_chwidth);
+-		}
+-		if (mode == AP_11ax || mode == AP_11be) {
+-			fprintf(f, "he_oper_chwidth=%d\n", dut->ap_vht_chwidth);
+-			fprintf(f, "he_oper_centr_freq_seg0_idx=%d\n",
+-				vht_oper_centr_freq_idx);
+-		}
+-
+-		if (mode == AP_11be) {
+-			fprintf(f, "eht_oper_chwidth=%d\n",
+-				dut->ap_vht_chwidth);
+-			fprintf(f, "eht_oper_centr_freq_seg0_idx=%d\n",
+-				vht_oper_centr_freq_idx);
+-		}
+-
+-		if (check_band(dut, BAND_6G, conf_counter)) {
+-			fprintf(f, "op_class=%d\n",
+-				get_6g_ch_op_class(vht_oper_centr_freq_idx));
+-
+-			if (dut->ap_6g_unsol_prb_resp) {
+-				fprintf(f, "unsol_bcast_probe_resp_interval=20\n");
+-				fprintf(f, "force_disable_in_band_discovery=0\n");
+-			} else
+-				fprintf(f, "fils_discovery_max_interval=20\n");
+-		}
+-
+-		if (mode == AP_11be) {
+-			fprintf(f, "eht_oper_chwidth=%d\n", dut->ap_vht_chwidth);
+-			fprintf(f, "eht_oper_centr_freq_seg0_idx=%d\n",
+-				vht_oper_centr_freq_idx);
++			fprintf(f, "vht_oper_chwidth=%d\n", dut->ap_oper_chan_chwidth);
+ 		}
+ 
+ 		find_ap_ampdu_exp_and_max_mpdu_len(dut);
+@@ -11099,6 +11121,46 @@ set_center_freq_idx_conf:
+ 	}
+ skip_vht_parameters_set:
+ 
++	if ((mode == AP_11ax || mode == AP_11be) &&
++	     !check_band(dut, BAND_2G, conf_counter)) {
++		int seg_indx;
++
++		/*
++		 * Get the center freq for HE Operation,
++		 * if the operating bandwidth is 320 MHz forcefully
++		 * override with maximum HE supported bandwidth to 160 MHz
++		 */
++		seg_indx = get_center_freq_seg_index(dut,
++						     chwidth == AP_320 ? AP_160 : chwidth,
++						     chan,
++						     conf_counter);
++
++		fprintf(f, "he_oper_chwidth=%d\n", dut->ap_oper_chan_chwidth);
++		fprintf(f, "he_oper_centr_freq_seg0_idx=%d\n", seg_indx);
++
++		if (((dut->ap_link_chwidth[0] == AP_320) || (dut->ap_link_chwidth[1] == AP_320)) &&
++		    (check_band(dut, BAND_6G, conf_counter))) {
++			seg_indx = freq_to_channel(dut->cfreq);
++		} else {
++			seg_indx = get_center_freq_seg_index(dut, chwidth, chan,
++						     	     conf_counter);
++		}
++
++		if (check_band(dut, BAND_6G, conf_counter)) {
++			fprintf(f, "op_class=%d\n",
++				get_6g_ch_op_class(chan, chwidth));
++
++			if (dut->ap_6g_unsol_prb_resp) {
++				fprintf(f, "unsol_bcast_probe_resp_interval=20\n");
++				fprintf(f, "force_disable_in_band_discovery=0\n");
++			} else
++				fprintf(f, "fils_discovery_max_interval=20\n");
++		}
++
++		fprintf(f, "eht_oper_chwidth=%d\n", dut->ap_oper_chan_chwidth);
++		fprintf(f, "eht_oper_centr_freq_seg0_idx=%d\n", seg_indx);
++	}
++
+ 	if (dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+ 		fprintf(f, "he_su_beamformer=%d\n", dut->ap_txBF);
+ 		fprintf(f, "he_mu_beamformer=%d\n", dut->ap_mu_txBF);
+@@ -11123,6 +11185,9 @@ skip_vht_parameters_set:
+ 			fprintf(f, "eht_su_beamformer=%d\n", dut->ap_txBF);
+ 			fprintf(f, "eht_mu_beamformer=%d\n", dut->ap_mu_txBF);
+ 			fprintf(f, "eht_mu_beamformer=%d\n", dut->ap_su_txBF);
++			fprintf(f, "eht_ulmumimo_80mhz=%d\n", dut->ap_ulmumimo_80mhz);
++			fprintf(f, "eht_ulmumimo_160mhz=%d\n", dut->ap_ulmumimo_160mhz);
++			fprintf(f, "eht_ulmumimo_320mhz=%d\n", dut->ap_ulmumimo_320mhz);
+ 		}
+ 	}
+ 
+@@ -12686,6 +12751,9 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	}
+ 
+ 	if (dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
++		dut->ap_ulmumimo_80mhz = -1;
++		dut->ap_ulmumimo_160mhz = -1;
++		dut->ap_ulmumimo_320mhz = -1;
+ 		if (dut->device_type == AP_testbed) {
+ 			dut->ap_ba_bufsize = BA_BUFSIZE_64;
+ 			dut->ap_amsdu = VALUE_DISABLED;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -948,15 +948,28 @@ struct sigma_dut {
+ 	int ap_allow_vht_wep;
+ 	int ap_allow_vht_tkip;
+ 
+-	enum ap_vht_chwidth {
+-		AP_20_40_VHT_OPER_CHWIDTH,
+-		AP_80_VHT_OPER_CHWIDTH,
+-		AP_160_VHT_OPER_CHWIDTH,
+-		AP_320_VHT_OPER_CHWIDTH
+-	} ap_vht_chwidth;
++	/* VHT/EDMG/etc. channel widths
++	 * Note: The first four values are used in hostapd.conf and as such, must
++	 * maintain their defined values. Other values are used internally. */
++	enum ap_oper_chan_chwidth {
++		AP_20_40_VHT_OPER_CHWIDTH = 0,
++		AP_80_VHT_OPER_CHWIDTH = 1,
++		AP_160_VHT_OPER_CHWIDTH = 2,
++		AP_320_VHT_OPER_CHWIDTH = 3,
++		AP_OPER_CHWIDTH_80P80MHZ = 4,
++		AP_OPER_CHWIDTH_2160MHZ,
++		AP_OPER_CHWIDTH_4320MHZ,
++		AP_OPER_CHWIDTH_6480MHZ,
++		AP_OPER_CHWIDTH_8640MHZ,
++		AP_OPER_CHWIDTH_40MHZ_6GHZ,
++		AP_OPER_CHWIDTH_320MHZ,
++	} ap_oper_chan_chwidth;
+ 	int ap_txBF;
+ 	int ap_mu_txBF;
+ 	int ap_su_txBF;
++	int ap_ulmumimo_80mhz;
++	int ap_ulmumimo_160mhz;
++	int ap_ulmumimo_320mhz;
+ 	enum ap_regulatory_mode {
+ 		AP_80211D_MODE_DISABLED,
+ 		AP_80211D_MODE_ENABLED,
+--- a/utils.c
++++ b/utils.c
+@@ -341,6 +341,8 @@ unsigned int freq_to_channel(unsigned in
+ 		return 14;
+ 	if (freq >= 5180 && freq <= 5825)
+ 		return (freq - 5000) / 5;
++	if (freq >= 5925 && freq <= 7125)
++		return (freq - 5950) / 5;
+ 	if (freq >= 58320 && freq <= 64800)
+ 		return (freq - 58320) / 2160;
+ 	return 0;

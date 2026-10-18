@@ -1,0 +1,1585 @@
+From e6543f76b7c4b509b2c69da6ac64a2848571ac75 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+Date: Tue, 10 Mar 2026 11:40:05 -0700
+Subject: [PATCH] UPSTREAM:PROTOCOL: sigma_dut: CE1 and CE2 changes.
+
+Added PasswordIDChange parameter, EPPKE-PSK-SAE as keymgnt parameter,
+PMKSACachingPrivacy, WPA3-COMPAT-COEX as keymgnt parameter, IEEE8021x_Auth
+parameter to AP_SET_SECURITY CAPI.
+Added RSNO CAPI support. RSNO1E and RSNO2E for AKMsuitetype, pairwise
+cipher and PMF.
+Enable logging support for dev_upload_log CAPI.
+
+Patch-dependency: none
+
+Signed-off-by: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+---
+ ap.c        | 888 ++++++++++++++++++++++++++++++++++++++++++++++++++--
+ dev.c       |  54 +++-
+ sigma_dut.c |  18 +-
+ sigma_dut.h |  44 ++-
+ 4 files changed, 969 insertions(+), 38 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index a1cca98..0e8fdf8 100644
+--- a/ap.c
++++ b/ap.c
+@@ -1422,7 +1422,7 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 	    (dut->ap_interface_6g && dut->ap_interface_2g))
+ 		dut->ap_is_dual = 1;
+ 
+-	if (dut->program == PROGRAM_EHT) {
++	if (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) {
+ 		dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		dut->ap_beacon_prot = 1;
+ 		if ((dut->ap_interface_5g || dut->ap_interface_2g) &&
+@@ -3357,6 +3357,36 @@ static const char * get_sae_pk_key(const char *file_name)
+ 	return NULL;
+ }
+ 
++bool contains_ccmp_gcmp_128_256_ciphers(const char *val) {
++	char *tokens[4]; // to store the four ciphers
++	char *temp_val = strdup(val); // duplicate the string to avoid modifying the original
++	char *saveptr;
++	char *token = strtok_r(temp_val, " ", &saveptr);
++	int found[4] = {0}; // to track which ciphers have been found
++
++	int i = 0;
++	while (token != NULL && i < 4) {
++		tokens[i++] = token;
++		token = strtok_r(NULL, " ", &saveptr);
++	}
++
++	// Check if the required ciphers are in the parsed tokens
++	for (int j = 0; j < 4; j++) {
++		if (strcmp(tokens[j], "AES-CCMP-128") == 0)
++			found[0] = 1;
++		else if (strcmp(tokens[j], "AES-CCMP-256") == 0)
++			found[1] = 1;
++		else if (strcmp(tokens[j], "AES-GCMP-128") == 0)
++			found[2] = 1;
++		else if (strcmp(tokens[j], "AES-GCMP-256") == 0)
++			found[3] = 1;
++	}
++	free(temp_val);
++
++	// Return true only if all ciphers were found
++	return (found[0] && found[1] && found[2] && found[3]);
++}
++
+ static int ap_set_security_mixed_mode(struct sigma_dut *dut,
+ 				      struct sigma_conn *conn,
+ 				      struct sigma_cmd *cmd)
+@@ -3413,6 +3443,68 @@ static int ap_set_security_mixed_mode(struct sigma_dut *dut,
+ 		dut->mld[link_id].ap_akm_link = akm_values;
+ 	}
+ 
++	val = get_param(cmd, "RSNO1E_AKMSuiteType");
++	if (val) {
++		const char *in_pos = val;
++		int akm_values_rsno1e = 0;
++
++		while (*in_pos) {
++			int akm = atoi(in_pos);
++
++			if (akm < 0 || akm >= 32) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Unsupported RSNO1E AKMSuiteType value");
++				return STATUS_SENT;
++			}
++
++			akm_values_rsno1e |= 1 << akm;
++
++			in_pos = strchr(in_pos, ';');
++			if (!in_pos)
++				break;
++			while (*in_pos == ';')
++				in_pos++;
++		}
++		dut->ap_akm = 1;
++		if (akm_values_rsno1e & (1 << 14))
++			dut->ap_add_sha384 = 1;
++		if (akm_values_rsno1e & (1 << 15))
++			dut->ap_add_sha384 = 1;
++
++		dut->mld[link_id].ap_akm_rsno1e_link = akm_values_rsno1e;
++	}
++
++	val = get_param(cmd, "RSNO2E_AKMSuiteType");
++	if (val) {
++		const char *in_pos = val;
++		int akm_values_rsno2e = 0;
++
++		while (*in_pos) {
++			int akm = atoi(in_pos);
++
++			if (akm < 0 || akm >= 32) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Unsupported RSNO2E AKMSuiteType value");
++				return STATUS_SENT;
++			}
++
++			akm_values_rsno2e |= 1 << akm;
++
++			in_pos = strchr(in_pos, ';');
++			if (!in_pos)
++				break;
++			while (*in_pos == ';')
++				in_pos++;
++		}
++		dut->ap_akm = 1;
++		if (akm_values_rsno2e & (1 << 14))
++			dut->ap_add_sha384 = 1;
++		if (akm_values_rsno2e & (1 << 15))
++			dut->ap_add_sha384 = 1;
++
++		dut->mld[link_id].ap_akm_rsno2e_link = akm_values_rsno2e;
++	}
++
+ 	val = get_param(cmd, "PairwiseCipher");
+ 	if (val) {
+ 		if (strcasecmp(val, "AES-GCMP-256") == 0)
+@@ -3433,6 +3525,50 @@ static int ap_set_security_mixed_mode(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "RSNO1E_PairwiseCipher");
++	if (val) {
++		if (strcasecmp(val, "AES-GCMP-256") == 0) {
++			dut->mld[link_id].ap_cipher_1_link = AP_GCMP_256;
++		} else if (strcasecmp(val, "AES-CCMP-256") == 0) {
++			dut->mld[link_id].ap_cipher_1_link = AP_CCMP_256;
++		} else if (strcasecmp(val, "AES-GCMP-128") == 0) {
++			dut->mld[link_id].ap_cipher_1_link = AP_GCMP_128;
++		} else if (strcasecmp(val, "AES-CCMP-128") == 0) {
++			dut->mld[link_id].ap_cipher_1_link = AP_CCMP;
++		} else if (strcasecmp(val, "AES-CCMP-128 AES-GCMP-256") == 0 ||
++			   strcasecmp(val, "AES-GCMP-256 AES-CCMP-128") == 0) {
++			dut->mld[link_id].ap_cipher_1_link = AP_CCMP_128_GCMP_256;
++		} else if (contains_ccmp_gcmp_128_256_ciphers(val)) {
++			dut->mld[link_id].ap_cipher_1_link = AP_CCMP_128_CCMP_256_GCMP_128_GCMP_256;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported PairwiseCipher");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "RSNO2E_PairwiseCipher");
++	if (val) {
++		if (strcasecmp(val, "AES-GCMP-256") == 0) {
++			dut->mld[link_id].ap_cipher_2_link = AP_GCMP_256;
++		} else if (strcasecmp(val, "AES-CCMP-256") == 0) {
++			dut->mld[link_id].ap_cipher_2_link = AP_CCMP_256;
++		} else if (strcasecmp(val, "AES-GCMP-128") == 0) {
++			dut->mld[link_id].ap_cipher_2_link = AP_GCMP_128;
++		} else if (strcasecmp(val, "AES-CCMP-128") == 0) {
++			dut->mld[link_id].ap_cipher_2_link = AP_CCMP;
++		} else if (strcasecmp(val, "AES-CCMP-128 AES-GCMP-256") == 0 ||
++			   strcasecmp(val, "AES-GCMP-256 AES-CCMP-128") == 0) {
++			dut->mld[link_id].ap_cipher_2_link = AP_CCMP_128_GCMP_256;
++		} else if (contains_ccmp_gcmp_128_256_ciphers(val)) {
++			dut->mld[link_id].ap_cipher_2_link = AP_CCMP_128_CCMP_256_GCMP_128_GCMP_256;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported PairwiseCipher");
++			return 0;
++		}
++	}
++
+ 	val = get_param(cmd, "GroupCipher");
+ 	if (val) {
+ 		if (strcasecmp(val, "AES-GCMP-256") == 0)
+@@ -3482,6 +3618,47 @@ static int ap_set_security_mixed_mode(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "RSNO1E_PMF");
++	if (val) {
++		if (strcasecmp(val, "Disabled") == 0) {
++			dut->mld[link_id].ap_pmf_rsno1e_link = AP_PMF_DISABLED;
++		} else if (strcasecmp(val, "Optional") == 0) {
++			dut->mld[link_id].ap_pmf_rsno1e_link = AP_PMF_OPTIONAL;
++		} else if (strcasecmp(val, "Required") == 0) {
++			dut->mld[link_id].ap_pmf_rsno1e_link = AP_PMF_REQUIRED;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported SHA256");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "RSNO2E_PMF");
++	if (val) {
++		if (strcasecmp(val, "Disabled") == 0) {
++			dut->mld[link_id].ap_pmf_rsno2e_link = AP_PMF_DISABLED;
++		} else if (strcasecmp(val, "Optional") == 0) {
++			dut->mld[link_id].ap_pmf_rsno2e_link = AP_PMF_OPTIONAL;
++		} else if (strcasecmp(val, "Required") == 0) {
++			dut->mld[link_id].ap_pmf_rsno2e_link = AP_PMF_REQUIRED;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++			  "errorCode,Unsupported SHA256");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "RSNXOE_SAE_PWE");
++	if (val) {
++		if (strcasecmp(val, "h2e") == 0 || (strcasecmp(val, "H2E") == 0)) {
++			dut->mld[link_id].ap_sae_pwe_link = SAE_PWE_H2E;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported sae_pwe value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	val = get_param(cmd, "BeaconProtection");
+ 	if (val)
+ 		dut->mld[link_id].ap_beacon_prot_link = atoi(val);
+@@ -3492,6 +3669,65 @@ static int ap_set_security_mixed_mode(struct sigma_dut *dut,
+ 		dut->mld[link_id].ap_sae_groups_link = strdup(val);
+ 	}
+ 
++	val = get_param(cmd, "PMKSACaching");
++	if (val) {
++		dut->mld[link_id].ap_pmksa = 1;
++		if (strcasecmp(val, "disabled") == 0) {
++			dut->mld[link_id].ap_pmksa_caching = 1;
++		} else if (strcasecmp(val, "enabled") == 0) {
++			dut->mld[link_id].ap_pmksa_caching = 0;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported PMKSACaching value");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "IEEE8021x_Auth");
++	if (val) {
++		if (strcasecmp(val, "enabled") == 0) {
++			dut->mld[link_id].ap_ieee8021x_auth = 1;
++		} else if (strcasecmp(val, "disabled") == 0) {
++			dut->mld[link_id].ap_ieee8021x_auth = 0;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported IEEE8021x_Auth value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
++	val = get_param(cmd, "KEYMGNT");
++	if (!val)
++		val = get_param(cmd,"KeyMgmtType");
++	if (val) {
++		if (strcasecmp(val, "WPA3-COMPAT-COEX") == 0) {
++			dut->mld[link_id].ap_key_mgmt_link = 1;
++		} else if (strcasecmp(val, "WPA2-ENT-256") == 0) {
++			int akm_values = 0;
++			int akm = 5;
++
++			if (akm < 0 || akm >= 32) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Unsupported AKMSuiteType value");
++				return STATUS_SENT;
++			}
++
++			akm_values |= 1 << akm;
++
++			dut->ap_akm = 1;
++			if (akm_values & (1 << 14))
++				dut->ap_add_sha384 = 1;
++			if (akm_values & (1 << 15))
++				dut->ap_add_sha384 = 1;
++
++			dut->mld[link_id].ap_akm_link = akm_values;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported KEYMGNT");
++			return 0;
++		}
++	}
++
+ 	dut->security_links++;
+ 	return 1;
+ }
+@@ -3561,6 +3797,14 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 				   wlan_tag == 2) {
+ 				dut->ap_tag_key_mgmt[wlan_tag - 2] =
+ 					AP2_WPA2_EAP;
++			} else if (strcasecmp(val, "EPPKE-PSK-SAE") == 0 &&
++				   wlan_tag == 2) {
++				dut->ap_tag_key_mgmt[wlan_tag - 2] =
++					AP2_EPPKE_PSK_SAE;
++			} else if (strcasecmp(val, "WPA3-COMPAT-COEX") == 0 &&
++				   wlan_tag == 2) {
++				dut->ap_tag_key_mgmt[wlan_tag - 2] =
++					AP2_WPA3_COMPAT_COEX;
+ 			} else {
+ 				send_resp(dut, conn, SIGMA_INVALID,
+ 					  "errorCode,Unsupported KEYMGNT");
+@@ -3793,6 +4037,9 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 			dut->ap_key_mgmt = AP_WPA2_PSK_SAE;
+ 			dut->ap_cipher = AP_CCMP;
+ 			dut->ap_pmf = AP_PMF_OPTIONAL;
++		} else if (strcasecmp(val, "EPPKE-PSK-SAE") == 0) {
++			dut->ap_key_mgmt = AP_EPPKE_PSK_SAE;
++			dut->ap_cipher = AP_CCMP;
+ 		} else if (strcasecmp(val, "OWE") == 0) {
+ 			dut->ap_key_mgmt = AP_WPA2_OWE;
+ 			dut->ap_cipher = AP_CCMP;
+@@ -3814,7 +4061,7 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 			dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		} else if (strcasecmp(val, "WPA2-ENT-256") == 0) {
+ 			dut->ap_key_mgmt = AP_WPA2_EAP_SHA256;
+-			dut->ap_cipher = AP_CCMP;
++			dut->ap_cipher = AP_CCMP_128_GCMP_256;
+ 			dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		} else if (strcasecmp(val, "WPA2-PSK-256") == 0) {
+ 			dut->ap_key_mgmt = AP_WPA2_PSK_SHA256;
+@@ -3827,6 +4074,9 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 		} else if (strcasecmp(val, "WPA3-COMPAT") == 0) {
+ 			dut->ap_key_mgmt = AP_WPA3_COMPAT;
+ 			dut->ap_cipher = AP_CCMP;
++		} else if (strcasecmp(val, "WPA3-COMPAT-COEX") == 0) {
++			dut->ap_key_mgmt = AP_WPA3_COMPAT_COEX;
++			dut->ap_cipher = AP_CCMP;
+ 		} else if (strcasecmp(val, "NONE") == 0) {
+ 			dut->ap_key_mgmt = AP_OPEN;
+ 			dut->ap_cipher = AP_PLAIN;
+@@ -3877,6 +4127,7 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 
+ 	val = get_param(cmd, "sae_pwe");
+ 	if (val) {
++		dut->rsnxe_pwe = 1;
+ 		if (strcasecmp(val, "h2e") == 0) {
+ 			dut->sae_pwe = SAE_PWE_H2E;
+ 		} else if (strcasecmp(val, "loop") == 0 ||
+@@ -3889,6 +4140,20 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "RSNXOE_SAE_PWE");
++	if (val) {
++		if (strcasecmp(val, "h2e") == 0 || (strcasecmp(val, "H2E") == 0)) {
++			dut->sae_pwe = SAE_PWE_H2E;
++		} else if (strcasecmp(val, "loop") == 0 ||
++			   strcasecmp(val, "looping") == 0) {
++			dut->sae_pwe = SAE_PWE_LOOP;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported sae_pwe value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	val = get_param(cmd, "sae_pk");
+ 	if (val)
+ 		dut->ap_sae_pk = atoi(val);
+@@ -3987,6 +4252,50 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "RSNO1E_PairwiseCipher");
++	if (val) {
++		if (strcasecmp(val, "AES-GCMP-256") == 0) {
++			dut->ap_cipher_1 = AP_GCMP_256;
++		} else if (strcasecmp(val, "AES-CCMP-256") == 0) {
++			dut->ap_cipher_1 = AP_CCMP_256;
++		} else if (strcasecmp(val, "AES-GCMP-128") == 0) {
++			dut->ap_cipher_1 = AP_GCMP_128;
++		} else if (strcasecmp(val, "AES-CCMP-128") == 0) {
++			dut->ap_cipher_1 = AP_CCMP;
++		} else if (strcasecmp(val, "AES-CCMP-128 AES-GCMP-256") == 0 ||
++			   strcasecmp(val, "AES-GCMP-256 AES-CCMP-128") == 0) {
++			dut->ap_cipher_1 = AP_CCMP_128_GCMP_256;
++		} else if (contains_ccmp_gcmp_128_256_ciphers(val)) {
++			dut->ap_cipher_1 = AP_CCMP_128_CCMP_256_GCMP_128_GCMP_256;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported PairwiseCipher");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "RSNO2E_PairwiseCipher");
++	if (val) {
++		if (strcasecmp(val, "AES-GCMP-256") == 0) {
++			dut->ap_cipher_2 = AP_GCMP_256;
++		} else if (strcasecmp(val, "AES-CCMP-256") == 0) {
++			dut->ap_cipher_2 = AP_CCMP_256;
++		} else if (strcasecmp(val, "AES-GCMP-128") == 0) {
++			dut->ap_cipher_2 = AP_GCMP_128;
++		} else if (strcasecmp(val, "AES-CCMP-128") == 0) {
++			dut->ap_cipher_2 = AP_CCMP;
++		} else if (strcasecmp(val, "AES-CCMP-128 AES-GCMP-256") == 0 ||
++			   strcasecmp(val, "AES-GCMP-256 AES-CCMP-128") == 0) {
++			dut->ap_cipher_2 = AP_CCMP_128_GCMP_256;
++		} else if (contains_ccmp_gcmp_128_256_ciphers(val)) {
++			dut->ap_cipher_2 = AP_CCMP_128_CCMP_256_GCMP_128_GCMP_256;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported PairwiseCipher");
++			return 0;
++		}
++	}
++
+ 	val = get_param(cmd, "GroupCipher");
+ 	if (val) {
+ 		if (strcasecmp(val, "AES-GCMP-256") == 0) {
+@@ -4083,6 +4392,36 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 		pmf_set = true;
+ 	}
+ 
++	val = get_param(cmd, "RSNO1E_PMF");
++	if (val) {
++		if (strcasecmp(val, "Disabled") == 0) {
++			dut->ap_pmf_rsno1e = AP_PMF_DISABLED;
++		} else if (strcasecmp(val, "Optional") == 0) {
++			dut->ap_pmf_rsno1e = AP_PMF_OPTIONAL;
++		} else if (strcasecmp(val, "Required") == 0) {
++			dut->ap_pmf_rsno1e = AP_PMF_REQUIRED;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported SHA256");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "RSNO2E_PMF");
++	if (val) {
++		if (strcasecmp(val, "Disabled") == 0) {
++			dut->ap_pmf_rsno2e = AP_PMF_DISABLED;
++		} else if (strcasecmp(val, "Optional") == 0) {
++			dut->ap_pmf_rsno2e = AP_PMF_OPTIONAL;
++		} else if (strcasecmp(val, "Required") == 0) {
++			dut->ap_pmf_rsno2e = AP_PMF_REQUIRED;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++			  "errorCode,Unsupported SHA256");
++			return 0;
++		}
++	}
++
+ 	dut->ap_add_sha256 = 0;
+ 	val = get_param(cmd, "SHA256AD");
+ 	if (val == NULL)
+@@ -4140,6 +4479,64 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 			dut->ap_add_sha384 = 1;
+ 	}
+ 
++	val = get_param(cmd, "RSNO1E_AKMSuiteType");
++	if (val) {
++		const char *in_pos = val;
++		dut->ap_akm_values_rsno1e = 0;
++
++		while (*in_pos) {
++			int akm = atoi(in_pos);
++
++			if (akm < 0 || akm >= 32) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Unsupported RSNO1E AKMSuiteType value");
++				return STATUS_SENT;
++			}
++
++			dut->ap_akm_values_rsno1e |= 1 << akm;
++
++			in_pos = strchr(in_pos, ';');
++			if (!in_pos)
++				break;
++			while (*in_pos == ';')
++				in_pos++;
++		}
++		dut->ap_akm = 1;
++		if (dut->ap_akm_values_rsno1e & (1 << 14))
++			dut->ap_add_sha384 = 1;
++		if (dut->ap_akm_values_rsno1e & (1 << 15))
++			dut->ap_add_sha384 = 1;
++	}
++
++	val = get_param(cmd, "RSNO2E_AKMSuiteType");
++	if (val) {
++		const char *in_pos = val;
++		dut->ap_akm_values_rsno2e = 0;
++
++		while (*in_pos) {
++			int akm = atoi(in_pos);
++
++			if (akm < 0 || akm >= 32) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Unsupported RSNO2E AKMSuiteType value");
++				return STATUS_SENT;
++			}
++
++			dut->ap_akm_values_rsno2e |= 1 << akm;
++
++			in_pos = strchr(in_pos, ';');
++			if (!in_pos)
++				break;
++			while (*in_pos == ';')
++				in_pos++;
++		}
++		dut->ap_akm = 1;
++		if (dut->ap_akm_values_rsno2e & (1 << 14))
++			dut->ap_add_sha384 = 1;
++		if (dut->ap_akm_values_rsno2e & (1 << 15))
++			dut->ap_add_sha384 = 1;
++	}
++
+ 	if (dut->ap_key_mgmt == AP_OPEN && !dut->ap_akm_values) {
+ 		dut->ap_hs2 = 0;
+ 		dut->ap_pmf = AP_PMF_DISABLED;
+@@ -4206,6 +4603,19 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "IEEE8021x_Auth");
++	if (val) {
++		if (strcasecmp(val, "enabled") == 0) {
++			dut->ap_ieee8021x_auth = 1;
++		} else if (strcasecmp(val, "disabled") == 0) {
++			dut->ap_ieee8021x_auth = 0;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported IEEE8021x_Auth value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return 1;
+ }
+ 
+@@ -5582,6 +5992,7 @@ static int owrt_ap_config_vap(struct sigma_dut *dut)
+ 		case AP_WPA2_PSK_SHA256:
+ 		case AP_WPA2_ENT_FT_EAP:
+ 		case AP_WPA3_COMPAT:
++		case AP_WPA3_COMPAT_COEX:
+ 			/* TODO */
+ 			break;
+ 		case AP_SUITEB:
+@@ -5630,6 +6041,9 @@ static int owrt_ap_config_vap(struct sigma_dut *dut)
+ 		case AP_WPA3_SAE_EXT:
+ 			/* TODO - not yet supported */
+ 			break;
++		case AP_EPPKE_PSK_SAE:
++			/* TODO */
++			break;
+ 		}
+ 
+ 		if (!dut->ap_is_dual)
+@@ -6598,6 +7012,8 @@ static int cmd_wcn_ap_config_commit(struct sigma_dut *dut,
+ 	case AP_WPA2_ENT_FT_EAP:
+ 	case AP_WPA3_SAE_EXT:
+ 	case AP_WPA3_COMPAT:
++	case AP_EPPKE_PSK_SAE:
++	case AP_WPA3_COMPAT_COEX:
+ 		/* Not supported */
+ 		break;
+ 	}
+@@ -8830,6 +9246,8 @@ static int cmd_ath_ap_config_commit(struct sigma_dut *dut,
+ 	case AP_OSEN:
+ 	case AP_WPA3_SAE_EXT:
+ 	case AP_WPA3_COMPAT:
++	case AP_EPPKE_PSK_SAE:
++	case AP_WPA3_COMPAT_COEX:
+ 		/* TODO */
+ 		send_resp(dut, conn, SIGMA_ERROR,
+ 			  "errorCode,Unsupported KeyMgnt value");
+@@ -8946,6 +9364,8 @@ static int cmd_ath_ap_config_commit(struct sigma_dut *dut,
+ 		case AP_OSEN:
+ 		case AP_WPA3_SAE_EXT:
+ 		case AP_WPA3_COMPAT:
++		case AP_EPPKE_PSK_SAE:
++		case AP_WPA3_COMPAT_COEX:
+ 			/* TODO */
+ 			send_resp(dut, conn, SIGMA_ERROR,
+ 				  "errorCode,Unsupported KeyMgnt value");
+@@ -10116,6 +10536,18 @@ static void set_second_ap_security_conf(FILE *file, struct sigma_dut *dut, int l
+ 			hostapd_cipher_name(dut->ap_cipher));
+ 		fprintf(file, "wpa_passphrase=%s\n", dut->ap_tag_passphrase[0]);
+ 		break;
++	case AP2_EPPKE_PSK_SAE:
++		if (dut->ap_band_6g && (dut->mld[link_id].ap_band == BAND_6G))
++				fprintf(file, "sae_pwe=1\n");
++
++		fprintf(file, "wpa=2\n");
++		fprintf(file, "wpa_key_mgmt=SAE SAE-EXT-KEY EPPKE\n");
++		fprintf(file, "wpa_pairwise=CCMP GCMP-256\n");
++		fprintf(file, "sae_password=%s\n",
++			dut->ap_passphrase);
++		fprintf(file, "ieee80211w=2\n");
++		fprintf(file, "assoc_frame_encryption=1\n");
++		fprintf(file, "kek_in_pasn=1\n");
+ 	case AP2_WPA2_EAP:
+ 		fprintf(file, "ieee8021x=1\n");
+ 		fprintf(file, "wpa=2\n");
+@@ -10156,6 +10588,44 @@ static void set_second_ap_security_conf(FILE *file, struct sigma_dut *dut, int l
+ 		fprintf(file, "ieee80211w=2\n");
+ 		fprintf(file, "sae_password=%s\n", dut->ap_passphrase);
+ 		break;
++	case AP2_WPA3_COMPAT_COEX:
++		if (dut->ap_band_6g && (dut->mld[link_id].ap_band == BAND_6G)) {
++			fprintf(file, "wpa_key_mgmt=SAE\n");
++			fprintf(file, "sae_password=%s\n",
++				dut->ap_passphrase);
++			fprintf(file, "ieee80211w=2\n");
++		} else {
++			fprintf(file, "wpa_key_mgmt=WPA-PSK\n");
++			fprintf(file, "wpa_passphrase=%s\n",
++				dut->ap_passphrase);
++			fprintf(file, "ieee80211w=1\n");
++		}
++		fprintf(file, "wpa=2\n");
++		fprintf(file, "auth_server_addr=%s\n", dut->ap_radius_ipaddr);
++		if (dut->ap_radius_port) {
++			fprintf(file, "auth_server_port=%d\n",
++				dut->ap_radius_port);
++		}
++		fprintf(file, "auth_server_shared_secret=%s\n",
++			dut->ap_radius_password);
++		fprintf(file, "wpa_pairwise=%s\n",
++			hostapd_cipher_name(dut->ap_cipher));
++		fprintf(file, "sae_pwe=1\n");
++		fprintf(file, "wpa_group_rekey=3600\n");
++		fprintf(file, "ieee8021x=1\n");
++		/* RSNO AKM */
++		fprintf(file, "rsn_override_key_mgmt=SAE WPA-EAP-SHA256\n");
++		/* RSNO PAIRWISE */
++		fprintf(file, "rsn_override_pairwise=CCMP\n");
++		/* RSNO PMF */
++		fprintf(file, "rsn_override_mfp=2\n");
++		/* RSNO2 AKM */
++		fprintf(file, "rsn_override_key_mgmt_2=SAE-EXT-KEY WPA-EAP-SHA256\n");
++		/* RSNO2 PAIRWISE */
++		fprintf(file, "rsn_override_pairwise_2=GCMP-256\n");
++		/* RSNO2 PMF */
++		fprintf(file, "rsn_override_mfp_2=2\n");
++		break;
+ 	default:
+ 		fprintf(file, "wpa=1\n");
+ 		break;
+@@ -10329,8 +10799,13 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 	bool mld_sae_set = false;
+ 	int j;
+ 	int pmf = 0, akm_values = 0, cipher = 0, group_cipher = 0, group_mgmt_cipher = 0;
++	int pmf_rsno1e = 0, pmf_rsno2e = 0, cipher_rsno1e = 0, cipher_rsno2e = 0, akm_values_rsno1e = 0, akm_values_rsno2e = 0;
+ 	int beacon_prot = 0;
+ 	char *sae_groups = NULL;
++	int pmksa = 0, pmksa_caching = 0;
++	int ieee8021x_auth = 0;
++	int wpa3_compat_coex= 0;
++	int ap_sae_pwe = 0;
+ 
+ 	drv = get_driver_type(dut);
+ 	mode = dut->mld[0].ap_mode;
+@@ -10407,20 +10882,40 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 
+ 		if (dut->link_specific_security && !dut->multi_mld) {
+ 			pmf = dut->mld[link_id].ap_pmf_link;
++			pmf_rsno1e = dut->mld[link_id].ap_pmf_rsno1e_link;
++			pmf_rsno2e = dut->mld[link_id].ap_pmf_rsno2e_link;
++			ap_sae_pwe = dut->mld[link_id].ap_sae_pwe_link;
+ 			akm_values = dut->mld[link_id].ap_akm_link;
++			akm_values_rsno1e = dut->mld[link_id].ap_akm_rsno1e_link;
++			akm_values_rsno2e = dut->mld[link_id].ap_akm_rsno2e_link;
+ 			cipher = dut->mld[link_id].ap_cipher_link;
++			cipher_rsno1e = dut->mld[link_id].ap_cipher_1_link;
++			cipher_rsno2e = dut->mld[link_id].ap_cipher_2_link;
+ 			group_cipher = dut->mld[link_id].ap_group_cipher_link;
+ 			group_mgmt_cipher = dut->mld[link_id].ap_group_mgmt_cipher_link;
+ 			beacon_prot = dut->mld[link_id].ap_beacon_prot_link;
++			wpa3_compat_coex = dut->mld[link_id].ap_key_mgmt_link;
+ 			sae_groups = dut->mld[link_id].ap_sae_groups_link;
++			pmksa = dut->mld[link_id].ap_pmksa;
++			pmksa_caching = dut->mld[link_id].ap_pmksa_caching;
++			ieee8021x_auth = dut->mld[link_id].ap_ieee8021x_auth;
+ 		} else {
+ 			pmf = dut->ap_pmf;
++			pmf_rsno1e = dut->ap_pmf_rsno1e;
++			pmf_rsno2e = dut->ap_pmf_rsno2e;
+ 			akm_values = dut->ap_akm_values;
++			akm_values_rsno1e = dut->ap_akm_values_rsno1e;
++			akm_values_rsno2e = dut->ap_akm_values_rsno2e;
+ 			cipher = dut->ap_cipher;
++			cipher_rsno1e = dut->ap_cipher_1;
++			cipher_rsno2e = dut->ap_cipher_2;
+ 			group_cipher = dut->ap_group_cipher;
+ 			group_mgmt_cipher = dut->ap_group_mgmt_cipher;
+ 			beacon_prot = dut->ap_beacon_prot;
+ 			sae_groups = dut->ap_sae_groups;
++			pmksa = dut->ap_pmksa;
++			pmksa_caching = dut->ap_pmksa_caching;
++			ieee8021x_auth = dut->ap_ieee8021x_auth;
+ 		}
+ 
+ 		if (drv == DRIVER_MAC80211) {
+@@ -10707,7 +11202,7 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 
+ 		fprintf(f, "bssid=%02x:%02x:%02x:%02x",
+ 			main_bssid[0], main_bssid[1], main_bssid[2], main_bssid[3]);
+-		if (link_id > 0 && strncmp(dut->device_driver, "ath12k", 6) == 0)
++		if (link_id > 0 && ((dut->ap_is_mld) || ((strncmp(dut->device_driver, "ath12k", 6)) == 0)))
+ 			fprintf(f, ":%02x:%02x\n", main_bssid[4] + link_id, main_bssid[5] +
+ 				link_id);
+ 		else
+@@ -10743,6 +11238,7 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 				{ AKM_OWE, "OWE" },
+ 				{ AKM_SAE_EXT_KEY, "SAE-EXT-KEY" },
+ 				{ AKM_FT_SAE_EXT_KEY, "FT-SAE-EXT-KEY" },
++				{ AKM_EPPKE, "EPPKE" },
+ 			};
+ 			int first = 1;
+ 			unsigned int i;
+@@ -10763,17 +11259,135 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 			if (group_cipher != AP_NO_GROUP_CIPHER_SET)
+ 				fprintf(f, "group_cipher=%s\n",
+ 					hostapd_cipher_name(group_cipher));
+-			if (write_hostapd_conf_password(
+-				    dut, f,
+-				    (akm_values &
+-				     ((1 << AKM_SAE) | (1 << AKM_FT_SAE))) &&
+-				    !(akm_values &
+-				      ((1 << AKM_WPA_PSK) | (1 << AKM_FT_PSK))) &&
+-				    dut->ap_passphrase[0]) < 0) {
+-				fclose(f);
+-				return ERROR_SEND_STATUS;
++
++			if (akm_values_rsno1e) {
++			char keymgmt[256] = {0};
++			char temp[256];
++			char buf[256];
++			struct {
++				int akm;
++				const char *str;
++			} akms[] = {
++				{ AKM_WPA_EAP, "WPA-EAP" },
++				{ AKM_WPA_PSK, "WPA-PSK" },
++				{ AKM_FT_EAP, "FT-EAP" },
++				{ AKM_FT_PSK, "FT-PSK" },
++				{ AKM_EAP_SHA256, "WPA-EAP-SHA256" },
++				{ AKM_PSK_SHA256, "WPA-PSK-SHA256" },
++				{ AKM_SAE, "SAE" },
++				{ AKM_FT_SAE, "FT-SAE" },
++				{ AKM_SUITE_B, "WPA-EAP-SUITE-B-192" },
++				{ AKM_FT_SUITE_B, "FT-EAP-SHA384" },
++				{ AKM_FILS_SHA256, "FILS-SHA256" },
++				{ AKM_FILS_SHA384, "FILS-SHA384" },
++				{ AKM_FT_FILS_SHA256, "FT-FILS-SHA256" },
++				{ AKM_FT_FILS_SHA384, "FT-FILS-SHA384" },
++				{ AKM_OWE, "OWE" },
++				{ AKM_SAE_EXT_KEY, "SAE-EXT-KEY" },
++				{ AKM_FT_SAE_EXT_KEY, "FT-SAE-EXT-KEY" },
++			};
++			int first = 1;
++			unsigned int i;
++
++			for (i = 0; i < ARRAY_SIZE(akms); i++) {
++				if (akm_values_rsno1e & (1 << akms[i].akm)) {
++					snprintf(temp, sizeof(temp), "%s%s",first ? "" : " ",
++						 akms[i].str);
++
++					if (first == 1) {
++						strlcpy(keymgmt, temp, sizeof(keymgmt));
++					} else {
++						strlcat(keymgmt, temp, sizeof(keymgmt));
++					}
++
++	                                first = 0;
++		                }
++			}
++				if (akm_values_rsno1e) {
++					/*RSNO1E AKM */
++					snprintf(buf, sizeof(buf), "%s", keymgmt);
++					fprintf(f, "rsn_override_key_mgmt=%s\n", buf);
++					/*RSNO1E pairwise */
++					snprintf(buf, sizeof(buf), "%s", hostapd_cipher_name(cipher_rsno1e));
++					fprintf(f, "rsn_override_pairwise=%s\n", buf);
++					if (!dut->ap_interface_6g && !dut->rsnxe_pwe)
++						fprintf(f, "rsn_override_omit_rsnxe=1\n");
++					/* RSNO1E PMF */
++					snprintf(buf, sizeof(buf), "%d", pmf_rsno1e);
++					fprintf(f, "rsn_override_mfp=%s\n", buf);
++				}
+ 			}
+-			if (akm_values & ((1 << AKM_WPA_EAP) |
++
++			if (akm_values_rsno2e) {
++				char keymgmt[256] = {0};
++				char temp[256];
++				char buf[256];
++				struct {
++					int akm;
++					const char *str;
++				} akms[] = {
++					{ AKM_WPA_EAP, "WPA-EAP" },
++					{ AKM_WPA_PSK, "WPA-PSK" },
++					{ AKM_FT_EAP, "FT-EAP" },
++					{ AKM_FT_PSK, "FT-PSK" },
++					{ AKM_EAP_SHA256, "WPA-EAP-SHA256" },
++					{ AKM_PSK_SHA256, "WPA-PSK-SHA256" },
++					{ AKM_SAE, "SAE" },
++					{ AKM_FT_SAE, "FT-SAE" },
++					{ AKM_SUITE_B, "WPA-EAP-SUITE-B-192" },
++					{ AKM_FT_SUITE_B, "FT-EAP-SHA384" },
++					{ AKM_FILS_SHA256, "FILS-SHA256" },
++					{ AKM_FILS_SHA384, "FILS-SHA384" },
++					{ AKM_FT_FILS_SHA256, "FT-FILS-SHA256" },
++					{ AKM_FT_FILS_SHA384, "FT-FILS-SHA384" },
++					{ AKM_OWE, "OWE" },
++					{ AKM_SAE_EXT_KEY, "SAE-EXT-KEY" },
++					{ AKM_FT_SAE_EXT_KEY, "FT-SAE-EXT-KEY" },
++				};
++				int first = 1;
++				unsigned int i;
++				for (i = 0; i < ARRAY_SIZE(akms); i++) {
++					if (akm_values_rsno2e & (1 << akms[i].akm)) {
++						snprintf(temp, sizeof(temp), "%s%s",first ? "" : " ",
++							akms[i].str);
++
++						if (first == 1) {
++							strlcpy(keymgmt, temp, sizeof(keymgmt));
++						} else {
++							strlcat(keymgmt, temp, sizeof(keymgmt));
++						}
++
++						first = 0;
++			                }
++				}
++				if (akm_values_rsno2e) {
++					/*RSNO2E AKM */
++					snprintf(buf, sizeof(buf), "%s", keymgmt);
++					fprintf(f, "rsn_override_key_mgmt_2=%s\n", buf);
++					/*RSNO2E pairwise */
++					snprintf(buf, sizeof(buf), "%s", hostapd_cipher_name(cipher_rsno2e));
++					fprintf(f, "rsn_override_pairwise_2=%s\n", buf);
++					if (!dut->ap_interface_6g && !dut->rsnxe_pwe)
++						fprintf(f, "rsn_override_omit_rsnxe=1\n");
++					/* RSNO2E PMF */
++					snprintf(buf, sizeof(buf), "%d", pmf_rsno2e);
++					fprintf(f, "rsn_override_mfp_2=%s\n", buf);
++				}
++			}
++
++			if (!(akm_values & (1 << AKM_EPPKE))) {
++				if (write_hostapd_conf_password(
++					    dut, f,
++					    (akm_values &
++					     ((1 << AKM_SAE) | (1 << AKM_FT_SAE))) &&
++					    !(akm_values &
++					      ((1 << AKM_WPA_PSK) | (1 << AKM_FT_PSK))) &&
++					    dut->ap_passphrase[0]) < 0) {
++					fclose(f);
++					return ERROR_SEND_STATUS;
++				}
++			}
++			if ((akm_values | akm_values_rsno1e | akm_values_rsno2e) & ((1 << AKM_WPA_EAP) |
+ 						  (1 << AKM_FT_EAP) |
+ 						  (1 << AKM_EAP_SHA256) |
+ 						  (1 << AKM_SUITE_B) |
+@@ -10791,6 +11405,31 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 				fprintf(f, "auth_server_shared_secret=%s\n",
+ 					dut->ap_radius_password);
+ 			}
++			if (akm_values & (1 << AKM_EPPKE)) {
++				if (check_band(dut, BAND_6G, link_id)) {
++					fprintf(f, "sae_password=%s\n",
++						dut->ap_passphrase);
++					fprintf(f, "ieee80211w=2\n");
++					fprintf(f, "sae_pwe=1\n");
++					fprintf(f, "assoc_frame_encryption=1\n");
++					fprintf(f, "kek_in_pasn=1\n");
++				} else {
++					fprintf(f, "sae_password=%s\n",
++						dut->ap_passphrase);
++					fprintf(f, "ieee80211w=1\n");
++					fprintf(f, "sae_pwe=2\n");
++					fprintf(f, "assoc_frame_encryption=1\n");
++					fprintf(f, "kek_in_pasn=1\n");
++				}
++			}
++
++			if (ap_sae_pwe) {
++				const char *sae_pwe = NULL;
++
++				sae_pwe = "1";
++				if (sae_pwe)
++					fprintf(f, "sae_pwe=%s\n", sae_pwe);
++			}
+ 			goto skip_key_mgmt;
+ 		}
+ 
+@@ -11026,6 +11665,69 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 			/* RSNO2 PMF */
+ 			fprintf(f, "rsn_override_mfp_2=2\n");
+ 			break;
++		case AP_EPPKE_PSK_SAE:
++			if (check_band(dut, BAND_6G, link_id)) {
++				fprintf(f, "wpa=2\n");
++				fprintf(f, "wpa_key_mgmt=SAE SAE-EXT-KEY EPPKE\n");
++				fprintf(f, "wpa_pairwise=CCMP GCMP-256\n");
++				fprintf(f, "sae_password=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "ieee80211w=2\n");
++				fprintf(f, "sae_pwe=1\n");
++				fprintf(f, "assoc_frame_encryption=1\n");
++				fprintf(f, "kek_in_pasn=1\n");
++			} else {
++				fprintf(f, "wpa=2\n");
++				fprintf(f, "wpa_key_mgmt=WPA-PSK SAE SAE-EXT-KEY EPPKE\n");
++				fprintf(f, "wpa_pairwise=CCMP GCMP-256\n");
++				fprintf(f, "sae_password=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "wpa_passphrase=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "ieee80211w=1\n");
++				fprintf(f, "sae_pwe=2\n");
++				fprintf(f, "assoc_frame_encryption=1\n");
++				fprintf(f, "kek_in_pasn=1\n");
++			}
++			break;
++		case AP_WPA3_COMPAT_COEX:
++			if (check_band(dut, BAND_6G, link_id)) {
++				fprintf(f, "wpa_key_mgmt=SAE\n");
++				fprintf(f, "sae_password=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "ieee80211w=2\n");
++			} else {
++				fprintf(f, "wpa_key_mgmt=WPA-PSK\n");
++				fprintf(f, "wpa_passphrase=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "ieee80211w=1\n");
++			}
++			fprintf(f, "wpa=2\n");
++			fprintf(f, "auth_server_addr=%s\n", dut->ap_radius_ipaddr);
++			if (dut->ap_radius_port) {
++				fprintf(f, "auth_server_port=%d\n",
++					dut->ap_radius_port);
++			}
++			fprintf(f, "auth_server_shared_secret=%s\n",
++				dut->ap_radius_password);
++			fprintf(f, "wpa_pairwise=%s\n",
++				hostapd_cipher_name(cipher));
++			fprintf(f, "sae_pwe=1\n");
++			fprintf(f, "wpa_group_rekey=3600\n");
++			fprintf(f, "ieee8021x=1\n");
++			/* RSNO AKM */
++			fprintf(f, "rsn_override_key_mgmt=SAE WPA-EAP-SHA256\n");
++			/* RSNO PAIRWISE */
++			fprintf(f, "rsn_override_pairwise=CCMP\n");
++			/* RSNO PMF */
++			fprintf(f, "rsn_override_mfp=2\n");
++			/* RSNO2 AKM */
++			fprintf(f, "rsn_override_key_mgmt_2=SAE-EXT-KEY WPA-EAP-SHA256\n");
++			/* RSNO2 PAIRWISE */
++			fprintf(f, "rsn_override_pairwise_2=GCMP-256\n");
++			/* RSNO2 PMF */
++			fprintf(f, "rsn_override_mfp_2=2\n");
++			break;
+ 		}
+ skip_key_mgmt:
+ 
+@@ -11053,6 +11755,8 @@ skip_key_mgmt:
+ 					break;
+ 				pos = end + 1;
+ 			}
++			fprintf(f, "sae_pw_id_num=3\n");
++			fprintf(f, "sae_pw_id_key=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n");
+ 			free(tmp);
+ 		}
+ 
+@@ -11061,9 +11765,12 @@ skip_key_mgmt:
+ 			fprintf(f, "rsn_preauth_interfaces=%s\n", dut->bridge);
+ 		}
+ 
+-		if (dut->ap_pmksa && dut->ap_pmksa_caching)
++		if (pmksa && pmksa_caching)
+ 			fprintf(f, "disable_pmksa_caching=1\n");
+ 
++		if (pmksa)
++			fprintf(f, "pmksa_caching_privacy=1\n");
++
+ 		if (beacon_prot)
+ 			fprintf(f, "beacon_prot=1\n");
+ 
+@@ -11074,19 +11781,76 @@ skip_key_mgmt:
+ 		if (dut->ap_ocvc == 1 || dut->ap_ocvc == 0)
+ 			fprintf(f, "ocv=%d\n", dut->ap_ocvc);
+ 
++		if (ieee8021x_auth) {
++			if (check_band(dut, BAND_6G, link_id))
++				fprintf(f, "ieee80211w=2\n");
++			else
++				fprintf(f, "ieee80211w=1\n");
++			fprintf(f, "sae_pwe=1\n");
++			fprintf(f, "assoc_frame_encryption=1\n");
++			fprintf(f, "eap_using_authentication_frames=1\n");
++		}
++
++		if (wpa3_compat_coex) {
++			if (check_band(dut, BAND_6G, link_id)) {
++				fprintf(f, "wpa_key_mgmt=SAE\n");
++				fprintf(f, "sae_password=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "ieee80211w=2\n");
++			} else {
++				fprintf(f, "wpa_key_mgmt=WPA-PSK\n");
++				fprintf(f, "wpa_passphrase=%s\n",
++					dut->ap_passphrase);
++				fprintf(f, "ieee80211w=1\n");
++			}
++			fprintf(f, "wpa=2\n");
++			fprintf(f, "auth_server_addr=%s\n", dut->ap_radius_ipaddr);
++			if (dut->ap_radius_port) {
++				fprintf(f, "auth_server_port=%d\n",
++					dut->ap_radius_port);
++			}
++			fprintf(f, "auth_server_shared_secret=%s\n",
++				dut->ap_radius_password);
++			fprintf(f, "wpa_pairwise=%s\n",
++				hostapd_cipher_name(cipher));
++			fprintf(f, "sae_pwe=1\n");
++			fprintf(f, "wpa_group_rekey=3600\n");
++			fprintf(f, "ieee8021x=1\n");
++			/* RSNO AKM */
++			fprintf(f, "rsn_override_key_mgmt=SAE WPA-EAP-SHA256\n");
++			/* RSNO PAIRWISE */
++			fprintf(f, "rsn_override_pairwise=CCMP\n");
++			/* RSNO PMF */
++			fprintf(f, "rsn_override_mfp=2\n");
++			/* RSNO2 AKM */
++			fprintf(f, "rsn_override_key_mgmt_2=SAE-EXT-KEY WPA-EAP-SHA256\n");
++			/* RSNO2 PAIRWISE */
++			fprintf(f, "rsn_override_pairwise_2=GCMP-256\n");
++			/* RSNO2 PMF */
++			fprintf(f, "rsn_override_mfp_2=2\n");
++		}
++
+ 		switch (pmf) {
+ 		case AP_PMF_DISABLED:
+ 			break;
+ 		case AP_PMF_OPTIONAL:
+-			fprintf(f, "ieee80211w=1\n");
++			if (dut->ap_key_mgmt == AP_WPA2_EAP_SHA256) {
++				if (check_band(dut, BAND_6G, link_id))
++					fprintf(f, "ieee80211w=2\n");
++				else
++					fprintf(f, "ieee80211w=1\n");
++			} else {
++				fprintf(f, "ieee80211w=1\n");
++			}
+ 			if (dut->ap_key_mgmt == AP_WPA2_PSK_SAE ||
+ 			    (akm_values & (AKM_SAE | AKM_WPA_PSK)) ==
+ 			    (AKM_SAE | AKM_WPA_PSK))
+ 				fprintf(f, "sae_require_mfp=1\n");
+ 			break;
+ 		case AP_PMF_REQUIRED:
+-			if (dut->ap_key_mgmt != AP_WPA3_COMPAT)
++			if (dut->ap_key_mgmt != AP_WPA3_COMPAT && dut->ap_key_mgmt != AP_WPA3_COMPAT_COEX) {
+ 				fprintf(f, "ieee80211w=2\n");
++			}
+ 			break;
+ 		}
+ 
+@@ -11201,8 +11965,8 @@ skip_key_mgmt:
+ 		if (sae_groups)
+ 			fprintf(f, "sae_groups=%s\n", sae_groups);
+ 
+-		if (dut->sae_pwe != SAE_PWE_DEFAULT || dut->sae_h2e_default ||
+-		    check_band(dut, BAND_6G, link_id) ||
++		if (dut->sae_pwe == SAE_PWE_LOOP || dut->sae_pwe == SAE_PWE_H2E
++		    || dut->sae_h2e_default || check_band(dut, BAND_6G, link_id) ||
+ 		    (mld_sae_set && dut->ap_key_mgmt == AP_WPA2_SAE)) {
+ 			const char *sae_pwe = NULL;
+ 
+@@ -11373,8 +12137,8 @@ skip_key_mgmt:
+ 			}
+ 		}
+ 
+-		if (dut->ap_mbo && (dut->ap_key_mgmt != AP_WPA3_COMPAT ||
+-				    check_band(dut, BAND_6G, link_id))) {
++		if ((dut->ap_mbo && (dut->ap_key_mgmt != AP_WPA3_COMPAT) && (dut->ap_key_mgmt != AP_WPA3_COMPAT_COEX)) ||
++				    (check_band(dut, BAND_6G, link_id))) {
+ 			fprintf(f, "mbo=1\n");
+ 			/* OCE AP mode */
+ 			fprintf(f, "oce=4\n");
+@@ -13244,6 +14008,26 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 	int i;
+ 	const char *ifname;
+ 	char ifname2[50];
++	const char *val;
++
++	val = get_param(cmd, "NAME");
++	if (val) {
++		if (strlen(val) > sizeof(dut->device_name) - 1) {
++		   memset(dut->device_name, 0, sizeof(dut->device_name));
++			return INVALID_SEND_STATUS;
++		}
++		snprintf(dut->device_name, sizeof(dut->device_name),
++			 "%s", val);
++	} else {
++		memset(dut->device_name, 0, sizeof(dut->device_name));
++	}
++
++	val = get_param(cmd, "Runtime_ID");
++	if (val) {
++		dut->dev_start_test_runtime_id[0] = '\0';
++		run_system_wrapper(dut, "rm -rf /tmp/*sigma_dut-ap_*");
++		dev_start_test_log(dut, conn, cmd);
++	}
+ 
+ 	for (i = 0; i < MAX_WLAN_TAGS - 1; i++) {
+ 		/*
+@@ -13337,6 +14121,7 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 	dut->wsc_fragment = 0;
+ 	dut->eap_fragment = 0;
+ 	dut->wps_forced_version = 0;
++	dut->rsnxe_pwe = 0;
+ 
+ 	dut->eht_txemlomn = VALUE_NOT_SET;
+ 	dut->cohost_iface = 0;
+@@ -13829,14 +14614,24 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 		dut->mld[i].ap_chwidth = AP_AUTO;
+ 		dut->mld[i].dtim = 0;
+ 		dut->mld[i].ap_akm_link = 0;
++		dut->mld[i].ap_akm_rsno1e_link = 0;
++		dut->mld[i].ap_akm_rsno2e_link = 0;
+ 		dut->mld[i].ap_pmf_link = AP_PMF_DISABLED;
++		dut->mld[i].ap_pmf_rsno1e_link = AP_PMF_DISABLED;
++		dut->mld[i].ap_pmf_rsno2e_link = AP_PMF_DISABLED;
++		dut->mld[i].ap_sae_pwe_link = SAE_PWE_DEFAULT;
+ 		dut->mld[i].ap_psk_link[0] = '\0';
+ 		dut->mld[i].ap_beacon_prot_link = dut->user_config_ap_beacon_prot;
++		dut->mld[i].ap_key_mgmt_link = 0;
+ 		dut->mld[i].ap_cipher_link = AP_CCMP;
++		dut->mld[i].ap_cipher_1_link = AP_CCMP;
++		dut->mld[i].ap_cipher_2_link = AP_CCMP;
+ 		dut->mld[i].ap_group_cipher_link = AP_NO_GROUP_CIPHER_SET;
+ 		dut->mld[i].ap_group_mgmt_cipher_link = AP_NO_GROUP_MGMT_CIPHER_SET;
+ 		free(dut->mld[i].ap_sae_groups_link);
+ 		dut->mld[i].ap_sae_groups_link = NULL;
++		dut->mld[i].ap_pmksa = 0;
++		dut->mld[i].ap_pmksa_caching = 0;
+ 
+ 		if (dut->program == PROGRAM_EHT) {
+ 			dut->mld[i].ap_pmf_link = AP_PMF_OPTIONAL;
+@@ -17050,7 +17845,58 @@ static enum sigma_cmd_result cmd_ap_get_parameter(struct sigma_dut *dut,
+ 		}
+ 		memcpy(resp, "PMK,", 4);
+ 	} else if (strcasecmp(param, "TK") == 0) {
+-		return ap_get_tk(dut, conn, cmd);
++		if (dut->program == PROGRAM_WPA3) {
++			FILE *fp = NULL;
++			char buff[200];
++			long filesize;
++		        char *buffer;
++			const char *word = "FAIL";
++
++			var = get_param(cmd, "STA_MAC_Address");
++			if (!var)
++				return INVALID_SEND_STATUS;
++		//	snprintf(resp, sizeof(resp), "dump_tk %s -0", var);
++			run_system_wrapper(dut,
++					   "hostapd_cli -i %s dump_tk %s -0 > /tmp/tk",
++					   ifname, var);
++			snprintf(buff, sizeof(buff), "/tmp/tk");
++			fp = fopen(buff, "r");
++			if (fp == NULL)
++				return -1;
++			fseek(fp, 0, SEEK_END);
++			filesize = ftell(fp);
++			rewind(fp);
++			buffer = (char*)malloc(filesize + 1);
++			if (buffer == NULL) {
++				sigma_dut_print(dut, DUT_MSG_ERROR,
++						"memory alocation failed");
++				fclose(fp);
++				return -2;
++			}
++			size_t bytesread = fread(buffer, 1, filesize, fp);
++			buffer[bytesread] = '\0';
++			fclose(fp);
++			printf("Data read from file2: %s \n", buffer);
++			if (strstr(buffer, word) != NULL) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "ErrorCode,GET_TK failed");
++				free(buffer);
++				return STATUS_SENT_ERROR;
++			} else {
++				snprintf(resp, sizeof(resp), "TK,%s",buffer);
++				send_resp(dut, conn, SIGMA_COMPLETE, resp);
++				free(buffer);
++				return 0;
++			}
++		/*	if (hapd_command_resp(ifname, resp, &resp[4],
++					      sizeof(resp) - 4) < 0) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "ErrorCode,GET_TK failed");
++				return STATUS_SENT_ERROR;
++			}*/
++		} else {
++			return ap_get_tk(dut, conn, cmd);
++		}
+ 	} else {
+ 		send_resp(dut, conn, SIGMA_ERROR,
+ 			  "ErrorCode,Unsupported parameter");
+diff --git a/dev.c b/dev.c
+index 2b5f7c0..f20a338 100644
+--- a/dev.c
++++ b/dev.c
+@@ -513,6 +513,7 @@ static int build_log_dir(struct sigma_dut *dut, char *dir, size_t dir_size)
+ {
+ 	int res;
+ 	const char *vendor = dut->vendor_name;
++	const char *name = dut->device_name;
+ 	int i;
+ 
+ 	if (!vendor)
+@@ -526,7 +527,7 @@ static int build_log_dir(struct sigma_dut *dut, char *dir, size_t dir_size)
+ 		res = snprintf(dir, dir_size, "/data/vendor/wifi/%s",
+ 			       vendor);
+ #else /* ANDROID */
+-		res = snprintf(dir, dir_size, "/var/log/%s", vendor);
++		res = snprintf(dir, dir_size, "/var/log/%s%s", vendor,name);
+ #endif /* ANDROID */
+ 	}
+ 
+@@ -571,9 +572,9 @@ enum sigma_cmd_result dev_start_test_log(struct sigma_dut *dut,
+ 	if (!(val && is_runtime_id_valid(dut, val)))
+ 		return INVALID_SEND_STATUS;
+ 
+-	if (!dut->vendor_name) {
++	if (!dut->vendor_name && (strlen(dut->device_name) > 0)) {
+ 		sigma_dut_print(dut, DUT_MSG_INFO,
+-				"Log collection not supported without vendor name specified on the command line (-N)");
++				"Log collection not supported without vendor/device name specified on the command line (-N)");
+ 		return SUCCESS_SEND_STATUS;
+ 	}
+ 
+@@ -600,6 +601,7 @@ enum sigma_cmd_result dev_start_test_log(struct sigma_dut *dut,
+ 		sizeof(dut->dev_start_test_runtime_id));
+ 	sigma_dut_print(dut, DUT_MSG_DEBUG, "Runtime_ID %s",
+ 			dut->dev_start_test_runtime_id);
++	sigma_dut_print(dut, DUT_MSG_DEBUG, "dir %s", dir);
+ 
+ 	run_system_wrapper(dut, "rm -rf %s", dir);
+ 	run_system_wrapper(dut, "mkdir -p %s", dir);
+@@ -624,6 +626,11 @@ enum sigma_cmd_result dev_start_test_log(struct sigma_dut *dut,
+ 	}
+ 
+ 	run_system_wrapper(dut, "rm -rf /usr/local/bin/wlan_logs/*");
++	/* clear sigma and hostapd log */
++	run_system_wrapper(dut, "> /tmp/sigma.txt");
++	run_system_wrapper(dut, "> /tmp/hostapd_log.txt");
++	/* clear dmesg logs without capturing */
++	run_system_wrapper(dut, "dmesg -c > /dev/zero");
+ #endif /* ANDROID */
+ 
+ 	return SUCCESS_SEND_STATUS;
+@@ -780,9 +787,10 @@ static enum sigma_cmd_result ftp_send(struct sigma_dut *dut,
+ 	const char *val;
+ 	const char *ftp_ip;
+ 	const char *ftp_uname, *ftp_pwd;
+-	int ftp_port = 21;
++	int ftp_port = 2121;
++	char buf[300];
+ 	char src_dir[200];
+-	FILE *f;
++	//FILE *f;
+ 	int res;
+ 
+ 	val = get_param(cmd, "Runtime_ID");
+@@ -808,11 +816,25 @@ static enum sigma_cmd_result ftp_send(struct sigma_dut *dut,
+ 
+ 	ftp_uname = get_param(cmd, "FTP_Uname");
+ 	ftp_pwd = get_param(cmd, "FTP_Pwd");
+-	res = snprintf(src_dir, sizeof(src_dir), "%s/..", dir);
++	snprintf(src_dir, sizeof(src_dir), "%s/..", dir);
++	res = snprintf(buf, sizeof(buf), "cd %s;ftpput -v -u"
++		       " %s -p %s -P %d %s %s", src_dir,
++		       (ftp_uname && strlen(ftp_uname))?ftp_uname:"anonymous",
++		       (ftp_pwd && strlen(ftp_pwd))?ftp_pwd:"anonymous",
++		       ftp_port, ftp_ip, out_file);
++
++	if (res < 0 || res >= sizeof(buf))
++		return ERROR_SEND_STATUS;
++
++	if (run_system_wrapper(dut, buf) < 0) {
++		sigma_dut_print(dut, DUT_MSG_ERROR,
++				"FTP file transfer failed: %s", buf);
++		return ERROR_SEND_STATUS;
++	}
+ 	if (res < 0 || res >= sizeof(src_dir))
+ 		return ERROR_SEND_STATUS;
+ 
+-	/* Create the ftp shell script which can be called */
++	/* Create the ftp shell script which can be called
+ 	f = fopen("ftp.sh", "w");
+ 	if (!f) {
+ 		sigma_dut_print(dut, DUT_MSG_ERROR,
+@@ -852,7 +874,7 @@ static enum sigma_cmd_result ftp_send(struct sigma_dut *dut,
+ 		return ERROR_SEND_STATUS;
+ 	}
+ 
+-	unlink("ftp.sh");
++	unlink("ftp.sh");*/
+ 
+ 	return SUCCESS_SEND_STATUS;
+ }
+@@ -868,9 +890,9 @@ static enum sigma_cmd_result dev_stop_test_log(struct sigma_dut *dut,
+ 	char dir[200];
+ 	int res;
+ 
+-	if (!dut->vendor_name) {
++	if (!dut->vendor_name && (strlen(dut->device_name) > 0)) {
+ 		sigma_dut_print(dut, DUT_MSG_INFO,
+-				"Log collection not supported without vendor name specified on the command line (-N)");
++				"Log collection not supported without vendor/device name specified on the command line (-N)");
+ 		return SUCCESS_SEND_STATUS;
+ 	}
+ 
+@@ -888,6 +910,14 @@ static enum sigma_cmd_result dev_stop_test_log(struct sigma_dut *dut,
+ 	run_system_wrapper(dut, "cp -a /data/vendor/wifi/wlan_logs/* %s", dir);
+ #else /* ANDROID */
+ 	run_system_wrapper(dut, "cp -a /usr/local/bin/wlan_logs/* %s", dir);
++	/* copy dmesg log file */
++        run_system_wrapper(dut, "dmesg -c > /tmp/apconsolelog.txt");
++        run_system_wrapper(dut, "cp /tmp/apconsolelog.txt %s", dir);
++	/* copy sigma files */
++        run_system_wrapper(dut, "cp /tmp/sigma.txt %s", dir);
++        run_system_wrapper(dut, "cp /tmp/*sigma_dut-ap_* %s", dir);
++        run_system_wrapper(dut, "cp /tmp/hostapd_log.txt %s", dir);
++
+ 	if (dut->log_file_fd) {
+ 		fclose(dut->log_file_fd);
+ 		dut->log_file_fd = NULL;
+@@ -897,9 +927,10 @@ static enum sigma_cmd_result dev_stop_test_log(struct sigma_dut *dut,
+ 				"Failed to save wpa_supplicant log");
+ #endif /* ANDROID */
+ 
+-	res = snprintf(out_file, sizeof(out_file), "%s_%s_%s_%s.tar.gz",
++	res = snprintf(out_file, sizeof(out_file), "%s_%s_%s_%s_%s.tar.gz",
+ 		       dut->vendor_name,
+ 		       dut->model_name ? dut->model_name : "Unknown",
++		       dut->device_name,
+ 		       dut->dev_start_test_runtime_id,
+ 		       dut->host_name);
+ 	if (res < 0 || res >= sizeof(out_file))
+@@ -948,6 +979,7 @@ cleanup:
+ 	run_system_wrapper(dut, "rm -f %s/../%s", dir, out_file);
+ 	run_system_wrapper(dut, "rm -rf %s", dir);
+ 
++	send_resp(dut, conn, SIGMA_COMPLETE,"FTP file transfer Complete");
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+diff --git a/sigma_dut.c b/sigma_dut.c
+index 5a5368b..a57fe69 100644
+--- a/sigma_dut.c
++++ b/sigma_dut.c
+@@ -33,6 +33,9 @@ char *client_socket_path = NULL;
+ char *ap_inet_addr = "192.168.43.1";
+ char *ap_inet_mask = "255.255.255.0";
+ char *sigma_cert_path = "/etc/wpa_supplicant";
++FILE *log_file_fd = NULL;
++FILE *log_file_ap = NULL;
++int log_to_file = 0;
+ 
+ /* For WMM-AC testing this set to 1 through argument,
+  * otherwise default WMM-PS 0 */
+@@ -139,6 +142,15 @@ void sigma_dut_print(struct sigma_dut *dut, int level, const char *fmt, ...)
+ 	vprintf(fmt, ap);
+ 	printf("\n");
+ 	va_end(ap);
++	if (log_to_file) {
++                va_start(ap, fmt);
++                fprintf(log_file_ap, "%ld.%06u: ", (long) tv.tv_sec,
++                                (unsigned int) tv.tv_usec);
++                vfprintf(log_file_ap, fmt, ap);
++                fprintf(log_file_ap, "\n");
++                va_end(ap);
++                fflush(log_file_ap);
++        }
+ }
+ 
+ 
+@@ -1094,13 +1106,14 @@ int main(int argc, char *argv[])
+ 	char *sigma_ctrl_sock = NULL; /* env used for QNX */
+ #endif /* __QNXNTO__ */
+ 
++	log_file_ap = fopen("/tmp/sigma.txt", "a+");
+ 	memset(&sigma_dut, 0, sizeof(sigma_dut));
+ 	set_defaults(&sigma_dut);
+ 	num_radio = 0;
+ 
+ 	for (;;) {
+ 		c = getopt(argc, argv,
+-			   "aAb:Bc:C:dDE:e:fF:gGhH:j:J:i:Ik:K:l:L:m:M:nN:o:O:p:P:qQr:R:s:S:tT:uU:v:VWw:xX:y:z:Z:2345:6:7");
++			   "aAb:Bc:C:dDE:e:fF:gGhH:j:J:i:Ik:K:l:L:m:M:nN:o:O:p:P:qQr:R:s:S:tT:uU:v:VWw:xX:yY:z:Z:2345:6:7");
+ 		if (c < 0)
+ 			break;
+ 		switch (c) {
+@@ -1307,6 +1320,9 @@ int main(int argc, char *argv[])
+ 			sigma_dut.miracast_lib_path = optarg;
+ 			break;
+ #endif /* MIRACAST */
++		case 'Y':
++                        log_to_file = 1;
++                        break;
+ 		case 'z':
+ 			client_socket_path = optarg;
+ 			break;
+diff --git a/sigma_dut.h b/sigma_dut.h
+index a7a5950..1943434 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -407,6 +407,7 @@ enum akm_suite_values {
+ 	AKM_OWE = 18,
+ 	AKM_SAE_EXT_KEY = 24,
+ 	AKM_FT_SAE_EXT_KEY = 25,
++	AKM_EPPKE = 29,
+ 
+ };
+ 
+@@ -640,6 +641,8 @@ enum ap_key_mgmt {
+ 	AP_OSEN,
+ 	AP_WPA3_SAE_EXT,
+ 	AP_WPA3_COMPAT,
++	AP_EPPKE_PSK_SAE,
++	AP_WPA3_COMPAT_COEX,
+ };
+ 
+ enum eht_ru_alloc {
+@@ -738,6 +741,7 @@ enum ap_cipher {
+ 	AP_GCMP_128,
+ 	AP_CCMP_256,
+ 	AP_CCMP_128_GCMP_256,
++	AP_CCMP_128_CCMP_256_GCMP_128_GCMP_256,
+ };
+ 
+ enum ap_group_mgmt_cipher {
+@@ -761,6 +765,11 @@ enum ap_mode {
+ 	AP_inval
+ };
+ 
++enum sae_pwe {
++	SAE_PWE_DEFAULT,
++	SAE_PWE_LOOP,
++	SAE_PWE_H2E
++};
+ #define NUM_OF_LINKS 3
+ 
+ struct mld_ap {
+@@ -769,13 +778,24 @@ struct mld_ap {
+ 	enum if_band ap_band;
+ 	int dtim;
+ 	unsigned int ap_akm_link;
++	unsigned int ap_akm_rsno1e_link;
++	unsigned int ap_akm_rsno2e_link;
+ 	enum ap_pmf ap_pmf_link;
++	enum ap_pmf ap_pmf_rsno1e_link;
++	enum ap_pmf ap_pmf_rsno2e_link;
++	enum sae_pwe ap_sae_pwe_link;
+ 	enum ap_cipher ap_cipher_link, ap_group_cipher_link;
++	enum ap_cipher ap_cipher_1_link;
++	enum ap_cipher ap_cipher_2_link;
+ 	enum ap_group_mgmt_cipher ap_group_mgmt_cipher_link;
+ 	int ap_beacon_prot_link;
+ 	char ap_psk_link[100];
+ 	char *ap_sae_groups_link;
+ 	enum ap_mode ap_mode;
++	int ap_pmksa;
++	int ap_pmksa_caching;
++	int ap_ieee8021x_auth;
++	int ap_key_mgmt_link;
+ };
+ 
+ struct sigma_dut {
+@@ -927,12 +947,19 @@ struct sigma_dut {
+ 		AP2_WPA2_OWE,
+ 		AP2_WPA2_EAP,
+ 		AP2_WPA2_SAE,
++		AP2_EPPKE_PSK_SAE,
++		AP2_WPA3_COMPAT_COEX,
+ 	} ap_tag_key_mgmt[MAX_WLAN_TAGS - 1];
+ 	int ap_add_sha256;
+ 	int ap_add_sha384;
+ 	int ap_rsn_preauth;
+ 	enum ap_pmf ap_pmf;
++	enum ap_pmf ap_pmf_rsno1e;
++	enum ap_pmf ap_pmf_rsno2e;
++	enum sae_pwe sae_pwe;
+ 	enum ap_cipher ap_cipher, ap_group_cipher;
++	enum ap_cipher ap_cipher_1;
++	enum ap_cipher ap_cipher_2;
+ 	enum ap_group_mgmt_cipher ap_group_mgmt_cipher;
+ 	char *ap_sae_groups;
+ 	int sae_anti_clogging_threshold;
+@@ -1091,8 +1118,11 @@ struct sigma_dut {
+ 	int ap_dl_availcap;
+ 	int ap_akm;
+ 	unsigned int ap_akm_values;
++	unsigned int ap_akm_values_rsno1e;
++	unsigned int ap_akm_values_rsno2e;
+ 	int ap_pmksa;
+ 	int ap_pmksa_caching;
++	int ap_ieee8021x_auth;
+ 	int ap_beacon_prot;
+ 	u8 ap_transition_disable;
+ 	int ap_80plus80;
+@@ -1120,6 +1150,7 @@ struct sigma_dut {
+ 	int ap_addba_amsdu;
+ 	unsigned int ap_ehtmcs_map;
+ 	int run_set_param;
++	int rsnxe_pwe;
+ 
+ 	enum value_not_set_enabled_disabled ap_oce;
+ 	enum value_not_set_enabled_disabled ap_filsdscv;
+@@ -1328,6 +1359,7 @@ struct sigma_dut {
+ 	const char *version_name; /* device_get_info version override */
+ 	const char *log_file_dir; /* Directory to generate log file */
+ 	FILE *log_file_fd; /* Pointer to log file */
++        char device_name[33];
+ 
+ 	int ndp_enable; /* Flag which is set once the NDP is setup */
+ 
+@@ -1399,11 +1431,6 @@ struct sigma_dut {
+ #endif /*ANDROID_WIFI_HAL*/
+ 
+ 	int sae_h2e_default;
+-	enum {
+-		SAE_PWE_DEFAULT,
+-		SAE_PWE_LOOP,
+-		SAE_PWE_H2E
+-	} sae_pwe;
+ 	enum {
+ 		SEC_OPEN,
+ 		SEC_MAC,
+@@ -1435,6 +1462,8 @@ struct sigma_dut {
+ 	struct cohosted_support cohosted[MAX_COHOSTED_BANDS];
+ 	int hapd_global_ctrl;
+ 	int ap_6g_unsol_prb_resp;
++	int pmksa;
++	int pmksa_caching;
+ 
+ 	const char *dual_ap_ifname;
+ 	enum if_band ap_band, ap_band_1;
+@@ -1478,9 +1507,14 @@ struct sigma_dut {
+ #define MAX_MLD_SUPPORTED 2
+ 	/*Use ap_akm_link_values for interfcae specific cases*/
+ 	int ap_akm_link_values[MAX_MLD_SUPPORTED];
++	int ap_akm_link_rsno1e_values[MAX_MLD_SUPPORTED];
++	int ap_akm_link_rsno2e_values[MAX_MLD_SUPPORTED];
+ 	int ppe_vp_type;
+ 	/*Use ap_pmf_link for interface specific cases*/
+ 	enum ap_pmf ap_pmf_link[MAX_MLD_SUPPORTED];
++	enum ap_pmf ap_pmf_rsno1e_link[MAX_MLD_SUPPORTED];
++	enum ap_pmf ap_pmf_rsno2e_link[MAX_MLD_SUPPORTED];
++	enum sae_pwe ap_sae_pwe_link[MAX_MLD_SUPPORTED];
+ 	enum value_not_set_enabled_disabled ap_scs;
+ 	enum value_not_set_enabled_disabled ap_mscs;
+ 	int multi_mbssid;
+#ifdef NL80211_SUPPORT
+-- 
+2.34.1
+

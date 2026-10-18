@@ -1,0 +1,36 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006-2019 OpenWrt.org
+
+START=50
+
+USE_PROCD=1
+CRON_FILE="/etc/crontabs/root"
+CONFIG_FILE="/etc/logrotate.d/syslog-ng.conf"
+CRON_JOB="*/1 * * * * logrotate $CONFIG_FILE"
+
+start_service() {
+        [ -f /etc/syslog-ng.conf ] || return 1
+        [ -d /var/lib ] || mkdir -p /var/lib
+        /etc/init.d/log stop
+        /etc/init.d/log disable
+        procd_open_instance
+        procd_set_param command /usr/sbin/syslog-ng --foreground
+        procd_close_instance
+        echo "$(date '+%b %d %H:%M:%S') Enabling Logrotate being run as a cronjob"
+        # Ensure the cron job doesn't already exist
+        sed -i "\|logrotate $CONFIG_FILE|d" $CRON_FILE
+        echo "$CRON_JOB" >> $CRON_FILE
+        uci set system.@system[0].cronloglevel='9'
+        uci commit system
+        /etc/init.d/cron restart
+        echo "$(date '+%b %d %H:%M:%S') Logrotate cronjob started."
+}
+
+reload_service() {
+        /usr/sbin/syslog-ng-ctl reload
+        echo "$(date '+%b %d %H:%M:%S') Stopping logrotate cronjob"
+        # Remove the cron job
+        sed -i "\|logrotate $CONFIG_FILE|d" $CRON_FILE
+        /etc/init.d/cron restart
+        echo "$(date '+%b %d %H:%M:%S') Logrotate cronjob stopped."
+}

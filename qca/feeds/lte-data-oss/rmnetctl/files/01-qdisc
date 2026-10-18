@@ -1,0 +1,11 @@
+#!/bin/sh
+#
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
+[ "$ACTION" = add ] || exit 0
+[[ $INTERFACE == *"rmnet_mhi"* || $INTERFACE == *"rmnet_data"* ]] || exit 0
+BRIDGE_NAME="$INTERFACE"
+[ -d "/sys/class/net/$BRIDGE_NAME" ] || exit 0
+tc qdisc replace dev $BRIDGE_NAME root htb
+exit 0

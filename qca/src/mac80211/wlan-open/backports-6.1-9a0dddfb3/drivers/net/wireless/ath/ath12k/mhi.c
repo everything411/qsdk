@@ -1,0 +1,690 @@
+// SPDX-License-Identifier: BSD-3-Clause-Clear
+/*
+ * Copyright (c) 2020-2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#include <linux/msi.h>
+#include <linux/pci.h>
+#include <linux/firmware.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
+
+#include "core.h"
+#include "debug.h"
+#include "mhi.h"
+#include "pci.h"
+#include "hif.h"
+#include "pcic.h"
+#ifdef CPTCFG_ATHDEBUG
+#include "athdbg_if.h"
+#endif
+
+#define MHI_TIMEOUT_DEFAULT_MS	90000
+#define OTP_INVALID_BOARD_ID	0xFFFF
+#define OTP_VALID_DUALMAC_BOARD_ID_MASK		0x1000
+#define MHI_CB_INVALID	0xff
+
+void ath12k_mhi_set_mhictrl_reset(struct ath12k_base *ab)
+{
+	u32 val;
+
+	val = ath12k_pci_read32(ab, MHISTATUS);
+
+	ath12k_dbg(ab, ATH12K_DBG_PCI, "MHISTATUS 0x%x\n", val);
+
+	/* Observed on some targets that after SOC_GLOBAL_RESET, MHISTATUS
+	 * has SYSERR bit set and thus need to set MHICTRL_RESET
+	 * to clear SYSERR.
+	 */
+	ath12k_pci_write32(ab, MHICTRL, MHICTRL_RESET_MASK);
+
+	mdelay(10);
+}
+
+static void ath12k_mhi_reset_txvecdb(struct ath12k_base *ab)
+{
+	ath12k_pci_write32(ab, PCIE_TXVECDB, 0);
+}
+
+static void ath12k_mhi_reset_txvecstatus(struct ath12k_base *ab)
+{
+	ath12k_pci_write32(ab, PCIE_TXVECSTATUS, 0);
+}
+
+static void ath12k_mhi_reset_rxvecdb(struct ath12k_base *ab)
+{
+	ath12k_pci_write32(ab, PCIE_RXVECDB, 0);
+}
+
+static void ath12k_mhi_reset_rxvecstatus(struct ath12k_base *ab)
+{
+	ath12k_pci_write32(ab, PCIE_RXVECSTATUS, 0);
+}
+
+void ath12k_mhi_clear_vector(struct ath12k_base *ab)
+{
+	ath12k_mhi_reset_txvecdb(ab);
+	ath12k_mhi_reset_txvecstatus(ab);
+	ath12k_mhi_reset_rxvecdb(ab);
+	ath12k_mhi_reset_rxvecstatus(ab);
+}
+
+static int ath12k_mhi_get_msi(struct ath12k_pci *ab_pci)
+{
+	struct ath12k_base *ab = ab_pci->ab;
+	u32 user_base_data, base_vector;
+	int ret, num_vectors, i;
+	int *irq;
+	unsigned int msi_data;
+
+	ret = ath12k_pcic_get_user_msi_assignment(ab,
+						  "MHI", &num_vectors,
+						  &user_base_data, &base_vector);
+	if (ret)
+		return ret;
+
+	ath12k_dbg(ab, ATH12K_DBG_PCI, "Number of assigned MSI for MHI is %d, base vector is %d\n",
+		   num_vectors, base_vector);
+
+	irq = kcalloc(num_vectors, sizeof(*irq), GFP_KERNEL);
+	if (!irq)
+		return -ENOMEM;
+
+	msi_data = base_vector;
+	for (i = 0; i < num_vectors; i++) {
+		if (test_bit(ATH12K_PCI_FLAG_MULTI_MSI_VECTORS, &ab_pci->flags))
+			irq[i] = ath12k_hif_get_msi_irq(ab,
+							msi_data++);
+		else
+			irq[i] = ath12k_hif_get_msi_irq(ab,
+							msi_data);
+	}
+
+	ab_pci->mhi_ctrl->irq = irq;
+	ab_pci->mhi_ctrl->nr_irqs = num_vectors;
+
+	return 0;
+}
+
+static int ath12k_mhi_op_runtime_get(struct mhi_controller *mhi_cntrl)
+{
+	return 0;
+}
+
+static void ath12k_mhi_op_runtime_put(struct mhi_controller *mhi_cntrl)
+{
+}
+
+static char *ath12k_mhi_op_callback_to_str(enum mhi_callback reason)
+{
+	switch (reason) {
+	case MHI_CB_IDLE:
+		return "MHI_CB_IDLE";
+	case MHI_CB_PENDING_DATA:
+		return "MHI_CB_PENDING_DATA";
+	case MHI_CB_LPM_ENTER:
+		return "MHI_CB_LPM_ENTER";
+	case MHI_CB_LPM_EXIT:
+		return "MHI_CB_LPM_EXIT";
+	case MHI_CB_EE_RDDM:
+		return "MHI_CB_EE_RDDM";
+	case MHI_CB_EE_MISSION_MODE:
+		return "MHI_CB_EE_MISSION_MODE";
+	case MHI_CB_SYS_ERROR:
+		return "MHI_CB_SYS_ERROR";
+	case MHI_CB_FATAL_ERROR:
+		return "MHI_CB_FATAL_ERROR";
+	case MHI_CB_BW_REQ:
+		return "MHI_CB_BW_REQ";
+	default:
+		return "UNKNOWN";
+	}
+}
+
+
+static void ath12k_mhi_set_state_bit(struct ath12k_pci *ab_pci,
+				     enum ath12k_mhi_state mhi_state)
+{
+	struct ath12k_base *ab = ab_pci->ab;
+
+	switch (mhi_state) {
+	case ATH12K_MHI_INIT:
+		set_bit(ATH12K_MHI_INIT, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_DEINIT:
+		clear_bit(ATH12K_MHI_INIT, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_POWER_ON:
+		set_bit(ATH12K_MHI_POWER_ON, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_POWER_OFF:
+	case ATH12K_MHI_POWER_OFF_KEEP_DEV:
+	case ATH12K_MHI_FORCE_POWER_OFF:
+		clear_bit(ATH12K_MHI_POWER_ON, &ab_pci->mhi_state);
+		clear_bit(ATH12K_MHI_TRIGGER_RDDM, &ab_pci->mhi_state);
+		clear_bit(ATH12K_MHI_RDDM_DONE, &ab_pci->mhi_state);
+		clear_bit(ATH12K_MHI_MISSION_MODE, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_SUSPEND:
+		set_bit(ATH12K_MHI_SUSPEND, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_RESUME:
+		clear_bit(ATH12K_MHI_SUSPEND, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_TRIGGER_RDDM:
+		set_bit(ATH12K_MHI_TRIGGER_RDDM, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_RDDM_DONE:
+		set_bit(ATH12K_MHI_RDDM_DONE, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_RDDM:
+		set_bit(ATH12K_MHI_RDDM, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_SOC_RESET:
+		set_bit(ATH12K_MHI_SOC_RESET, &ab_pci->mhi_state);
+		break;
+	case ATH12K_MHI_MISSION_MODE:
+		set_bit(ATH12K_MHI_MISSION_MODE, &ab_pci->mhi_state);
+		break;
+
+	default:
+		ath12k_err(ab, "unhandled mhi state (%d)\n", mhi_state);
+	}
+}
+
+static void ath12k_mhi_op_status_cb(struct mhi_controller *mhi_cntrl,
+				    enum mhi_callback cb)
+{
+	struct ath12k_base *ab = dev_get_drvdata(mhi_cntrl->cntrl_dev);
+	struct ath12k_hw_group *ag = ab->ag;
+	struct ath12k_pci *ab_pci = ath12k_pci_priv(ab);
+
+	ath12k_info(ab, "mhi notify status reason %s\n",
+		    ath12k_mhi_op_callback_to_str(cb));
+
+	switch (cb) {
+	case MHI_CB_SYS_ERROR:
+		ath12k_warn(ab, "firmware crashed: MHI_CB_SYS_ERROR\n");
+		break;
+	case MHI_CB_EE_MISSION_MODE:
+		ath12k_mhi_set_state_bit(ab_pci, ATH12K_MHI_MISSION_MODE);
+		break;
+	case MHI_CB_EE_RDDM:
+
+		/* RDDM event valid only in MISSION mode. We can ignore duplicate
+		 * RDDM event or RDDM event which not in mission mode.
+		 */
+		if (!test_bit(ATH12K_MHI_MISSION_MODE, &ab_pci->mhi_state)) {
+			ath12k_dbg(ab, ATH12K_DBG_BOOT,
+				   "Ignore RDDM event: Duplicate / MHI in not in mission mode\n");
+			return;
+		}
+
+		clear_bit(ATH12K_MHI_MISSION_MODE, &ab_pci->mhi_state);
+
+		/* In-case of rddm for mhi soc reset */
+		if (test_bit(ATH12K_MHI_SOC_RESET, &ab_pci->mhi_state)) {
+			ath12k_dbg(ab, ATH12K_DBG_BOOT, "Triggering RDDM from mhi soc reset\n");
+			clear_bit(ATH12K_MHI_SOC_RESET, &ab_pci->mhi_state);
+			complete(&ab->rddm_reset_done);
+			return;
+		}
+
+		ath12k_mhi_set_state_bit(ab_pci, ATH12K_MHI_RDDM);
+		/* Skip SSR recovery during reboot — group flag ensures any
+		 * radio's shutdown suppresses RDDM recovery on all radios.
+		 */
+		if (test_bit(ATH12K_GROUP_FLAG_SHUTDOWN, &ag->flags))
+			return;
+
+		set_bit(ATH12K_FLAG_CRASH_FLUSH, &ab->dev_flags);
+
+		if (!test_bit(ATH12K_GROUP_FLAG_UNREGISTER, &ag->flags)) {
+			ath12k_info(ab, "Schedule SSR Recovery reset work queue\n");
+			set_bit(ATH12K_FLAG_RECOVERY, &ab->dev_flags);
+			set_bit(ATH12K_GROUP_FLAG_RECOVERY, &ab->ag->flags);
+			if (ab_pci->device_ops->get_reset_reason)
+				ab_pci->device_ops->get_reset_reason(ab);
+			if (test_bit(ATH12K_FLAG_RECOVERY_Q6_BCR, &ab->dev_flags) &&
+			    ab->hw_params->hw_ops->update_tqm_status_ring_tp)
+				ab->hw_params->hw_ops->update_tqm_status_ring_tp(ab,
+										 true);
+			queue_work(ab->workqueue_aux, &ab->reset_work);
+			ath12k_hal_dump_srng_stats(ab);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+static int ath12k_mhi_op_read_reg(struct mhi_controller *mhi_cntrl,
+				  void __iomem *addr,
+				  u32 *out)
+{
+	u32 tmp = readl(addr);
+
+	/* If the value is invalid, the link is down */
+	if (PCI_INVALID_READ(tmp))
+		return -EIO;
+
+	*out = tmp;
+
+	return 0;
+}
+
+static void ath12k_mhi_op_write_reg(struct mhi_controller *mhi_cntrl,
+				    void __iomem *addr,
+				    u32 val)
+{
+	writel(val, addr);
+}
+
+int ath12k_mhi_register(struct ath12k_pci *ab_pci)
+{
+	struct ath12k_base *ab = ab_pci->ab;
+	struct mhi_controller *mhi_ctrl;
+	unsigned int board_id;
+	int ret, idx = 0;
+	bool dualmac = false;
+	struct device_node *dev_node;
+	struct resource memory;
+
+	mhi_ctrl = mhi_alloc_controller();
+	if (!mhi_ctrl)
+		return -ENOMEM;
+
+	timer_setup(&ab_pci->mhi_q6_boot_debug_timer,
+			    ath12k_mhi_q6_boot_debug_timeout_hdlr, 0);
+	ab_pci->mhi_ctrl = mhi_ctrl;
+	mhi_ctrl->cntrl_dev = ab->dev;
+	mhi_ctrl->regs = ab->mem;
+	mhi_ctrl->reg_len = ab->mem_len;
+	mhi_ctrl->rddm_size = ab->hw_params->rddm_size ?: ATH12K_PCI_FW_RDDM_SZ;
+	if (ab->hw_params->otp_board_id_register) {
+		if (!of_property_read_u32(ab->dev->of_node, "qcom,board_id", &board_id) &&
+		    board_id != ATH12K_BOARD_ID_DEFAULT) {
+			board_id = u32_get_bits(board_id, OTP_BOARD_ID_MASK);
+		} else {
+			board_id =
+				ath12k_pci_read32(ab,
+						  ab->hw_params->otp_board_id_register);
+			board_id = u32_get_bits(board_id, OTP_BOARD_ID_MASK);
+		}
+
+		if (!board_id || (board_id == OTP_INVALID_BOARD_ID)) {
+			ath12k_dbg(ab, ATH12K_DBG_BOOT,
+				   "failed to read board id\n");
+		} else if (board_id & OTP_VALID_DUALMAC_BOARD_ID_MASK) {
+			dualmac = true;
+			ath12k_dbg(ab, ATH12K_DBG_BOOT,
+				   "dualmac fw selected for board id: %x\n", board_id);
+		}
+
+		if (ab->hw_params->fw.unified_fw_image)
+			ab_pci->unified_fw_board_id = board_id;
+	}
+
+	if (!ab->hw_params->fw.unified_fw_image && dualmac) {
+		ab->is_dualmac = true;
+		if (ab->fw.amss_dualmac_data && ab->fw.amss_dualmac_len > 0) {
+			/* use MHI firmware file from firmware-N.bin */
+			mhi_ctrl->fw_data = ab->fw.amss_dualmac_data;
+			mhi_ctrl->fw_sz = ab->fw.amss_dualmac_len;
+		} else {
+			ath12k_core_create_firmware_path(ab, ATH12K_AMSS_DUALMAC_FILE,
+							 ab_pci->amss_path,
+							 sizeof(ab_pci->amss_path));
+			mhi_ctrl->fw_image = ab_pci->amss_path;
+		}
+	} else {
+		if (ab->fw.amss_data && ab->fw.amss_len > 0) {
+			/* use MHI firmware file from firmware-N.bin */
+			mhi_ctrl->fw_data = ab->fw.amss_data;
+			mhi_ctrl->fw_sz = ab->fw.amss_len;
+		} else {
+			/* use the old separate mhi.bin MHI firmware file */
+			ath12k_core_create_firmware_path(ab, ATH12K_AMSS_FILE,
+							 ab_pci->amss_path,
+							 sizeof(ab_pci->amss_path));
+			mhi_ctrl->fw_image = ab_pci->amss_path;
+		}
+	}
+
+	ret = ath12k_mhi_get_msi(ab_pci);
+	if (ret) {
+		ath12k_err(ab, "failed to get msi for mhi\n");
+		goto free_controller;
+	}
+
+	if (!test_bit(ATH12K_PCI_FLAG_MULTI_MSI_VECTORS, &ab_pci->flags))
+		mhi_ctrl->irq_flags = IRQF_SHARED | IRQF_NOBALANCING;
+
+	dev_node = of_find_node_by_type(NULL, "memory");
+	if (dev_node) {
+		while (of_address_to_resource(dev_node, idx, &memory) == 0) {
+			if (!idx)
+				mhi_ctrl->iova_start = memory.start;
+			/* The end address and size are auto-filled by the
+			 * bootloader and only the start address can be seen
+			 * specified in the dts file.
+			 */
+			mhi_ctrl->iova_stop = memory.end;
+			idx++;
+		}
+
+		if (!mhi_ctrl->iova_start || !mhi_ctrl->iova_stop) {
+			ath12k_err(ab, "Unable to get resource from the dts node memory. iova start:%pa iova stop:%pa\n",
+				   &mhi_ctrl->iova_start, &mhi_ctrl->iova_stop);
+			of_node_put(dev_node);
+			ret = -ENOMEM;
+			goto free_controller;
+		}
+		of_node_put(dev_node);
+	} else {
+		mhi_ctrl->iova_start = 0;
+		mhi_ctrl->iova_stop = ab_pci->dma_mask;
+	}
+
+#ifdef CPTCFG_EXT_IPA_OFFLOAD
+	mhi_ctrl->iova_stop = min(mhi_ctrl->iova_stop, (dma_addr_t)DMA_BIT_MASK(32));
+#endif
+
+	ath12k_dbg(ab, ATH12K_DBG_PCI, "iova start:%pa iova stop: %pa\n",
+		   &mhi_ctrl->iova_start, &mhi_ctrl->iova_stop);
+
+	mhi_ctrl->sbl_size = SZ_512K;
+	mhi_ctrl->seg_len = SZ_512K;
+	mhi_ctrl->fbc_download = true;
+	mhi_ctrl->runtime_get = ath12k_mhi_op_runtime_get;
+	mhi_ctrl->runtime_put = ath12k_mhi_op_runtime_put;
+	mhi_ctrl->status_cb = ath12k_mhi_op_status_cb;
+	mhi_ctrl->read_reg = ath12k_mhi_op_read_reg;
+	mhi_ctrl->write_reg = ath12k_mhi_op_write_reg;
+
+	ret = mhi_register_controller(mhi_ctrl, ab->hw_params->mhi_config);
+	if (ret) {
+		ath12k_err(ab, "failed to register to mhi bus, err = %d\n", ret);
+		goto free_controller;
+	}
+
+#ifndef PLATFORM_SDX
+	mhi_ctrl->rddm_prealloc = false;
+	mhi_ctrl->rddm_seg_len = SZ_4K;
+#endif
+
+	return 0;
+
+free_controller:
+	mhi_free_controller(mhi_ctrl);
+	ab_pci->mhi_ctrl = NULL;
+	return ret;
+}
+
+void ath12k_mhi_unregister(struct ath12k_pci *ab_pci)
+{
+	struct mhi_controller *mhi_ctrl = ab_pci->mhi_ctrl;
+
+	mhi_unregister_controller(mhi_ctrl);
+	kfree(mhi_ctrl->irq);
+	del_timer_sync(&ab_pci->mhi_q6_boot_debug_timer);
+	mhi_free_controller(mhi_ctrl);
+	ab_pci->mhi_ctrl = NULL;
+}
+
+/*
+ *TODO: The enum values of ath12k_mhi_state reperesent the set bits
+ *in mhi_state bitmap and printing the state based on that is wrong.
+ *More over there can be more than one bit set at a time.
+ */
+
+static char *ath12k_mhi_state_to_str(enum ath12k_mhi_state mhi_state)
+{
+	switch (mhi_state) {
+	case ATH12K_MHI_INIT:
+		return "INIT";
+	case ATH12K_MHI_DEINIT:
+		return "DEINIT";
+	case ATH12K_MHI_POWER_ON:
+		return "POWER_ON";
+	case ATH12K_MHI_POWER_OFF:
+		return "POWER_OFF";
+	case ATH12K_MHI_POWER_OFF_KEEP_DEV:
+		return "POWER_OFF_KEEP_DEV";
+	case ATH12K_MHI_FORCE_POWER_OFF:
+		return "FORCE_POWER_OFF";
+	case ATH12K_MHI_SUSPEND:
+		return "SUSPEND";
+	case ATH12K_MHI_RESUME:
+		return "RESUME";
+	case ATH12K_MHI_TRIGGER_RDDM:
+		return "TRIGGER_RDDM";
+	case ATH12K_MHI_RDDM_DONE:
+		return "RDDM_DONE";
+	default:
+		return "UNKNOWN";
+	}
+};
+
+static int ath12k_mhi_check_state_bit(struct ath12k_pci *ab_pci,
+				      enum ath12k_mhi_state mhi_state)
+{
+	struct ath12k_base *ab = ab_pci->ab;
+
+	switch (mhi_state) {
+	case ATH12K_MHI_INIT:
+		if (!test_bit(ATH12K_MHI_INIT, &ab_pci->mhi_state))
+			return 0;
+		break;
+	case ATH12K_MHI_DEINIT:
+	case ATH12K_MHI_POWER_ON:
+		if (test_bit(ATH12K_MHI_INIT, &ab_pci->mhi_state) &&
+		    !test_bit(ATH12K_MHI_POWER_ON, &ab_pci->mhi_state))
+			return 0;
+		break;
+	case ATH12K_MHI_FORCE_POWER_OFF:
+		if (test_bit(ATH12K_MHI_POWER_ON, &ab_pci->mhi_state))
+			return 0;
+		break;
+	case ATH12K_MHI_POWER_OFF:
+	case ATH12K_MHI_POWER_OFF_KEEP_DEV:
+	case ATH12K_MHI_SUSPEND:
+		if (test_bit(ATH12K_MHI_POWER_ON, &ab_pci->mhi_state) &&
+		    !test_bit(ATH12K_MHI_SUSPEND, &ab_pci->mhi_state))
+			return 0;
+		break;
+	case ATH12K_MHI_RESUME:
+		if (test_bit(ATH12K_MHI_SUSPEND, &ab_pci->mhi_state))
+			return 0;
+		break;
+	case ATH12K_MHI_TRIGGER_RDDM:
+		if (test_bit(ATH12K_MHI_POWER_ON, &ab_pci->mhi_state) &&
+		    !test_bit(ATH12K_MHI_TRIGGER_RDDM, &ab_pci->mhi_state))
+			return 0;
+		break;
+	case ATH12K_MHI_RDDM_DONE:
+		return 0;
+	case ATH12K_MHI_SOC_RESET:
+		return 0;
+	case ATH12K_MHI_RDDM:
+		return 0;
+	default:
+		ath12k_err(ab, "unhandled mhi state: %s(%d)\n",
+			   ath12k_mhi_state_to_str(mhi_state), mhi_state);
+	}
+
+	ath12k_err(ab, "failed to set mhi state %s(%d) in current mhi state (0x%lx)\n",
+		   ath12k_mhi_state_to_str(mhi_state), mhi_state,
+		   ab_pci->mhi_state);
+
+	return -EINVAL;
+}
+
+int ath12k_mhi_set_state(struct ath12k_pci *ab_pci,
+				enum ath12k_mhi_state mhi_state)
+{
+	struct ath12k_base *ab = ab_pci->ab;
+	int ret;
+
+	ret = ath12k_mhi_check_state_bit(ab_pci, mhi_state);
+	if (ret)
+		goto out;
+
+	ath12k_dbg(ab, ATH12K_DBG_PCI, "setting mhi state: %s(%d)\n",
+		   ath12k_mhi_state_to_str(mhi_state), mhi_state);
+
+	switch (mhi_state) {
+	case ATH12K_MHI_INIT:
+		ret = mhi_prepare_for_power_up(ab_pci->mhi_ctrl);
+		break;
+	case ATH12K_MHI_DEINIT:
+		mhi_unprepare_after_power_down(ab_pci->mhi_ctrl);
+		ret = 0;
+		break;
+	case ATH12K_MHI_POWER_ON:
+		/* In case of resume, QRTR's resume_early() is called
+		 * right after ath12k' resume_early(). Since QRTR requires
+		 * MHI mission mode state when preparing IPCR channels
+		 * (see ee_mask of that channel), we need to use the 'sync'
+		 * version here to make sure MHI is in that state when we
+		 * return. Or QRTR might resume before that state comes,
+		 * and as a result it fails.
+		 *
+		 * The 'sync' version works for non-resume (normal power on)
+		 * case as well.
+		 */
+		ret = mhi_sync_power_up(ab_pci->mhi_ctrl);
+		break;
+	case ATH12K_MHI_POWER_OFF:
+		mhi_power_down(ab_pci->mhi_ctrl, true);
+		ret = 0;
+		break;
+#if LINUX_VERSION_IS_GEQ(6,10,0)
+	case ATH12K_MHI_POWER_OFF_KEEP_DEV:
+		mhi_power_down_keep_dev(ab_pci->mhi_ctrl, true);
+		ret = 0;
+		break;
+#endif
+	case ATH12K_MHI_FORCE_POWER_OFF:
+		mhi_power_down(ab_pci->mhi_ctrl, false);
+		ret = 0;
+		break;
+	case ATH12K_MHI_SUSPEND:
+		ret = mhi_pm_suspend(ab_pci->mhi_ctrl);
+		break;
+	case ATH12K_MHI_RESUME:
+		ret = mhi_pm_resume(ab_pci->mhi_ctrl);
+		break;
+	case ATH12K_MHI_TRIGGER_RDDM:
+		ret = mhi_force_rddm_mode(ab_pci->mhi_ctrl);
+		break;
+	case ATH12K_MHI_RDDM_DONE:
+		break;
+	case ATH12K_MHI_RDDM:
+		break;
+	case ATH12K_MHI_SOC_RESET:
+		mhi_soc_reset(ab_pci->mhi_ctrl);
+		break;
+	default:
+		ath12k_err(ab, "unhandled MHI state (%d)\n", mhi_state);
+		ret = -EINVAL;
+	}
+
+	if (ret)
+		goto out;
+
+	ath12k_mhi_set_state_bit(ab_pci, mhi_state);
+
+	return 0;
+
+out:
+	ath12k_err(ab, "failed to set mhi state: %s(%d)\n",
+		   ath12k_mhi_state_to_str(mhi_state), mhi_state);
+	return ret;
+}
+
+int ath12k_mhi_start(struct ath12k_pci *ab_pci)
+{
+	int ret = 0;
+
+	ab_pci->mhi_ctrl->timeout_ms = MHI_TIMEOUT_DEFAULT_MS;
+
+	ret = ath12k_mhi_set_state(ab_pci, ATH12K_MHI_INIT);
+	if (ret)
+		goto out;
+
+	mod_timer(&ab_pci->mhi_q6_boot_debug_timer,
+			  jiffies + msecs_to_jiffies(MHI_POWER_ON_DEBUG_TIMEOUT_MS));
+
+	ret = ath12k_mhi_set_state(ab_pci, ATH12K_MHI_POWER_ON);
+	del_timer_sync(&ab_pci->mhi_q6_boot_debug_timer);
+
+	if (ret)
+		goto out;
+
+	return 0;
+
+out:
+	if (ret == -ETIMEDOUT) {
+		/* If MHI Start timedout but the target is already in mission
+		 * mode and is able to do RDDM, RDDM cookie would be set.
+		 * Dump SBL SRAM memory only if RDDM cookie is not set.
+		 */
+#ifndef PLATFORM_SDX
+#ifdef CPTCFG_ATHDEBUG
+		if (!mhi_scan_rddm_cookie(ab_pci->mhi_ctrl, MHI_DEVICE_RDDM_COOKIE))
+			athdbg_if_get_service(ab_pci->ab, ATHDBG_SRV_MHI_Q6_DUMP_BL_SRAM);
+#endif
+#endif
+	}
+	return ret;
+}
+
+void ath12k_mhi_stop(struct ath12k_pci *ab_pci, bool is_suspend)
+{
+	/* During suspend we need to use mhi_power_down_keep_dev()
+	 * workaround, otherwise ath12k_core_resume() will timeout
+	 * during resume.
+	 */
+	if (is_suspend)
+		ath12k_mhi_set_state(ab_pci, ATH12K_MHI_POWER_OFF_KEEP_DEV);
+	else
+		ath12k_mhi_set_state(ab_pci, ATH12K_MHI_POWER_OFF);
+
+	ath12k_mhi_set_state(ab_pci, ATH12K_MHI_DEINIT);
+}
+
+void ath12k_mhi_suspend(struct ath12k_pci *ab_pci)
+{
+	ath12k_mhi_set_state(ab_pci, ATH12K_MHI_SUSPEND);
+}
+
+void ath12k_mhi_resume(struct ath12k_pci *ab_pci)
+{
+	ath12k_mhi_set_state(ab_pci, ATH12K_MHI_RESUME);
+}
+
+void ath12k_mhi_coredump(struct mhi_controller *mhi_ctrl, bool in_panic)
+{
+	mhi_download_rddm_image(mhi_ctrl, in_panic);
+}
+
+void *ath12k_pci_get_priv(struct ath12k_base *ab)
+{
+	return ath12k_pci_priv(ab);
+}
+
+void ath12k_mhi_q6_boot_debug_timeout_hdlr(struct timer_list *timer)
+{
+	struct ath12k_pci *ab_pci = from_timer(ab_pci, timer,
+					       mhi_q6_boot_debug_timer);
+
+#ifdef CPTCFG_ATHDEBUG
+	athdbg_if_get_service(ab_pci->ab,
+			      ATHDBG_SRV_MHI_Q6_BOOT_DEBUG_TIMEOUT);
+	mod_timer(&ab_pci->mhi_q6_boot_debug_timer,
+			jiffies + msecs_to_jiffies(MHI_POWER_ON_DEBUG_TIMEOUT_MS));
+
+#endif
+}

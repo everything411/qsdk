@@ -1,0 +1,43 @@
+From 80fe1dd89102f8d00ec90a6e2104c3d27e57d79d Mon Sep 17 00:00:00 2001
+From: Badhrinath S <badhrina@qti.qualcomm.com>
+Date: Mon, 16 Mar 2026 17:20:44 +0530
+Subject: [PATCH] phy: qcom: Add support for FEMTO USB PHY
+
+Introduce a new Kconfig option for the FEMTO High-Speed USB PHY and add
+the corresponding driver to the build system.
+
+Change-Id: Ieea98b9806c5a858f854efaa1204f17386450729
+Signed-off-by: Badhrinath S <badhrina@qti.qualcomm.com>
+---
+ drivers/phy/qcom/Kconfig  | 8 ++++++++
+ drivers/phy/qcom/Makefile | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/drivers/phy/qcom/Kconfig b/drivers/phy/qcom/Kconfig
+index 36f86772ccd..e26d12a2fc7 100644
+--- a/drivers/phy/qcom/Kconfig
++++ b/drivers/phy/qcom/Kconfig
+@@ -97,3 +97,11 @@ config PHY_QCOM_QMP_USB3
+ 	help
+ 	  Enable this to support the Super-Speed USB transceiver on various
+ 	  Qualcomm IPQ chipsets.
++
++config PHY_QCOM_USB_FEMTO
++        tristate "Qualcomm FEMTO USB HS PHY"
++        depends on PHY && ARCH_IPQ
++        help
++          Enable this to support the High-Speed Femto USB transceiver on various
++          Qualcomm IPQ chipsets.
++
+diff --git a/drivers/phy/qcom/Makefile b/drivers/phy/qcom/Makefile
+index ee9912f57dc..a465b299e6c 100644
+--- a/drivers/phy/qcom/Makefile
++++ b/drivers/phy/qcom/Makefile
+@@ -12,3 +12,4 @@ obj-$(CONFIG_PHY_QCOM_USB_HS_M31) += phy-qcom-usb-hs-m31.o
+ obj-$(CONFIG_PHY_QCOM_UNI_SSPHY) += phy-qcom-uni-ssphy.o
+ obj-$(CONFIG_PHY_QCOM_QUSB2) += phy-qcom-qusb2.o
+ obj-$(CONFIG_PHY_QCOM_QMP_USB3) += phy-qcom-qmp-usb3.o
++obj-$(CONFIG_PHY_QCOM_USB_FEMTO) += phy-qcom-usb-femto-hs.o
+-- 
+2.34.1
+

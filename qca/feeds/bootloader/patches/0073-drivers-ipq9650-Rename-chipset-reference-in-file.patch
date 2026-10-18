@@ -1,0 +1,85 @@
+From 144445bddf2c8dd206e5946dc7cff0bf176ef821 Mon Sep 17 00:00:00 2001
+From: Sridharan S N <sridsn@qti.qualcomm.com>
+Date: Tue, 30 Dec 2025 12:00:39 +0530
+Subject: [PATCH] drivers: ipq9650: Rename chipset reference in file
+
+Update the file to replace the chipset reference
+from ipq9670 to ipq9650 for consistency.
+
+Change-Id: Id45ad1a9662fd1819c3ab435c8cb5094653a4ee7
+Signed-off-by: Sridharan S N <sridsn@qti.qualcomm.com>
+---
+ drivers/clk/qcom/Kconfig      | 6 +++---
+ drivers/clk/qcom/Makefile     | 2 +-
+ drivers/pinctrl/qcom/Kconfig  | 6 +++---
+ drivers/pinctrl/qcom/Makefile | 2 +-
+ 4 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index 58e5290634e..f7eafbb1824 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -55,12 +55,12 @@ config CLK_QCOM_IPQ5210
+ 	  on the Snapdragon IPQ5210 SoC. This driver supports the clocks
+ 	  and resets exposed by the GCC hardware block.
+ 
+-config CLK_QCOM_IPQ9670
+-	bool "Qualcomm IPQ9670 GCC"
++config CLK_QCOM_IPQ9650
++	bool "Qualcomm IPQ9650 GCC"
+ 	select CLK_QCOM
+ 	help
+ 	  Say Y here to enable support for the Global Clock Controller
+-	  on the Snapdragon IPQ9670 SoC. This driver supports the clocks
++	  on the Snapdragon IPQ9650 SoC. This driver supports the clocks
+ 	  and resets exposed by the GCC hardware block.
+ 
+ config CLK_QCOM_IPQ9574
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index d5d680af083..e56dc4ed3e1 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -11,7 +11,7 @@ obj-$(CONFIG_CLK_QCOM_IPQ5332) += clock-ipq5332.o
+ obj-$(CONFIG_CLK_QCOM_IPQ5424) += clock-ipq5424.o
+ obj-$(CONFIG_CLK_QCOM_IPQ5210) += clock-ipq5210.o
+ obj-$(CONFIG_CLK_QCOM_IPQ9574) += clock-ipq9574.o
+-obj-$(CONFIG_CLK_QCOM_IPQ9670) += clock-ipq9670.o
++obj-$(CONFIG_CLK_QCOM_IPQ9650) += clock-ipq9650.o
+ obj-$(CONFIG_CLK_QCOM_QCM2290) += clock-qcm2290.o
+ obj-$(CONFIG_CLK_QCOM_QCS404) += clock-qcs404.o
+ obj-$(CONFIG_CLK_QCOM_SA8775P) += clock-sa8775p.o
+diff --git a/drivers/pinctrl/qcom/Kconfig b/drivers/pinctrl/qcom/Kconfig
+index f9d87523ba8..aec3593ce01 100644
+--- a/drivers/pinctrl/qcom/Kconfig
++++ b/drivers/pinctrl/qcom/Kconfig
+@@ -48,11 +48,11 @@ config PINCTRL_QCOM_IPQ5210
+ 	  Say Y here to enable support for pinctrl on the IPQ5210 SoC,
+ 	  as well as the associated GPIO driver.
+ 
+-config PINCTRL_QCOM_IPQ9670
+-	bool "Qualcomm IPQ9670 GCC"
++config PINCTRL_QCOM_IPQ9650
++	bool "Qualcomm IPQ9650 GCC"
+ 	select PINCTRL_QCOM
+ 	help
+-	  Say Y here to enable support for pinctrl on the IPQ9670 SoC,
++	  Say Y here to enable support for pinctrl on the IPQ9650 SoC,
+ 	  as well as the associated GPIO driver.
+ 
+ config PINCTRL_QCOM_IPQ9574
+diff --git a/drivers/pinctrl/qcom/Makefile b/drivers/pinctrl/qcom/Makefile
+index 0fd0c44d36d..069a4c37219 100644
+--- a/drivers/pinctrl/qcom/Makefile
++++ b/drivers/pinctrl/qcom/Makefile
+@@ -9,7 +9,7 @@ obj-$(CONFIG_PINCTRL_QCOM_IPQ5210) += pinctrl-ipq5210.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5332) += pinctrl-ipq5332.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5424) += pinctrl-ipq5424.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ9574) += pinctrl-ipq9574.o
+-obj-$(CONFIG_PINCTRL_QCOM_IPQ9670) += pinctrl-ipq9670.o
++obj-$(CONFIG_PINCTRL_QCOM_IPQ9650) += pinctrl-ipq9650.o
+ obj-$(CONFIG_PINCTRL_QCOM_APQ8096) += pinctrl-apq8096.o
+ obj-$(CONFIG_PINCTRL_QCOM_QCM2290) += pinctrl-qcm2290.o
+ obj-$(CONFIG_PINCTRL_QCOM_QCS404) += pinctrl-qcs404.o
+-- 
+2.34.1
+

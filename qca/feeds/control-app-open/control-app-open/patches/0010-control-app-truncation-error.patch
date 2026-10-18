@@ -1,0 +1,20 @@
+From: krishna kumar <krisa@qti.qualcomm.com>
+Subject: [PATCH] utils: Fix snprintf truncation warning for local_port
+
+Fix snprintf truncation due to insufficient buffer size for port number
+
+Signed-off-by: krishna kumar <krisa@qti.qualcomm.com>
+
+Index: b/utils.c
+===================================================================
+--- a/utils.c
++++ b/utils.c
+@@ -349,7 +349,7 @@ int loopback_server_start(char *local_ip
+         return -1;
+     } else {
+         indigo_logger(LOG_LEVEL_INFO, "loopback server port number %d\n", ntohs(addr.sin_port));
+-        snprintf(local_port, sizeof(size_local_port), "%d", ntohs(addr.sin_port));
++	snprintf(local_port, size_local_port, "%d", ntohs(addr.sin_port));
+     }
+ 
+     /* Register to eloop and ready for the socket event */

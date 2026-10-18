@@ -1,0 +1,37 @@
+/*
+ * Copyright (c) 2026 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: ISC
+ */
+
+{
+	"rules":
+	[
+		{
+			"policer": {
+				"port_policer": "true",
+				"committed_rate": "10000",
+				"committed_burst_size": "8000",
+				"dev": "eth0",
+				"meter_mode": "true",
+				"meter_unit": "true",
+				"peak_rate": "15000",
+				"peak_burst_size": "9000",
+				"couple_enable": "0",
+				"colour_aware_enable": "0",
+				"meter_flag": "uc_mc_bc_uuc_umc"
+			}
+		},
+		{
+			"policer": {
+				"rule_id": "1",
+				"committed_rate": "10000",
+				"committed_burst_size": "8000",
+				"peak_rate": "15000",
+				"peak_burst_size": "9000",
+				"couple_enable": "0",
+				"colour_aware_enable": "0",
+				"meter_flag": "uc_mc_bc_uuc_umc"
+			}
+		}
+	]
+}

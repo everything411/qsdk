@@ -1,0 +1,325 @@
+From cb95403a84188bb8d58739eeb4b6e5275bd51f92 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+Date: Tue, 28 Apr 2026 15:02:41 -0700
+Subject: [PATCH] UPSTREAM:PROTOCOL: sigma_dut: CE2 regression fixes and CE3
+ PASN groups support.
+
+CE2: Remove kek_in_pasn=1 lines that caused regressions.
+CE3: Add SAEPasswords parameter handling, AP_EPPKE key management,
+sae_pw_id support, pasn_groups config, and nl80211 MAC address
+NULL check fixes.
+
+Patch-dependency: 113-UPSTREAM-PROTOCOL-EPPKE-8021x-CAPI-support.patch
+
+Signed-off-by: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+---
+ ap.c        | 175 ++++++++++++++++++++++++++++++++++++++++++++--------
+ sigma_dut.h |   2 +
+ 2 files changed, 150 insertions(+), 27 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 0e8fdf8..25d3fc4 100644
+--- a/ap.c
++++ b/ap.c
+@@ -3728,6 +3728,12 @@ static int ap_set_security_mixed_mode(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "SAEPasswords");
++	if (val) {
++		free(dut->ap_sae_passwords);
++		dut->ap_sae_passwords = strdup(val);
++	}
++
+ 	dut->security_links++;
+ 	return 1;
+ }
+@@ -3801,6 +3807,10 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 				   wlan_tag == 2) {
+ 				dut->ap_tag_key_mgmt[wlan_tag - 2] =
+ 					AP2_EPPKE_PSK_SAE;
++			} else if (strcasecmp(val, "EPPKE") == 0 &&
++				   wlan_tag == 2) {
++				dut->ap_tag_key_mgmt[wlan_tag - 2] =
++					AP2_EPPKE;
+ 			} else if (strcasecmp(val, "WPA3-COMPAT-COEX") == 0 &&
+ 				   wlan_tag == 2) {
+ 				dut->ap_tag_key_mgmt[wlan_tag - 2] =
+@@ -4040,6 +4050,9 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 		} else if (strcasecmp(val, "EPPKE-PSK-SAE") == 0) {
+ 			dut->ap_key_mgmt = AP_EPPKE_PSK_SAE;
+ 			dut->ap_cipher = AP_CCMP;
++		} else if (strcasecmp(val, "EPPKE") == 0) {
++			dut->ap_key_mgmt = AP_EPPKE;
++			dut->ap_cipher = AP_CCMP;
+ 		} else if (strcasecmp(val, "OWE") == 0) {
+ 			dut->ap_key_mgmt = AP_WPA2_OWE;
+ 			dut->ap_cipher = AP_CCMP;
+@@ -6044,6 +6057,9 @@ static int owrt_ap_config_vap(struct sigma_dut *dut)
+ 		case AP_EPPKE_PSK_SAE:
+ 			/* TODO */
+ 			break;
++		case AP_EPPKE:
++			/* TODO */
++			break;
+ 		}
+ 
+ 		if (!dut->ap_is_dual)
+@@ -7013,6 +7029,7 @@ static int cmd_wcn_ap_config_commit(struct sigma_dut *dut,
+ 	case AP_WPA3_SAE_EXT:
+ 	case AP_WPA3_COMPAT:
+ 	case AP_EPPKE_PSK_SAE:
++	case AP_EPPKE:
+ 	case AP_WPA3_COMPAT_COEX:
+ 		/* Not supported */
+ 		break;
+@@ -9247,6 +9264,7 @@ static int cmd_ath_ap_config_commit(struct sigma_dut *dut,
+ 	case AP_WPA3_SAE_EXT:
+ 	case AP_WPA3_COMPAT:
+ 	case AP_EPPKE_PSK_SAE:
++	case AP_EPPKE:
+ 	case AP_WPA3_COMPAT_COEX:
+ 		/* TODO */
+ 		send_resp(dut, conn, SIGMA_ERROR,
+@@ -9365,6 +9383,7 @@ static int cmd_ath_ap_config_commit(struct sigma_dut *dut,
+ 		case AP_WPA3_SAE_EXT:
+ 		case AP_WPA3_COMPAT:
+ 		case AP_EPPKE_PSK_SAE:
++		case AP_EPPKE:
+ 		case AP_WPA3_COMPAT_COEX:
+ 			/* TODO */
+ 			send_resp(dut, conn, SIGMA_ERROR,
+@@ -10518,7 +10537,7 @@ nla_put_failure:
+ }
+ 
+ 
+-static void set_second_ap_security_conf(FILE *file, struct sigma_dut *dut, int link_id)
++static int set_second_ap_security_conf(FILE *file, struct sigma_dut *dut, int link_id)
+ {
+ 	const char *key_mgmt;
+ 	enum driver_type drv = get_driver_type(dut);
+@@ -10543,11 +10562,41 @@ static void set_second_ap_security_conf(FILE *file, struct sigma_dut *dut, int l
+ 		fprintf(file, "wpa=2\n");
+ 		fprintf(file, "wpa_key_mgmt=SAE SAE-EXT-KEY EPPKE\n");
+ 		fprintf(file, "wpa_pairwise=CCMP GCMP-256\n");
+-		fprintf(file, "sae_password=%s\n",
+-			dut->ap_passphrase);
++		if (dut->ap_sae_passwords) {
++			char *tmp, *pos, *end, *id;
++
++			tmp = strdup(dut->ap_sae_passwords);
++			if (!tmp) {
++				fclose(file);
++				return -2;
++			}
++
++			pos = tmp;
++			while (*pos) {
++				end = strchr(pos, ';');
++				if (end)
++					*end = '\0';
++				id = strchr(pos, ':');
++				if (id)
++					*id++ = '\0';
++
++				fprintf(file, "sae_password=%s%s%s\n",
++					pos, id ? "|id=" : "", id ? id : "");
++				if (!end)
++					break;
++				pos = end + 1;
++			}
++			fprintf(file, "sae_pw_id_num=3\n");
++			fprintf(file, "sae_pw_id_key=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n");
++			free(tmp);
++		} else {
++			fprintf(file, "sae_password=%s\n",
++				dut->ap_passphrase);
++		}
++		if (dut->ap_sae_groups)
++			fprintf(file, "pasn_groups=%s\n", dut->ap_sae_groups);
+ 		fprintf(file, "ieee80211w=2\n");
+ 		fprintf(file, "assoc_frame_encryption=1\n");
+-		fprintf(file, "kek_in_pasn=1\n");
+ 	case AP2_WPA2_EAP:
+ 		fprintf(file, "ieee8021x=1\n");
+ 		fprintf(file, "wpa=2\n");
+@@ -10630,6 +10679,7 @@ static void set_second_ap_security_conf(FILE *file, struct sigma_dut *dut, int l
+ 		fprintf(file, "wpa=1\n");
+ 		break;
+ 	}
++	return 0;
+ }
+ 
+ static int default_muedca_values(struct sigma_dut *dut, FILE *f)
+@@ -11406,20 +11456,49 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 					dut->ap_radius_password);
+ 			}
+ 			if (akm_values & (1 << AKM_EPPKE)) {
+-				if (check_band(dut, BAND_6G, link_id)) {
++				if (dut->ap_sae_passwords) {
++					char *tmp, *pos, *end, *id;
++
++					tmp = strdup(dut->ap_sae_passwords);
++					if (!tmp) {
++						fclose(f);
++						return ERROR_SEND_STATUS;
++					}
++
++					pos = tmp;
++					while (*pos) {
++						end = strchr(pos, ';');
++						if (end)
++							*end = '\0';
++						id = strchr(pos, ':');
++						if (id)
++							*id++ = '\0';
++
++						fprintf(f, "sae_password=%s%s%s\n",
++							pos, id ? "|id=" : "", id ? id : "");
++						if (akm_values & (1 << AKM_WPA_PSK)) {
++							fprintf(f, "wpa_passphrase=%s\n", pos);
++						}
++						if (!end)
++							break;
++						pos = end + 1;
++					}
++					fprintf(f, "sae_pw_id_num=3\n");
++					fprintf(f, "sae_pw_id_key=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n");
++					free(tmp);
++				} else {
+ 					fprintf(f, "sae_password=%s\n",
+ 						dut->ap_passphrase);
++				}
++				if (sae_groups)
++					fprintf(f, "pasn_groups=%s\n", sae_groups);
++				fprintf(f, "assoc_frame_encryption=1\n");
++				if (check_band(dut, BAND_6G, link_id)) {
+ 					fprintf(f, "ieee80211w=2\n");
+ 					fprintf(f, "sae_pwe=1\n");
+-					fprintf(f, "assoc_frame_encryption=1\n");
+-					fprintf(f, "kek_in_pasn=1\n");
+ 				} else {
+-					fprintf(f, "sae_password=%s\n",
+-						dut->ap_passphrase);
+ 					fprintf(f, "ieee80211w=1\n");
+ 					fprintf(f, "sae_pwe=2\n");
+-					fprintf(f, "assoc_frame_encryption=1\n");
+-					fprintf(f, "kek_in_pasn=1\n");
+ 				}
+ 			}
+ 
+@@ -11666,28 +11745,68 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 			fprintf(f, "rsn_override_mfp_2=2\n");
+ 			break;
+ 		case AP_EPPKE_PSK_SAE:
+-			if (check_band(dut, BAND_6G, link_id)) {
+-				fprintf(f, "wpa=2\n");
+-				fprintf(f, "wpa_key_mgmt=SAE SAE-EXT-KEY EPPKE\n");
+-				fprintf(f, "wpa_pairwise=CCMP GCMP-256\n");
++			fprintf(f, "wpa=2\n");
++			fprintf(f, "wpa_pairwise=CCMP GCMP-256\n");
++			if (dut->ap_sae_passwords) {
++				char *tmp, *pos, *end, *id;
++
++				tmp = strdup(dut->ap_sae_passwords);
++				if (!tmp) {
++					fclose(f);
++					return ERROR_SEND_STATUS;
++				}
++
++				pos = tmp;
++				while (*pos) {
++					end = strchr(pos, ';');
++					if (end)
++						*end = '\0';
++					id = strchr(pos, ':');
++					if (id)
++						*id++ = '\0';
++
++					fprintf(f, "sae_password=%s%s%s\n",
++						pos, id ? "|id=" : "", id ? id : "");
++					if (!check_band(dut, BAND_6G, link_id)) {
++						fprintf(f, "wpa_passphrase=%s\n", pos);
++					}
++					if (!end)
++						break;
++					pos = end + 1;
++				}
++				fprintf(f, "sae_pw_id_num=3\n");
++				fprintf(f, "sae_pw_id_key=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n");
++				free(tmp);
++			} else {
+ 				fprintf(f, "sae_password=%s\n",
+ 					dut->ap_passphrase);
++			}
++			if (sae_groups)
++				fprintf(f, "pasn_groups=%s\n", sae_groups);
++			fprintf(f, "assoc_frame_encryption=1\n");
++			if (check_band(dut, BAND_6G, link_id)) {
++				fprintf(f, "wpa_key_mgmt=SAE SAE-EXT-KEY EPPKE\n");
+ 				fprintf(f, "ieee80211w=2\n");
+ 				fprintf(f, "sae_pwe=1\n");
+-				fprintf(f, "assoc_frame_encryption=1\n");
+-				fprintf(f, "kek_in_pasn=1\n");
+ 			} else {
+-				fprintf(f, "wpa=2\n");
+ 				fprintf(f, "wpa_key_mgmt=WPA-PSK SAE SAE-EXT-KEY EPPKE\n");
+-				fprintf(f, "wpa_pairwise=CCMP GCMP-256\n");
+-				fprintf(f, "sae_password=%s\n",
+-					dut->ap_passphrase);
+-				fprintf(f, "wpa_passphrase=%s\n",
+-					dut->ap_passphrase);
++				if (dut->ap_passphrase[0] != '\0') {
++					fprintf(f, "wpa_passphrase=%s\n",
++						dut->ap_passphrase);
++				}
+ 				fprintf(f, "ieee80211w=1\n");
+ 				fprintf(f, "sae_pwe=2\n");
+-				fprintf(f, "assoc_frame_encryption=1\n");
+-				fprintf(f, "kek_in_pasn=1\n");
++			}
++			break;
++		case AP_EPPKE:
++			fprintf(f, "wpa=2\n");
++			fprintf(f, "wpa_pairwise=CCMP GCMP-256\n");
++			fprintf(f, "assoc_frame_encryption=1\n");
++			fprintf(f, "wpa_key_mgmt=EPPKE\n");
++			if (check_band(dut, BAND_6G, link_id)) {
++				fprintf(f, "ieee80211w=2\n");
++			} else {
++				fprintf(f, "ieee80211w=1\n");
+ 			}
+ 			break;
+ 		case AP_WPA3_COMPAT_COEX:
+@@ -17462,7 +17581,6 @@ static int fetch_ap_mac_address_nl(struct sigma_dut *dut,
+ 				break;
+ 			}
+ 		} else {
+-			nlmsg_free(msg);
+ 		}
+ 		sleep(1);
+ 	}
+
+diff --git a/sigma_dut.h b/sigma_dut.h
+index 1943434..616e7b8 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -642,6 +642,7 @@ enum ap_key_mgmt {
+ 	AP_WPA3_SAE_EXT,
+ 	AP_WPA3_COMPAT,
+ 	AP_EPPKE_PSK_SAE,
++	AP_EPPKE,
+ 	AP_WPA3_COMPAT_COEX,
+ };
+ 
+@@ -948,6 +949,7 @@ struct sigma_dut {
+ 		AP2_WPA2_EAP,
+ 		AP2_WPA2_SAE,
+ 		AP2_EPPKE_PSK_SAE,
++		AP2_EPPKE,
+ 		AP2_WPA3_COMPAT_COEX,
+ 	} ap_tag_key_mgmt[MAX_WLAN_TAGS - 1];
+ 	int ap_add_sha256;
+-- 
+2.34.1
+

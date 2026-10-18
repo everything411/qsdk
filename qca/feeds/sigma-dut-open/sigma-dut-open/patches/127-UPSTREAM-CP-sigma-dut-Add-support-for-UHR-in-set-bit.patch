@@ -1,0 +1,145 @@
+From a22d714da9bed4e4f30fc79c130b99eb74732cbe Mon Sep 17 00:00:00 2001
+From: Roopni Devanathan <rdevanat@qti.qualcomm.com>
+Date: Fri, 21 Aug 2026 16:09:22 +0530
+Subject: [PATCH] UPSTREAM:CP: sigma-dut: Add support for UHR in set bitrate
+ command
+
+The commands used in sigma DUT code are attempting to set GI and LTF for
+devices with capabilities until EHT only. UHR is not supported. This is
+causing certification failures for UHR mode.
+
+Add support for UHR capability in set bitrate command. Detect UHR support
+at runtime from NL80211_BAND_IFTYPE_ATTR_UHR_CAP_PHY in
+wiphy_info_handler(), the same way HE PHY capabilities are already
+detected, and store it in dut->hw_modes.ap_uhr_capab. Only when this
+capability is present, append an empty uhr-mcs-<mode> token to the iw
+command that set bitrates. Wi-Fi 7 targets, which do not advertise this
+capability, keep sending the existing command unchanged.
+
+Patch-dependency: Id262c6c43b0 ("UPSTREAM:CP: sigma-dut: Change format of set bitrate commands")
+Patch-work: None
+
+Signed-off-by: Roopni Devanathan <rdevanat@qti.qualcomm.com>
+---
+ ap.c           | 31 +++++++++++++++++++------------
+ nl80211_copy.h |  3 +++
+ sigma_dut.h    |  1 +
+ 3 files changed, 23 insertions(+), 12 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -14394,6 +14394,12 @@ static void phy_info_vht_capa(struct dut
+ }
+ 
+ 
++static void phy_info_uhr_capa(struct dut_hw_modes *mode)
++{
++	mode->ap_uhr_capab = true;
++}
++
++
+ static void phy_info_he_capa(struct dut_hw_modes *mode,
+ 			     struct nlattr *nl_iftype)
+ {
+@@ -14422,6 +14428,9 @@ static void phy_info_he_capa(struct dut_
+ 		memcpy(mode->ap_he_phy_capab,
+ 		       nla_data(tb[NL80211_BAND_IFTYPE_ATTR_HE_CAP_PHY]), len);
+ 	}
++
++	if (tb[NL80211_BAND_IFTYPE_ATTR_UHR_CAP_PHY])
++		phy_info_uhr_capa(mode);
+ }
+ 
+ static int phy_info_band(struct dut_hw_modes *mode, struct nlattr *nl_band)
+@@ -21323,6 +21332,7 @@ static enum sigma_cmd_result mac80211_he
+ 	char program[10];
+ 	int ret = -1;
+ 	int ltf = -1, gi = -1;
++	char uhr_mcs[24] = "";
+ 
+ 	if (dut->ap_is_dual && dut->mld[link_id].ap_mode == AP_11be) {
+ 		if (link_id == dut->band_to_link[0])
+@@ -21346,6 +21356,9 @@ static enum sigma_cmd_result mac80211_he
+ 	else
+ 		return STATUS_SENT_ERROR;
+ 
++	if (dut->hw_modes.ap_uhr_capab)
++		snprintf(uhr_mcs, sizeof(uhr_mcs), " uhr-mcs-%s", mode);
++
+ 	if (dut->nontrigger_txbf == VALUE_ENABLED) {
+ 		if (strcmp(val, "0.4") == 0)
+ 			gi = 1;
+@@ -21387,40 +21400,40 @@ static enum sigma_cmd_result mac80211_he
+ 			if (val) {
+ 				ret = run_system_wrapper(
+ 					dut,
+-					"iw %s set bitrates -l %d he-mcs-%s %s-gi-%s %s %s-ltf-%s %u",
+-					ifname, link_id, mode, program, mode, val, program, mode,
++					"iw %s set bitrates -l %d %s he-mcs-%s %s-gi-%s %s %s-ltf-%s %u",
++					ifname, link_id, uhr_mcs, mode, program, mode, val, program, mode,
+ 					he_ltf);
+ 			} else {
+ 				ret = run_system_wrapper(
+ 					dut,
+-					"iw %s set bitrates -l %d he-mcs-%s %s-ltf-%s %u",
+-					ifname, link_id, mode, program, mode, he_ltf);
++					"iw %s set bitrates -l %d %s he-mcs-%s %s-ltf-%s %u",
++					ifname, link_id, uhr_mcs, mode, program, mode, he_ltf);
+ 			}
+ 		} else {
+ 			if (val) {
+ 				ret = run_system_wrapper(
+ 					dut,
+-					"iw %s set bitrates eht-mcs-%s %s-gi-%s %s %s-ltf-%s %u",
+-					ifname, mode, program, mode, val, program, mode,
++					"iw %s set bitrates %s eht-mcs-%s %s-gi-%s %s %s-ltf-%s %u",
++					ifname, uhr_mcs, mode, program, mode, val, program, mode,
+ 					he_ltf);
+ 			} else {
+ 				ret = run_system_wrapper(
+ 					dut,
+-					"iw %s set bitrates eht-mcs-%s %s-ltf-%s %u",
+-					ifname, mode, program, mode, he_ltf);
++					"iw %s set bitrates %s eht-mcs-%s %s-ltf-%s %u",
++					ifname, uhr_mcs, mode, program, mode, he_ltf);
+ 			}
+ 		}
+ 	} else if (val) {
+ 		if (dut->program == PROGRAM_EHT) {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates -l %d he-mcs-%s %s-gi-%s %s",
+-				ifname, link_id, mode, program, mode, val);
++				"iw %s set bitrates -l %d %s he-mcs-%s %s-gi-%s %s",
++				ifname, link_id, uhr_mcs, mode, program, mode, val);
+ 		} else {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates eht-mcs-%s %s-gi-%s %s",
+-				ifname, mode, program, mode, val);
++				"iw %s set bitrates %s eht-mcs-%s %s-gi-%s %s",
++				ifname, uhr_mcs, mode, program, mode, val);
+ 		}
+ 	}
+ 
+--- a/nl80211_copy.h
++++ b/nl80211_copy.h
+@@ -3971,6 +3971,8 @@ enum nl80211_band_iftype_attr {
+ 	NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PHY,
+ 	NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MCS_SET,
+ 	NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PPE,
++	NL80211_BAND_IFTYPE_ATTR_UHR_CAP_MAC,
++	NL80211_BAND_IFTYPE_ATTR_UHR_CAP_PHY,
+ 
+ 	/* keep last */
+ 	__NL80211_BAND_IFTYPE_ATTR_AFTER_LAST,
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -153,6 +153,7 @@ struct dut_hw_modes {
+ 	u8 ap_he_phy_capab[11];
+ 	bool ap_mu_txBF_capab;
+ 	bool valid;
++	bool ap_uhr_capab;
+ };
+ 
+ #define WPA_GET_BE32(a) ((((u32) (a)[0]) << 24) | (((u32) (a)[1]) << 16) | \

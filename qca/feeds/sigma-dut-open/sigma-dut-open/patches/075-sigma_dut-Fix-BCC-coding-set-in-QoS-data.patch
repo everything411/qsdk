@@ -1,0 +1,106 @@
+From ecbb3d5c509aa1193707d38046bc318d92195599 Mon Sep 17 00:00:00 2001
+From: Aaradhana Sahu <quic_aarasahu@quicinc.com>
+Date: Tue, 9 Jan 2024 16:43:06 +0530
+Subject: [PATCH] sigma_dut: Fix BCC coding set in QoS data
+
+Currently, we do not run ath11k-fwtest command according to
+link id due to this, not able to fetch correct radio always.
+It's run command only for default radio.
+
+Fix, this issue by run ath11k-fwtest according to link id also
+correct band link id calculation.
+
+Signed-off-by: Aaradhana Sahu <quic_aarasahu@quicinc.com>
+---
+ ap.c | 29 ++++++++++++++++-------------
+ 1 file changed, 16 insertions(+), 13 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -17487,11 +17487,22 @@ static enum sigma_cmd_result mac80211_he
+ 					    const char *val, int link_id)
+ {
+ 	int16_t he_ltf = 0xFF;
+-	char *mode = dut->ap_band_6g ? "6" : dut->use_5g ? "5" : "2.4";
++	char *mode = NULL;
+ 	char program[10];
+ 	int ret = -1;
+ 	int ltf = -1, gi = -1;
+ 
++	if (dut->ap_is_dual && dut->ap_mode == AP_11be) {
++		if (link_id == dut->band_to_link[0])
++			mode = "2.4";
++		else if (link_id == dut->band_to_link[1])
++			mode = "5";
++		else if (link_id == dut->band_to_link[2])
++			mode = "6";
++	} else {
++		mode = dut->ap_band_6g ? "6" : dut->use_5g ? "5" : "2.4";
++	}
++
+ 	if (dut->program == PROGRAM_EHT)
+ 		snprintf(program, sizeof(program), "eht");
+ 	else if (dut->program == PROGRAM_HE)
+@@ -17908,7 +17919,7 @@ static enum sigma_cmd_result mac80211_ap
+ 
+ 	val = get_param(cmd, "Interface");
+ 	if (val) {
+-		if (strcasecmp(val, "2G") == 0)
++		if (strcasecmp(val, "24G") == 0)
+ 			link_id = dut->band_to_link[0];
+ 		else if (strcasecmp(val, "5G") == 0)
+ 			link_id = dut->band_to_link[1];
+@@ -18135,21 +18146,21 @@ static enum sigma_cmd_result mac80211_ap
+ 					dut->ap_bcc = VALUE_ENABLED;
+ 					dut->ap_ldpc = VALUE_DISABLED;
+ 				} else
+-					run_system_wrapper(dut,
+-							"ath11k-fwtest -i %s -m 0xA -v 0  65 1",
+-							ifname);
++					fwtest_linkid_cmd_wrapper(dut,
++								  "-m 0xA -v 0  65 1",
++								  ifname, link_id);
+ 			} else
+-				run_system_wrapper(dut,
+-						"ath11k-fwtest -t 1  -i %s  -m 0x00 -v 0  0x8A 0",
+-						ifname);
++				fwtest_linkid_cmd_wrapper(dut,
++							  "-t 1 -m 0x00 -v 0  0x8A 0",
++							  ifname, link_id);
+ 		} else if (strcasecmp(val, "LDPCCoding") == 0 && dut->program == PROGRAM_EHT) {
+ 			if (dut->ap_mode == AP_11be) {
+ 				if (dut->ap_fixed_rate)
+ 					dut->ap_ldpc = VALUE_ENABLED;
+ 				else
+-					run_system_wrapper(dut,
+-							"ath11k-fwtest -i %s -m 0xA -v 0  65 0",
+-							ifname);
++					fwtest_linkid_cmd_wrapper(dut,
++							"-m 0xA -v 0  65 0",
++							ifname, link_id);
+ 			}
+ 		}
+ 	}
+--- a/sigma_dut.c
++++ b/sigma_dut.c
+@@ -859,6 +859,8 @@ static void set_host_name(struct sigma_d
+ 
+ static void set_defaults(struct sigma_dut *dut)
+ {
++	int i;
++
+ 	dut->debug_level = DUT_MSG_INFO;
+ 	dut->default_timeout = 120;
+ 	dut->dialog_token = 0;
+@@ -884,6 +886,11 @@ static void set_defaults(struct sigma_du
+ 	dut->dscp_use_iptables = 1;
+ #endif /* ANDROID */
+ 	dut->autoconnect_default = 1;
++	dut->num_links = 1;
++
++	for (i = 0; i < 3; i++)
++		dut->band_to_link[i] = -1;
++
+ 	set_host_name(dut);
+ }
+ 

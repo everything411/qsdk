@@ -1,0 +1,372 @@
+/*
+ * Copyright (c) 2016-2017, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#ifndef _HTTPPE_POLICER_REG_H_
+#define _HTTPPE_POLICER_REG_H_
+
+/*[register] PC_DROP_BYPASS_REG*/
+#define PC_DROP_BYPASS_REG
+#define PC_DROP_BYPASS_REG_ADDRESS 0x40
+#define PC_DROP_BYPASS_REG_NUM     1
+#define PC_DROP_BYPASS_REG_INC     0x4
+#define PC_DROP_BYPASS_REG_TYPE    REG_TYPE_RW
+#define PC_DROP_BYPASS_REG_DEFAULT 0x0
+	/*[field] DROP_BYPASS_EN*/
+	#define PC_DROP_BYPASS_REG_DROP_BYPASS_EN
+	#define PC_DROP_BYPASS_REG_DROP_BYPASS_EN_OFFSET  0
+	#define PC_DROP_BYPASS_REG_DROP_BYPASS_EN_LEN     1
+	#define PC_DROP_BYPASS_REG_DROP_BYPASS_EN_DEFAULT 0x0
+
+struct pc_drop_bypass_reg {
+	a_uint32_t  drop_bypass_en:1;
+	a_uint32_t  _reserved0:31;
+};
+
+union pc_drop_bypass_reg_u {
+	a_uint32_t val;
+	struct pc_drop_bypass_reg bf;
+};
+
+/*[register] TIME_SLOT_REG*/
+#define TIME_SLOT_REG
+#define TIME_SLOT_REG_ADDRESS 0x48
+#define TIME_SLOT_REG_NUM     1
+#define TIME_SLOT_REG_INC     0x4
+#define TIME_SLOT_REG_TYPE    REG_TYPE_RW
+#define TIME_SLOT_REG_DEFAULT 0x0
+	/*[field] TIME_SLOT*/
+	#define TIME_SLOT_REG_TIME_SLOT
+	#define TIME_SLOT_REG_TIME_SLOT_OFFSET  0
+	#define TIME_SLOT_REG_TIME_SLOT_LEN     12
+	#define TIME_SLOT_REG_TIME_SLOT_DEFAULT 0x0
+
+struct time_slot_reg {
+	a_uint32_t  time_slot:12;
+	a_uint32_t  _reserved0:20;
+};
+
+union time_slot_reg_u {
+	a_uint32_t val;
+	struct time_slot_reg bf;
+};
+
+/*[table] IN_ACL_METER_CFG_TBL*/
+#define IN_ACL_METER_CFG_TBL
+#define IN_ACL_METER_CFG_TBL_ADDRESS 0x4000
+#define IN_ACL_METER_CFG_TBL_NUM     128
+#define IN_ACL_METER_CFG_TBL_INC     0x20
+#define IN_ACL_METER_CFG_TBL_TYPE    REG_TYPE_RW
+#define IN_ACL_METER_CFG_TBL_DEFAULT 0x0
+	/*[field] METER_EN*/
+	#define IN_ACL_METER_CFG_TBL_METER_EN
+	#define IN_ACL_METER_CFG_TBL_METER_EN_OFFSET  0
+	#define IN_ACL_METER_CFG_TBL_METER_EN_LEN     1
+	#define IN_ACL_METER_CFG_TBL_METER_EN_DEFAULT 0x0
+	/*[field] COLOR_MODE*/
+	#define IN_ACL_METER_CFG_TBL_COLOR_MODE
+	#define IN_ACL_METER_CFG_TBL_COLOR_MODE_OFFSET  1
+	#define IN_ACL_METER_CFG_TBL_COLOR_MODE_LEN     1
+	#define IN_ACL_METER_CFG_TBL_COLOR_MODE_DEFAULT 0x0
+	/*[field] COUPLING_FLAG*/
+	#define IN_ACL_METER_CFG_TBL_COUPLING_FLAG
+	#define IN_ACL_METER_CFG_TBL_COUPLING_FLAG_OFFSET  2
+	#define IN_ACL_METER_CFG_TBL_COUPLING_FLAG_LEN     1
+	#define IN_ACL_METER_CFG_TBL_COUPLING_FLAG_DEFAULT 0x0
+	/*[field] METER_MODE*/
+	#define IN_ACL_METER_CFG_TBL_METER_MODE
+	#define IN_ACL_METER_CFG_TBL_METER_MODE_OFFSET  3
+	#define IN_ACL_METER_CFG_TBL_METER_MODE_LEN     1
+	#define IN_ACL_METER_CFG_TBL_METER_MODE_DEFAULT 0x0
+	/*[field] TOKEN_UNIT*/
+	#define IN_ACL_METER_CFG_TBL_TOKEN_UNIT
+	#define IN_ACL_METER_CFG_TBL_TOKEN_UNIT_OFFSET  4
+	#define IN_ACL_METER_CFG_TBL_TOKEN_UNIT_LEN     3
+	#define IN_ACL_METER_CFG_TBL_TOKEN_UNIT_DEFAULT 0x0
+	/*[field] METER_UNIT*/
+	#define IN_ACL_METER_CFG_TBL_METER_UNIT
+	#define IN_ACL_METER_CFG_TBL_METER_UNIT_OFFSET  7
+	#define IN_ACL_METER_CFG_TBL_METER_UNIT_LEN     1
+	#define IN_ACL_METER_CFG_TBL_METER_UNIT_DEFAULT 0x0
+	/*[field] CBS*/
+	#define IN_ACL_METER_CFG_TBL_CBS
+	#define IN_ACL_METER_CFG_TBL_CBS_OFFSET  8
+	#define IN_ACL_METER_CFG_TBL_CBS_LEN     16
+	#define IN_ACL_METER_CFG_TBL_CBS_DEFAULT 0x0
+	/*[field] CIR*/
+	#define IN_ACL_METER_CFG_TBL_CIR
+	#define IN_ACL_METER_CFG_TBL_CIR_OFFSET  24
+	#define IN_ACL_METER_CFG_TBL_CIR_LEN     18
+	#define IN_ACL_METER_CFG_TBL_CIR_DEFAULT 0x0
+	/*[field] EBS*/
+	#define IN_ACL_METER_CFG_TBL_EBS
+	#define IN_ACL_METER_CFG_TBL_EBS_OFFSET  42
+	#define IN_ACL_METER_CFG_TBL_EBS_LEN     16
+	#define IN_ACL_METER_CFG_TBL_EBS_DEFAULT 0x0
+	/*[field] EIR*/
+	#define IN_ACL_METER_CFG_TBL_EIR
+	#define IN_ACL_METER_CFG_TBL_EIR_OFFSET  58
+	#define IN_ACL_METER_CFG_TBL_EIR_LEN     18
+	#define IN_ACL_METER_CFG_TBL_EIR_DEFAULT 0x0
+	/*[field] EXCEED_CHG_PRI_CMD*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_PRI_CMD
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_PRI_CMD_OFFSET  76
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_PRI_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_PRI_CMD_DEFAULT 0x0
+	/*[field] EXCEED_CHG_DP_CMD*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DP_CMD
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DP_CMD_OFFSET  77
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DP_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DP_CMD_DEFAULT 0x0
+	/*[field] EXCEED_CHG_PCP_CMD*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_PCP_CMD
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_PCP_CMD_OFFSET  78
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_PCP_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_PCP_CMD_DEFAULT 0x0
+	/*[field] EXCEED_CHG_DEI_CMD*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DEI_CMD
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DEI_CMD_OFFSET  79
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DEI_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DEI_CMD_DEFAULT 0x0
+	/*[field] EXCEED_PRI*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_PRI
+	#define IN_ACL_METER_CFG_TBL_EXCEED_PRI_OFFSET  80
+	#define IN_ACL_METER_CFG_TBL_EXCEED_PRI_LEN     4
+	#define IN_ACL_METER_CFG_TBL_EXCEED_PRI_DEFAULT 0x0
+	/*[field] EXCEED_DP*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DP
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DP_OFFSET  84
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DP_LEN     2
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DP_DEFAULT 0x0
+	/*[field] EXCEED_PCP*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_PCP
+	#define IN_ACL_METER_CFG_TBL_EXCEED_PCP_OFFSET  86
+	#define IN_ACL_METER_CFG_TBL_EXCEED_PCP_LEN     3
+	#define IN_ACL_METER_CFG_TBL_EXCEED_PCP_DEFAULT 0x0
+	/*[field] EXCEED_DEI*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DEI
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DEI_OFFSET  89
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DEI_LEN     1
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DEI_DEFAULT 0x0
+	/*[field] VIOLATE_CMD*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CMD
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CMD_OFFSET  90
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CMD_DEFAULT 0x0
+	/*[field] VIOLATE_CHG_PRI_CMD*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_PRI_CMD
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_PRI_CMD_OFFSET  91
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_PRI_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_PRI_CMD_DEFAULT 0x0
+	/*[field] VIOLATE_CHG_DP_CMD*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DP_CMD
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DP_CMD_OFFSET  92
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DP_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DP_CMD_DEFAULT 0x0
+	/*[field] VIOLATE_CHG_PCP_CMD*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_PCP_CMD
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_PCP_CMD_OFFSET  93
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_PCP_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_PCP_CMD_DEFAULT 0x0
+	/*[field] VIOLATE_CHG_DEI_CMD*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DEI_CMD
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DEI_CMD_OFFSET  94
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DEI_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DEI_CMD_DEFAULT 0x0
+	/*[field] VIOLATE_PRI*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_PRI
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_PRI_OFFSET  95
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_PRI_LEN     4
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_PRI_DEFAULT 0x0
+	/*[field] VIOLATE_DP*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DP
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DP_OFFSET  99
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DP_LEN     2
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DP_DEFAULT 0x0
+	/*[field] VIOLATE_PCP*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_PCP
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_PCP_OFFSET  101
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_PCP_LEN     3
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_PCP_DEFAULT 0x0
+	/*[field] VIOLATE_DEI*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DEI
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DEI_OFFSET  104
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DEI_LEN     1
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DEI_DEFAULT 0x0
+	/*[field] EXCEED_CHG_DSCP_CMD*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DSCP_CMD
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DSCP_CMD_OFFSET  105
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DSCP_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_EXCEED_CHG_DSCP_CMD_DEFAULT 0x0
+	/*[field] EXCEED_DSCP*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DSCP
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DSCP_OFFSET  106
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DSCP_LEN     6
+	#define IN_ACL_METER_CFG_TBL_EXCEED_DSCP_DEFAULT 0x0
+	/*[field] VIOLATE_CHG_DSCP_CMD*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DSCP_CMD
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DSCP_CMD_OFFSET  112
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DSCP_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_CHG_DSCP_CMD_DEFAULT 0x0
+	/*[field] VIOLATE_DSCP*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DSCP
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DSCP_OFFSET  113
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DSCP_LEN     6
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_DSCP_DEFAULT 0x0
+	/*[field] VIOLATE_REMAP_CMD*/
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_REMAP_CMD
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_REMAP_CMD_OFFSET  119
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_REMAP_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_VIOLATE_REMAP_CMD_DEFAULT 0x0
+	/*[field] EXCEED_REMAP_CMD*/
+	#define IN_ACL_METER_CFG_TBL_EXCEED_REMAP_CMD
+	#define IN_ACL_METER_CFG_TBL_EXCEED_REMAP_CMD_OFFSET  120
+	#define IN_ACL_METER_CFG_TBL_EXCEED_REMAP_CMD_LEN     1
+	#define IN_ACL_METER_CFG_TBL_EXCEED_REMAP_CMD_DEFAULT 0x0
+	/*[field] CIR_MAX*/
+	#define IN_ACL_METER_CFG_TBL_CIR_MAX
+	#define IN_ACL_METER_CFG_TBL_CIR_MAX_OFFSET  121
+	#define IN_ACL_METER_CFG_TBL_CIR_MAX_LEN     18
+	#define IN_ACL_METER_CFG_TBL_CIR_MAX_DEFAULT 0x0
+	/*[field] EIR_MAX*/
+	#define IN_ACL_METER_CFG_TBL_EIR_MAX
+	#define IN_ACL_METER_CFG_TBL_EIR_MAX_OFFSET  139
+	#define IN_ACL_METER_CFG_TBL_EIR_MAX_LEN     18
+	#define IN_ACL_METER_CFG_TBL_EIR_MAX_DEFAULT 0x0
+	/*[field] GRP_END*/
+	#define IN_ACL_METER_CFG_TBL_GRP_END
+	#define IN_ACL_METER_CFG_TBL_GRP_END_OFFSET  157
+	#define IN_ACL_METER_CFG_TBL_GRP_END_LEN     1
+	#define IN_ACL_METER_CFG_TBL_GRP_END_DEFAULT 0x0
+	/*[field] GRP_CF*/
+	#define IN_ACL_METER_CFG_TBL_GRP_CF
+	#define IN_ACL_METER_CFG_TBL_GRP_CF_OFFSET  158
+	#define IN_ACL_METER_CFG_TBL_GRP_CF_LEN     1
+	#define IN_ACL_METER_CFG_TBL_GRP_CF_DEFAULT 0x0
+	/*[field] NXT_PTR*/
+	#define IN_ACL_METER_CFG_TBL_NXT_PTR
+	#define IN_ACL_METER_CFG_TBL_NXT_PTR_OFFSET  159
+	#define IN_ACL_METER_CFG_TBL_NXT_PTR_LEN     9
+	#define IN_ACL_METER_CFG_TBL_NXT_PTR_DEFAULT 0x0
+	/*[field] LENGTH_MOD*/
+	#define IN_ACL_METER_CFG_TBL_LENGTH_MOD
+	#define IN_ACL_METER_CFG_TBL_LENGTH_MOD_OFFSET  168
+	#define IN_ACL_METER_CFG_TBL_LENGTH_MOD_LEN     2
+	#define IN_ACL_METER_CFG_TBL_LENGTH_MOD_DEFAULT 0x0
+
+struct in_acl_meter_cfg_tbl {
+	a_uint32_t  meter_en:1;
+	a_uint32_t  color_mode:1;
+	a_uint32_t  coupling_flag:1;
+	a_uint32_t  meter_mode:1;
+	a_uint32_t  token_unit:3;
+	a_uint32_t  meter_unit:1;
+	a_uint32_t  cbs:16;
+	a_uint32_t  cir_0:8;
+	a_uint32_t  cir_1:10;
+	a_uint32_t  ebs:16;
+	a_uint32_t  eir_0:6;
+	a_uint32_t  eir_1:12;
+	a_uint32_t  exceed_chg_pri_cmd:1;
+	a_uint32_t  exceed_chg_dp_cmd:1;
+	a_uint32_t  exceed_chg_pcp_cmd:1;
+	a_uint32_t  exceed_chg_dei_cmd:1;
+	a_uint32_t  exceed_pri:4;
+	a_uint32_t  exceed_dp:2;
+	a_uint32_t  exceed_pcp:3;
+	a_uint32_t  exceed_dei:1;
+	a_uint32_t  violate_cmd:1;
+	a_uint32_t  violate_chg_pri_cmd:1;
+	a_uint32_t  violate_chg_dp_cmd:1;
+	a_uint32_t  violate_chg_pcp_cmd:1;
+	a_uint32_t  violate_chg_dei_cmd:1;
+	a_uint32_t  violate_pri_0:1;
+	a_uint32_t  violate_pri_1:3;
+	a_uint32_t  violate_dp:2;
+	a_uint32_t  violate_pcp:3;
+	a_uint32_t  violate_dei:1;
+	a_uint32_t  exceed_chg_dscp_cmd:1;
+	a_uint32_t  exceed_dscp:6;
+	a_uint32_t  violate_chg_dscp_cmd:1;
+	a_uint32_t  violate_dscp:6;
+	a_uint32_t  violate_remap_cmd:1;
+	a_uint32_t  exceed_remap_cmd:1;
+	a_uint32_t  cir_max_0:7;
+	a_uint32_t  cir_max_1:11;
+	a_uint32_t  eir_max:18;
+	a_uint32_t  grp_end:1;
+	a_uint32_t  grp_cf:1;
+	a_uint32_t  nxt_ptr_0:1;
+	a_uint32_t  nxt_ptr_1:8;
+	a_uint32_t  length_mod:2;
+	a_uint32_t  _reserved0:22;
+};
+
+union in_acl_meter_cfg_tbl_u {
+	a_uint32_t val[6];
+	struct in_acl_meter_cfg_tbl bf;
+};
+
+/*[table] PC_GLOBAL_CNT_TBL*/
+#define PC_GLOBAL_CNT_TBL
+#define PC_GLOBAL_CNT_TBL_ADDRESS 0x5f000
+#define PC_GLOBAL_CNT_TBL_NUM     3
+#define PC_GLOBAL_CNT_TBL_INC     0x10
+#define PC_GLOBAL_CNT_TBL_TYPE    REG_TYPE_RW
+#define PC_GLOBAL_CNT_TBL_DEFAULT 0x0
+	/*[field] PKT_CNT*/
+	#define PC_GLOBAL_CNT_TBL_PKT_CNT
+	#define PC_GLOBAL_CNT_TBL_PKT_CNT_OFFSET  0
+	#define PC_GLOBAL_CNT_TBL_PKT_CNT_LEN     32
+	#define PC_GLOBAL_CNT_TBL_PKT_CNT_DEFAULT 0x0
+	/*[field] BYTE_CNT*/
+	#define PC_GLOBAL_CNT_TBL_BYTE_CNT
+	#define PC_GLOBAL_CNT_TBL_BYTE_CNT_OFFSET  32
+	#define PC_GLOBAL_CNT_TBL_BYTE_CNT_LEN     40
+	#define PC_GLOBAL_CNT_TBL_BYTE_CNT_DEFAULT 0x0
+
+struct pc_global_cnt_tbl {
+	a_uint32_t  pkt_cnt:32;
+	a_uint32_t  byte_cnt_0:32;
+	a_uint32_t  byte_cnt_1:8;
+	a_uint32_t  _reserved0:24;
+};
+
+union pc_global_cnt_tbl_u {
+	a_uint32_t val[3];
+	struct pc_global_cnt_tbl bf;
+};
+
+/*[table] DROP_CPU_CNT_TBL*/
+#define DROP_CPU_CNT_TBL
+#define DROP_CPU_CNT_TBL_ADDRESS 0x60000
+#define DROP_CPU_CNT_TBL_NUM     1408
+#define DROP_CPU_CNT_TBL_INC     0x10
+#define DROP_CPU_CNT_TBL_TYPE    REG_TYPE_RW
+#define DROP_CPU_CNT_TBL_DEFAULT 0x0
+	/*[field] PKT_CNT*/
+	#define DROP_CPU_CNT_TBL_PKT_CNT
+	#define DROP_CPU_CNT_TBL_PKT_CNT_OFFSET  0
+	#define DROP_CPU_CNT_TBL_PKT_CNT_LEN     32
+	#define DROP_CPU_CNT_TBL_PKT_CNT_DEFAULT 0x0
+	/*[field] BYTE_CNT*/
+	#define DROP_CPU_CNT_TBL_BYTE_CNT
+	#define DROP_CPU_CNT_TBL_BYTE_CNT_OFFSET  32
+	#define DROP_CPU_CNT_TBL_BYTE_CNT_LEN     40
+	#define DROP_CPU_CNT_TBL_BYTE_CNT_DEFAULT 0x0
+
+struct drop_cpu_cnt_tbl {
+	a_uint32_t  pkt_cnt:32;
+	a_uint32_t  byte_cnt_0:32;
+	a_uint32_t  byte_cnt_1:8;
+	a_uint32_t  _reserved0:24;
+};
+
+union drop_cpu_cnt_tbl_u {
+	a_uint32_t val[3];
+	struct drop_cpu_cnt_tbl bf;
+};
+
+#endif

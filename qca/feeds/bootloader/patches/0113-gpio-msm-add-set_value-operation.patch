@@ -1,0 +1,34 @@
+From 6140a12bd39e3b3bf39c7eabeb154832cd358340 Mon Sep 17 00:00:00 2001
+From: M A Priyanka <priyma@qti.qualcomm.com>
+Date: Thu, 16 Jul 2026 10:33:49 +0530
+Subject: [PATCH] gpio: msm: add set_value operation
+
+Wire the MSM GPIO driver set_value callback into the DM GPIO operations.
+
+The Qualcomm GPIO regulator backend drives voltage-selector GPIOs
+using dm_gpio_set_value() after the pins are requested as outputs.
+Exposing the MSM set_value operation lets SPL switch those selector
+lines when applying fuse-derived rail voltages.
+
+Signed-off-by: M A Priyanka <priyma@qti.qualcomm.com>
+Change-Id: I1a6fce1aeff088cf136e97abeca85feebffbdd34
+(cherry picked from commit fbaa11b5bfc490796543613d876e75e338fd26f1)
+---
+ drivers/gpio/msm_gpio.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/gpio/msm_gpio.c b/drivers/gpio/msm_gpio.c
+index cea073b3297..229bcd394c6 100644
+--- a/drivers/gpio/msm_gpio.c
++++ b/drivers/gpio/msm_gpio.c
+@@ -209,6 +209,7 @@ static int msm_gpio_get_function(struct udevice *dev, unsigned int gpio)
+ static const struct dm_gpio_ops gpio_msm_ops = {
+ 	.set_flags		= msm_gpio_set_flags,
+ 	.get_value		= msm_gpio_get_value,
++	.set_value		= msm_gpio_set_value,
+ 	.get_function		= msm_gpio_get_function,
+ };
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,698 @@
+From 0000000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
+From: Hari Naraayana Desikan Kannan <hnaraaya@qti.qualcomm.com>
+Date: Tue, 06 May 2026 14:00:00 +0530
+Subject: [PATCH] QSDK:PROTOCOL:sigma-dut: add OCE certification test case support
+
+Add sigma-dut CAPI support for OCE AP certification test cases.
+
+- Multi-radio interface: wlan{WLAN_TAG-1} for non-MLD (wlan0/1/2/3)
+- BSSID always from wlan0; ath12k applies WLAN_TAG-1 offset to bytes 4+5
+- MAX_WLAN_TAGS 3->4: WLAN_TAG=4 support for OCE guest BSS
+- AssocReject/RSSIthreshold/RetryDelay (TC 4.3.x)
+- ACS freqlist=2412 2437 2462 (TC 4.7.1)
+- oce_rnr_scan_and_update(): STA VAP cross-band scan with two triggers:
+  (1) background fork at ap_config_commit +90s (TC 4.5.x);
+  (2) immediate when DownlinkAvailCap set via ap_set_rfeature (TC 4.8.x)
+- IPSubnetIdentifier/ESSReport/TransmitPower (TC 4.11.1)
+- DownlinkAvailCap/UplinkAvailCap dynamic update via hostapd SET +
+  UPDATE_BEACON (TC 4.8.1/4.8.2)
+- fils_realm/erp_domain/fils_cache_id/fils_hlp_wait_time (TC 4.9.x)
+- OCE reset: ap_assoc_reject/rssi_threshold/retry_delay/pmf/oce_txpower/
+  ip_subnet_id/ess_report initialized in ap_reset_default
+- dl/ul_availcap reset to -1
+- hapd_global_ctrl: add all confs for non-MLD multi-link
+- Single-phy iface creation for non-MLD multi-link
+- get_phy_from_iface: sysfs-based phy name resolution
+- ieee80211w=1 for MBO+WPA2 PMF requirement
+- rnr=1 for RNR IE in beacons
+
+Patch-dependency: NA
+Patch-work: NA
+
+Change-Id: I22195b30913e2fc1df4c9ca0efdcee2b621c4a1a
+Signed-off-by: Hari Naraayana Desikan Kannan <hnaraaya@qti.qualcomm.com>
+---
+--- a/ap.c
++++ b/ap.c
+@@ -1446,15 +1446,11 @@ static enum sigma_cmd_result cmd_ap_set_
+ 
+ 	val = get_param(cmd, "WLAN_TAG");
+ 	if (val) {
+ 		wlan_tag = atoi(val);
+ 
+-		if (wlan_tag < 1 || wlan_tag > 3) {
+-			/*
+-			 * The only valid WLAN Tags as of now as per the latest
+-			 * WFA scripts are 1, 2, and 3.
+-			 */
++		if (wlan_tag < 1 || wlan_tag > MAX_WLAN_TAGS) {
+ 			send_resp(dut, conn, SIGMA_INVALID,
+ 				  "errorCode,Invalid WLAN_TAG");
+ 			return STATUS_SENT;
+ 	        }
+ 
+@@ -1502,11 +1498,12 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		    dut->ap_interface_6g)
+ 			dut->ap_pmf = AP_PMF_REQUIRED;
+ 	}
+ 
+ 	if (dut->ap_is_dual && iface_check) {
+-		if (!dut->dual_ap_ifname) {
++		/* ap_is_mld is EHT/MLO only — for legacy multi-radio, keep it 0 */
++		if (!dut->dual_ap_ifname && dut->program != PROGRAM_OCE) {
+ 			dut->ap_is_mld = 1;
+ 			dut->num_links++;
+ 		}
+ 	}
+ 
+@@ -2445,10 +2442,44 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				  "errorCode,Unsupported OCE");
+ 			return STATUS_SENT;
+ 		}
+ 	}
+ 
++
++	if (dut->program == PROGRAM_OCE) {
++		val = get_param(cmd, "IPSubnetIdentifier");
++		if (val) {
++			const char *hex = val;
++
++			if (strncasecmp(hex, "0x", 2) == 0)
++				hex += 2;
++			snprintf(dut->ap_ip_subnet_id,
++				 sizeof(dut->ap_ip_subnet_id), "%s", hex);
++			dut->ap_ip_subnet_id_set = 1;
++		}
++
++		val = get_param(cmd, "ESSReport");
++		if (val)
++			dut->ap_ess_report = strcasecmp(val, "enable") == 0 ?
++				VALUE_ENABLED : VALUE_DISABLED;
++
++		val = get_param(cmd, "TransmitPower");
++		if (val)
++			dut->ap_oce_txpower = atoi(val);
++
++		val = get_param(cmd, "RSSIThreshold");
++		if (!val)
++			val = get_param(cmd, "AssocRejectRSSI");
++		if (val) {
++			dut->ap_rssi_threshold = atoi(val);
++			dut->ap_assoc_reject = VALUE_ENABLED;
++		}
++
++		val = get_param(cmd, "RetryDelay");
++		if (val)
++			dut->ap_retry_delay = atoi(val);
++	}
+ 	val = get_param(cmd, "FILSDscvInterval");
+ 	if (val)
+ 		dut->ap_fils_dscv_int = atoi(val);
+ 
+ 	val = get_param(cmd, "BroadcastSSID");
+@@ -10493,10 +10524,178 @@ static int get_center_freq_seg_index(str
+ 	}
+ 
+ 	return oper_centr_freq_idx;
+ }
+ 
++/*
++ * get_phy_from_iface - resolve phy name via sysfs symlink.
++ * /sys/class/net/<ifname>/phy80211 -> ../../ieee80211/phyXX
++ */
++static void get_phy_from_iface(const char *ifname, char *phy, size_t len)
++{
++	char path[128], link[128], *p;
++	ssize_t r;
++
++	snprintf(phy, len, "phy0"); /* fallback */
++	snprintf(path, sizeof(path), "/sys/class/net/%s/phy80211", ifname);
++	r = readlink(path, link, sizeof(link) - 1);
++	if (r <= 0)
++		return;
++	link[r] = '\0';
++	p = strrchr(link, '/');
++	if (p)
++		snprintf(phy, len, "%s", p + 1);
++}
++
++/*
++ * oce_rnr_scan_and_update - Discover external neighbor APs via a
++ * temporary STA VAP, populate hostapd's neighbor DB, and rebuild beacons
++ * so OCE AP Channel Report and RNR IEs reflect all co-located and
++ * neighboring BSSes (e.g. CTT APs on ch40 and ch11).
++ *
++ * AP-mode driver scans do not return results on ath12k (confirmed).
++ * A STA-mode interface on the same phy can scan all channels.  After
++ * the scan, iw output is parsed to extract BSSID/freq pairs which are
++ * added to hostapd's neighbor DB via SET_NEIGHBOR before UPDATE_BEACON.
++ *
++ * Triggered by: (1) background fork at ap_config_commit +90s (TC 4.5.x);
++ *               (2) DownlinkAvailCap set via ap_set_rfeature (TC 4.8.x).
++ */
++static void oce_ssid_to_hex(const char *ssid, char *hex, size_t hex_len)
++{
++	size_t i, slen = strlen(ssid);
++
++	hex[0] = '\0';
++	for (i = 0; i < slen && (i * 2 + 2) < hex_len; i++)
++		snprintf(hex + i * 2, 3, "%02x", (unsigned char)ssid[i]);
++}
++
++static void oce_add_neighbor(const char *ifname, const char *bssid,
++			     const char *ssid, int freq)
++{
++	unsigned int b[6];
++	int op_class, channel;
++	char ssid_hex[129], cmd[512];
++
++	if (freq >= 2412 && freq <= 2484) {
++		op_class = 81;
++		channel = (freq - 2407) / 5;
++	} else if (freq >= 5180 && freq <= 5320) {
++		op_class = 115;
++		channel = (freq - 5000) / 5;
++	} else if (freq >= 5500 && freq <= 5720) {
++		op_class = 121;
++		channel = (freq - 5000) / 5;
++	} else if (freq >= 5725 && freq <= 5850) {
++		op_class = 125;
++		channel = (freq - 5000) / 5;
++	} else {
++		return;
++	}
++
++	sscanf(bssid, "%x:%x:%x:%x:%x:%x",
++	       &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]);
++	oce_ssid_to_hex(ssid, ssid_hex, sizeof(ssid_hex));
++	snprintf(cmd, sizeof(cmd),
++		 "hostapd_cli -p /var/run/hostapd -i %s"
++		 " set_neighbor %s ssid=%s"
++		 " nr=%02x%02x%02x%02x%02x%02x00000000%02x%02x01",
++		 ifname, bssid, ssid_hex,
++		 b[0], b[1], b[2], b[3], b[4], b[5],
++		 op_class, channel);
++	system(cmd);
++}
++
++static void oce_rnr_scan_and_update(struct sigma_dut *dut, const char *ifname)
++{
++	char phy[32], cmd[256], line[256];
++	FILE *fp;
++	char nb_bssid[20] = {0};
++	int nb_freq = 0;
++	char nb_ssid[64] = {0};
++	int i;
++
++	get_phy_from_iface(ifname, phy, sizeof(phy));
++
++	/*
++	 * Bring down all AP interfaces before scanning so ath12k can
++	 * scan off-channel (e.g., 2.4G ch1 while APs run on ch6).
++	 */
++	for (i = 0; i < dut->num_links; i++) {
++		snprintf(cmd, sizeof(cmd),
++			 "ip link set wlan%d down 2>/dev/null", i);
++		run_system(dut, cmd);
++	}
++
++	/* Create a temporary STA VAP on the same phy for full-band scan */
++	snprintf(cmd, sizeof(cmd),
++		 "iw phy %s interface add wlanoce_scan type managed 2>/dev/null",
++		 phy);
++	run_system(dut, cmd);
++	run_system(dut, "ip link set wlanoce_scan up 2>/dev/null");
++
++	/* Trigger full-band scan: 2.4G (ch1-14) + 5G (ch36-165) */
++	run_system(dut,
++		   "iw dev wlanoce_scan scan freq "
++		   "2412 2417 2422 2427 2432 2437 2442 2447 2452 2457 2462 "
++		   "5180 5200 5220 5240 5260 5280 5300 5320 5500 5520 5540 "
++		   "5560 5580 5600 5620 5640 5660 5680 5700 5720 5745 5765 "
++		   "5785 5805 5825 2>/dev/null");
++	sleep(8);
++
++	/*
++	 * Parse iw scan dump: for each discovered BSS build a minimal
++	 * Neighbor Report element (BSSID + info + op_class + channel +
++	 * PHY type = 13 bytes) and add it to hostapd's neighbor DB.
++	 */
++	fp = popen("iw dev wlanoce_scan scan dump 2>/dev/null", "r");
++	if (fp) {
++		while (fgets(line, sizeof(line), fp)) {
++			char *p = line;
++
++			if (strncmp(p, "BSS ", 4) == 0) {
++				if (nb_bssid[0] && nb_freq)
++					oce_add_neighbor(ifname, nb_bssid,
++							 nb_ssid, nb_freq);
++				sscanf(p + 4, "%17s", nb_bssid);
++				nb_freq = 0;
++				nb_ssid[0] = '\0';
++			} else if (strstr(p, "freq:")) {
++				sscanf(p, " freq: %d", &nb_freq);
++			} else if (strstr(p, "\tSSID:")) {
++				sscanf(p, " SSID: %63[^\n]", nb_ssid);
++			}
++		}
++		/* Flush last entry */
++		if (nb_bssid[0] && nb_freq)
++			oce_add_neighbor(ifname, nb_bssid, nb_ssid, nb_freq);
++		pclose(fp);
++	}
++
++	run_system(dut, "iw dev wlanoce_scan del 2>/dev/null");
++
++	/* Restore AP interfaces */
++	for (i = 0; i < dut->num_links; i++) {
++		snprintf(cmd, sizeof(cmd),
++			 "ip link set wlan%d up 2>/dev/null", i);
++		run_system(dut, cmd);
++	}
++	sleep(2); /* allow APs to re-establish */
++
++	/* Rebuild beacons on ALL managed interfaces */
++	for (i = 0; i < dut->num_links; i++) {
++		snprintf(cmd, sizeof(cmd),
++			 "hostapd_cli -p /var/run/hostapd -i wlan%d UPDATE_BEACON", i);
++		run_system(dut, cmd);
++	}
++
++	sigma_dut_print(dut, DUT_MSG_INFO,
++			"OCE RNR: scan + neighbor update complete on %s", ifname);
++}
++
++
++
+ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 					   struct sigma_conn *conn,
+ 					   struct sigma_cmd *cmd)
+ {
+ 	FILE *f;
+@@ -10632,10 +10831,16 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 				dut->band_to_link[3] = link_id;
+ 		} else
+ 			dut->band_to_link[2] = link_id;
+ 
+ 		ifname = get_hostapd_ifname(dut);
++		/* For non-MLD, interface = wlan{WLAN_TAG-1} */
++		static char _ifname_buf[16];
++		if (!dut->ap_is_mld) {
++			snprintf(_ifname_buf, sizeof(_ifname_buf), "wlan%d", link_id);
++			ifname = _ifname_buf;
++		}
+ 
+ 		switch (mode) {
+ 		case AP_11g:
+ 		case AP_11b:
+ 		case AP_11ng:
+@@ -10834,25 +11039,13 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 			if (dut->dual_ap_ifname)
+ 				snprintf(ifname2, sizeof(ifname2), "%s", dut->dual_ap_ifname);
+ 			else if (dut->ap_is_mld)
+ 				snprintf(ifname2, sizeof(ifname2), "%s", ifname);
+ 			else
+-				snprintf(ifname2, sizeof(ifname2), "%s_1", ifname);
+-
+-			if (if_nametoindex(ifname2) == 0 && !dut->ap_is_mld) {
+-				if (ap_create_or_remove_interface(dut, ifname2, true)
+-				    >= 0) {
+-					fprintf(f, "interface=%s\n", ifname2);
+-				} else {
+-					sigma_dut_print(dut, DUT_MSG_ERROR,
+-							"Failed to add the second interface");
+-					fclose(f);
+-					return -2;
+-				}
+-			} else {
+-				fprintf(f, "interface=%s\n", ifname2);
+-			}
++				/* For non-MLD: ifname = wlan{link_id} */
++				snprintf(ifname2, sizeof(ifname2), "%s", ifname);
++			fprintf(f, "interface=%s\n", ifname2);
+ 		/* To do: Need to handle the multi_mbssid and ap_cohosted_bss
+ 		 * for band_specific.
+ 		 */
+ 		} else if (!(dut->multi_mbssid)) {
+ 			fprintf(f, "interface=%s\n", ifname);
+@@ -10871,29 +11064,22 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 		fprintf(f, "ppe_vp=%d\n", dut->ppe_vp_type);
+ 
+ 		if ((dut->ap_ssid[0] && link_id == 0) ||
+ 		    (dut->ap_ssid[0] && dut->ap_is_mld))
+ 			fprintf(f, "ssid=%s\n", dut->ap_ssid);
+-		else if (dut->ap_tag_ssid[0][0] && link_id == 1)
+-			fprintf(f, "ssid=%s\n", dut->ap_tag_ssid[0]);
+-		else if (dut->ap_ssid[0] && link_id == 1)
+-			fprintf(f, "ssid=%s\n", dut->ap_ssid);
++		else if (dut->ap_tag_ssid[link_id - 1][0] && link_id)
++			fprintf(f, "ssid=%s\n", dut->ap_tag_ssid[link_id - 1]);
+ 		else if (!(dut->multi_mbssid))
+ 			fprintf(f, "ssid=QCA AP OOB\n");
+ 
+ 		if (dut->ap_bcnint)
+ 			fprintf(f, "beacon_int=%d\n", dut->ap_bcnint);
+ 		if (dut->ap_start_disabled)
+ 			fprintf(f, "start_disabled=1\n");
+ 
+-		/* add the bssid of the main iface before other bss are added to this conf */
+-		if (link_id > 0) {
+-			if (get_hwaddr(ifname2, main_bssid)) {
+-				fclose(f);
+-				return -2;
+-			}
+-		} else if (get_hwaddr(ifname, main_bssid)) {
++		/* BSSID: always from wlan0; ath12k adds link_id offset to bytes 4+5 */
++		if (get_hwaddr("wlan0", main_bssid)) {
+ 			fclose(f);
+ 			return -2;
+ 		}
+ 
+ 		fprintf(f, "bssid=%02x:%02x:%02x:%02x",
+@@ -11565,12 +11751,10 @@ skip_key_mgmt:
+ 		}
+ 
+ 		if (dut->ap_mbo && (dut->ap_key_mgmt != AP_WPA3_COMPAT ||
+ 				    check_band(dut, BAND_6G, link_id))) {
+ 			fprintf(f, "mbo=1\n");
+-			/* OCE AP mode */
+-			fprintf(f, "oce=4\n");
+ 			/* Advertise MBO Cellular data aware capability */
+ 			fprintf(f, "mbo_ap_cap_ind=64\n");
+ 			/* MBO Cellular Data Preference set to excluded (0) */
+ 			fprintf(f, "mbo_cell_data_conn_pref=0\n");
+ 			/* Update Country environment for MBO Global Reg Domain */
+@@ -11933,11 +12117,82 @@ skip_vht_parameters_set:
+ 				fprintf(f, "owe_ptk_workaround=1\n");
+ 		}
+ 
+ 		if (dut->program == PROGRAM_OCE) {
+ 			fprintf(f, "oce=%d\n",
+-				dut->dev_role == DEVROLE_STA_CFON ? 2 : 1);
++				dut->dev_role == DEVROLE_STA_CFON ? 2 : 4);
++			fprintf(f, "mbo=1\n");
++			fprintf(f, "ieee80211w=1\n");
++			if (dut->ap_assoc_reject == VALUE_ENABLED &&
++			    dut->ap_rssi_threshold != 0) {
++				fprintf(f, "rssi_reject_assoc_rssi=%d\n",
++					dut->ap_rssi_threshold);
++				if (dut->ap_retry_delay > 0)
++					fprintf(f, "rssi_reject_assoc_timeout=%d\n",
++						dut->ap_retry_delay);
++			}
++			if (dut->ap_filsdscv == VALUE_ENABLED) {
++				fprintf(f, "ieee80211ax=1\n");
++				fprintf(f, "fils_discovery_min_interval=%d\n",
++					dut->ap_fils_dscv_int);
++				fprintf(f, "fils_discovery_max_interval=%d\n",
++					dut->ap_fils_dscv_int);
++			}
++			if (dut->ap_nairealm_int == 1) {
++				fprintf(f, "fils_realm=%s\n", dut->ap_nairealm);
++				fprintf(f, "erp_domain=%s\n", dut->ap_nairealm);
++				fprintf(f, "fils_cache_id=1234\n");
++				fprintf(f, "erp_send_reauth_start=1\n");
++			}
++			if (dut->ap_filshlp == VALUE_ENABLED &&
++			    dut->ap_dhcpserv_ipaddr[0]) {
++				run_system(dut, "/etc/init.d/dnsmasq stop");
++				struct ifreq ifr;
++				int s;
++				struct sockaddr_in *ipaddr;
++				char own_ip[INET_ADDRSTRLEN];
++
++				s = socket(AF_INET, SOCK_DGRAM, 0);
++				if (s >= 0) {
++					memset(&ifr, 0, sizeof(ifr));
++					/* AP wlan interface is bridged — use
++					 * dut->bridge (br-lan) to get own IP */
++					strlcpy(ifr.ifr_name,
++						dut->bridge ? dut->bridge : ifname,
++						sizeof(ifr.ifr_name));
++
++					if (ioctl(s, SIOCGIFADDR, &ifr) == 0) {
++						ipaddr = (struct sockaddr_in *)
++							&ifr.ifr_addr;
++						snprintf(own_ip, sizeof(own_ip), "%s",
++							 inet_ntoa(ipaddr->sin_addr));
++						fprintf(f, "own_ip_addr=%s\n", own_ip);
++					}
++					close(s);
++				}
++				fprintf(f, "dhcp_server=%s\n",
++					dut->ap_dhcpserv_ipaddr);
++				fprintf(f, "dhcp_rapid_commit_proxy=1\n");
++				fprintf(f, "fils_hlp_wait_time=300\n");
++			}
++			fprintf(f, "rrm_neighbor_report=1\n");
++			fprintf(f, "rnr=1\n");
++			if (dut->ap_ip_subnet_id_set)
++				fprintf(f, "oce_ip_subnet_id=%s\n",
++					dut->ap_ip_subnet_id);
++			if (dut->ap_ess_report == VALUE_ENABLED)
++				fprintf(f, "oce_ess_report=1\n");
++			if (dut->ap_oce_txpower != -128)
++				fprintf(f, "oce_tx_power=%d\n", dut->ap_oce_txpower);
++			if (dut->ap_dl_availcap >= 0 || dut->ap_ul_availcap >= 0) {
++				fprintf(f, "bss_load_update_period=10\n");
++				fprintf(f, "oce_dl_availcap=%d\noce_ul_availcap=%d\n",
++					dut->ap_dl_availcap >= 0 ?
++					dut->ap_dl_availcap : 0,
++					dut->ap_ul_availcap >= 0 ?
++					dut->ap_ul_availcap : 0);
++			}
+ 		}
+ 
+ 		if ((dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) &&
+ 		    dut->ap_mbssid == VALUE_ENABLED && !link_id &&
+ 		    dut->multi_mbssid) {
+@@ -12510,10 +12765,28 @@ skip_vht_parameters_set:
+ 			snprintf(buf, sizeof(buf), " %s/sigma_dut-ap_%d.conf",
+ 				 dut->sigma_tmpdir, i);
+ 			strlcat(file_name_buf, buf, 500);
+ 		}
+ 
++		/* For non-MLD multi-BSS: create wlan1..wlanN-1 if needed */
++		if (!dut->ap_is_mld && dut->num_links > 1) {
++			char phy_buf[32];
++			get_phy_from_iface("wlan0", phy_buf, sizeof(phy_buf));
++			for (int i = 1; i < dut->num_links; i++) {
++				char wi[16];
++				snprintf(wi, sizeof(wi), "wlan%d", i);
++				if (if_nametoindex(wi) == 0) {
++					snprintf(buf, sizeof(buf),
++						 "iw phy %s interface add %s type __ap 2>/dev/null",
++						 phy_buf, wi);
++					if (run_system(dut, buf) != 0)
++						sigma_dut_print(dut, DUT_MSG_ERROR,
++							 "Failed to create %s", wi);
++				}
++			}
++		}
++
+ 		snprintf(buf, sizeof(buf),
+ 			 "%s -B%s%s%s%s%s%s %s",
+ 			 dut->hostapd_bin ? dut->hostapd_bin : path,
+ 			 dut->hostapd_debug_log ? " -dddKt" : "",
+ 			 (dut->hostapd_debug_log && dut->hostapd_debug_log[0]) ?
+@@ -12557,10 +12830,35 @@ hapd_started:
+ 		send_resp(dut, conn, SIGMA_ERROR,
+ 			  "errorCode,Failed to talk to hostapd");
+ 		return 0;
+ 	}
+ 
++
++	/*
++	 * OCE 4.3.x/4.5.x: launch a background scan 90 seconds after
++	 * ap_config_commit so CTT APs (typically up within 60 s) are
++	 * discoverable.  Forking avoids blocking the sigma-dut main loop.
++	 * A second scan may also fire when DownlinkAvailCap is set (TC 4.8.x).
++	 */
++	if (dut->program == PROGRAM_OCE && dut->ap_rnr == VALUE_ENABLED) {
++		const char *rnr_ifname = get_hostapd_ifname(dut); /* always use primary iface */
++		pid_t _pid = fork();
++		if (_pid == 0) {
++			setsid();
++			sleep(90);
++			oce_rnr_scan_and_update(dut, rnr_ifname);
++			_exit(0);
++		}
++	}
++	/* OCE 4.8.x: enable ESP IE in beacons via SET_ESP ctrl command */
++	if (dut->program == PROGRAM_OCE && dut->ap_esp == VALUE_ENABLED) {
++		if (run_hostapd_cli(dut, "set_esp enable_esp 1") != 0)
++			sigma_dut_print(dut, DUT_MSG_ERROR,
++					"OCE: set_esp enable_esp 1 failed on %s",
++					ifname);
++	}
++
+ 	if (dut->ap_ba_bufsize != BA_BUFSIZE_NOT_SET) {
+ 		int buf_size;
+ 
+ 		if (dut->ap_ba_bufsize == BA_BUFSIZE_1024)
+ 			buf_size = 1024;
+@@ -13846,10 +14144,19 @@ static enum sigma_cmd_result cmd_ap_rese
+ 		if (dut->ap_dhcp_stop)
+ 			run_system(dut, "/etc/init.d/dnsmasq start");
+ 
+ 		dut->ap_dhcp_stop = 0;
+ 		dut->ap_oce = VALUE_ENABLED;
++		dut->ap_assoc_reject = VALUE_NOT_SET;
++		dut->ap_rssi_threshold = 0;
++		dut->ap_retry_delay = 0;
++		dut->ap_oce_txpower = -128;
++		dut->ap_ip_subnet_id_set = 0;
++		dut->ap_ip_subnet_id[0] = '\0';
++		dut->ap_ess_report = VALUE_NOT_SET;
++		dut->ap_dl_availcap = -1;
++		dut->ap_ul_availcap = -1;
+ 		dut->ap_broadcast_ssid = VALUE_ENABLED;
+ 		dut->ap_fils_dscv_int = 20;
+ 		dut->ap_filsdscv = dut->dev_role == DEVROLE_STA_CFON ?
+ 			VALUE_NOT_SET : VALUE_ENABLED;
+ 		dut->ap_filshlp = VALUE_DISABLED;
+@@ -15233,15 +15540,11 @@ static int return_subelem_id(const char
+ }
+ 
+ static int mac80211_process_wlan_tag(struct sigma_dut *dut, int wlan_tag,
+ 				     const char *ifname, int *link_id)
+ {
+-	if (wlan_tag < 1 || wlan_tag > 3) {
+-		/*
+-		 * The only valid WLAN Tags as of now as per the latest
+-		 * WFA scripts are 1, 2, and 3.
+-		 */
++	if (wlan_tag < 1 || wlan_tag > MAX_WLAN_TAGS) {
+ 		sigma_dut_print(dut, DUT_MSG_ERROR,
+ 			  "errorCode,Unsupported WLAN_TAG");
+ 		return -1;
+ 	}
+ 
+@@ -16312,12 +16615,14 @@ static enum sigma_cmd_result cmd_ap_get_
+ 		wlan_tag = atoi(val);
+ 		if (mac80211_process_wlan_tag(dut, wlan_tag, ifname, &link_id) == -1)
+ 			return -1;
+ 	}
+ 
+-	if ((wlan_tag > 1) && (link_id >= 0))
++	if (dut->ap_is_mld && (wlan_tag > 1) && (link_id >= 0))
+ 		get_if_name(dut, ifname, sizeof(ifname), 1);
++	else if (!dut->ap_is_mld && dut->num_links > 1 && wlan_tag > 1)
++		snprintf(ifname, sizeof(ifname), "wlan%d", wlan_tag - 1);
+ 	else
+ 		get_if_name(dut, ifname, sizeof(ifname), wlan_tag);
+ 
+ 	val = get_param(cmd, "Interface");
+ #ifdef NL80211_SUPPORT
+@@ -16532,17 +16837,13 @@ enum sigma_cmd_result cmd_dev_ap_get_par
+ 	int mld_id = 0;
+ 
+ 	val = get_param(cmd, "WLAN_TAG");
+ 	if (val) {
+ 		wlan_tag = atoi(val);
+-		if (wlan_tag < 1 || wlan_tag > 3) {
+-			/*
+-			 * The only valid WLAN Tags as of now as per the latest
+-			 * WFA scripts are 1, 2, and 3.
+-			 */
++		if (wlan_tag < 1 || wlan_tag > MAX_WLAN_TAGS) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+-					"errorCode,Unsupported WLAN_TAG");
++				"errorCode,Unsupported WLAN_TAG");
+ 			return -1;
+ 		}
+ 	}
+ 
+ 	get_if_name(dut, ifname, sizeof(ifname), wlan_tag);
+@@ -21418,10 +21719,46 @@ static enum sigma_cmd_result mac80211_ap
+ 	}
+ 
+ 	if (++dut->intf_defined < dut->num_links)
+ 		mac80211_ap_set_rfeature(dut, conn, cmd);
+ 
++	val = get_param(cmd, "DownlinkAvailCap");
++	if (val) {
++		int cap = atoi(val);
++
++		if (cap >= 0 && cap <= 15) {
++			dut->ap_dl_availcap = cap;
++			snprintf(buf, sizeof(buf), "set oce_dl_availcap %d", cap);
++			run_hostapd_cli(dut, buf);
++		}
++	}
++
++	val = get_param(cmd, "UplinkAvailCap");
++	if (val) {
++		int cap = atoi(val);
++
++		if (cap >= 0 && cap <= 15) {
++			dut->ap_ul_availcap = cap;
++			snprintf(buf, sizeof(buf), "set oce_ul_availcap %d", cap);
++			run_hostapd_cli(dut, buf);
++		}
++	}
++
++	if (dut->ap_dl_availcap >= 0 || dut->ap_ul_availcap >= 0)
++		run_hostapd_cli(dut, "UPDATE_BEACON");
++
++	if (dut->ap_assoc_reject == VALUE_ENABLED && dut->ap_rssi_threshold != 0) {
++		snprintf(buf, sizeof(buf), "set rssi_reject_assoc_rssi %d",
++			 dut->ap_rssi_threshold);
++		run_hostapd_cli(dut, buf);
++		if (dut->ap_retry_delay > 0) {
++			snprintf(buf, sizeof(buf), "set rssi_reject_assoc_timeout %d",
++				 dut->ap_retry_delay);
++			run_hostapd_cli(dut, buf);
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+ 
+ #ifdef __linux__
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -330,11 +330,11 @@ struct sigma_ese_alloc {
+ #define AP_AC_BE 0
+ #define AP_AC_BK 1
+ #define AP_AC_VI 2
+ #define AP_AC_VO 3
+ 
+-#define MAX_WLAN_TAGS 3
++#define MAX_WLAN_TAGS 4
+ #define MBO_MAX_PREF_BSSIDS 10
+ #define MAX_FT_BSS_LIST 10
+ 
+ #define TRANSPORT_PROTO_TYPE_TCP 0x06
+ #define TRANSPORT_PROTO_TYPE_UDP 0x11
+@@ -1100,10 +1100,12 @@ struct sigma_dut {
+ 	int ap_interface_2g;
+ 	int ap_interface_6g;
+ 	int ap_assoc_delay;
+ 	int ap_btmreq_bss_term_tsf;
+ 	int ap_fils_dscv_int;
++	int ap_rssi_threshold;   /* OCE: RSSI-based assoc reject threshold (dBm) */
++	int ap_retry_delay;      /* OCE: assoc reject retry delay (seconds) */
+ 	int ap_nairealm_int;
+ 	char ap_nairealm[33];
+ 	int ap_blechanutil;
+ 	int ap_ble_admit_cap;
+ 	int ap_datappdudura;
+@@ -1151,10 +1153,16 @@ struct sigma_dut {
+ 	enum value_not_set_enabled_disabled ap_oce;
+ 	enum value_not_set_enabled_disabled ap_filsdscv;
+ 	enum value_not_set_enabled_disabled ap_filshlp;
+ 	enum value_not_set_enabled_disabled ap_broadcast_ssid;
+ 	enum value_not_set_enabled_disabled ap_rnr;
++	/* OCE additional metrics */
++	char ap_ip_subnet_id[13];
++	int ap_ip_subnet_id_set;
++	enum value_not_set_enabled_disabled ap_ess_report;
++	int ap_oce_txpower;
++	enum value_not_set_enabled_disabled ap_assoc_reject; /* OCE: RSSI-based assoc reject */
+ 	enum value_not_set_enabled_disabled ap_esp;
+ 
+ 	enum value_not_set_enabled_disabled ap_he_ulofdma;
+ 	enum value_not_set_enabled_disabled ap_he_dlofdma;
+ 	enum value_not_set_enabled_disabled ap_bcc;

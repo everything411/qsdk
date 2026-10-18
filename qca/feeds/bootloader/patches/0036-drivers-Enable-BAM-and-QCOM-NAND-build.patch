@@ -1,0 +1,77 @@
+From bf3791ce851a24914095ff7f95038b82fe7adc89 Mon Sep 17 00:00:00 2001
+From: Md Sadre Alam <mdalam@qti.qualcomm.com>
+Date: Tue, 20 May 2025 18:23:14 +0530
+Subject: [PATCH] drivers: Enable BAM and QCOM NAND build
+
+Change-Id: If2a1e2b28e3d8f089a773fceef6497dc905e5033
+Signed-off-by: Md Sadre Alam <mdalam@qti.qualcomm.com>
+---
+ drivers/dma/Makefile          |  1 +
+ drivers/mtd/nand/raw/Kconfig  | 27 +++++++++++++++++++++++++++
+ drivers/mtd/nand/raw/Makefile |  1 +
+ 3 files changed, 29 insertions(+)
+
+diff --git a/drivers/dma/Makefile b/drivers/dma/Makefile
+index c3f8ec01b8e..0a38d21de74 100644
+--- a/drivers/dma/Makefile
++++ b/drivers/dma/Makefile
+@@ -15,5 +15,6 @@ obj-$(CONFIG_TI_EDMA3) += ti-edma3.o
+ obj-$(CONFIG_DMA_LPC32XX) += lpc32xx_dma.o
+ obj-$(CONFIG_XILINX_DPDMA) += xilinx_dpdma.o
+ obj-$(CONFIG_BAM_DMA) += bam_dma.o
++obj-$(CONFIG_NAND_QTI) += bam.o
+ 
+ obj-y += ti/
+diff --git a/drivers/mtd/nand/raw/Kconfig b/drivers/mtd/nand/raw/Kconfig
+index 609bdffbf77..52590ba5ccd 100644
+--- a/drivers/mtd/nand/raw/Kconfig
++++ b/drivers/mtd/nand/raw/Kconfig
+@@ -48,6 +48,33 @@ config SYS_NAND_NO_SUBPAGE_WRITE
+ 	bool "Disable subpage write support"
+ 	depends on NAND_ARASAN || NAND_DAVINCI || NAND_KIRKWOOD
+ 
++config NAND_QTI
++        bool "support QTI NAND controller"
++        select SYS_NAND_SELF_INIT
++        select SYS_NAND_ONFI_DETECTION
++        help
++          Enable this driver for NAND flash in ipq platform
++
++if NAND_QTI
++
++config QTI_SERIAL
++        bool "Enable QPIC Serial Bus"
++        default y
++
++config QSPI_SERIAL_TRAINING
++        bool "Enable serial training for NAND flash"
++        default y
++
++config PAGE_SCOPE_MULTI_PAGE_READ
++        bool "Enable Multi page on NAND flash"
++        default y
++
++config QSPI_LAYOUT_SWITCH
++        bool "Enalbe layout switch in NAND FLASH"
++        default n
++
++endif
++
+ config DM_NAND_ATMEL
+ 	bool "Support Atmel NAND controller with DM support"
+ 	select SYS_NAND_SELF_INIT
+diff --git a/drivers/mtd/nand/raw/Makefile b/drivers/mtd/nand/raw/Makefile
+index b47a3d787ce..2363fcfff8a 100644
+--- a/drivers/mtd/nand/raw/Makefile
++++ b/drivers/mtd/nand/raw/Makefile
+@@ -62,6 +62,7 @@ obj-$(CONFIG_NAND_LPC32XX_MLC) += lpc32xx_nand_mlc.o
+ obj-$(CONFIG_NAND_LPC32XX_SLC) += lpc32xx_nand_slc.o
+ obj-$(CONFIG_NAND_VF610_NFC) += vf610_nfc.o
+ obj-$(CONFIG_NAND_MESON) += meson_nand.o
++obj-$(CONFIG_NAND_QTI) += qcom_nand.o
+ obj-$(CONFIG_NAND_MXC) += mxc_nand.o
+ obj-$(CONFIG_NAND_MXS) += mxs_nand.o
+ obj-$(CONFIG_NAND_MXS_DT) += mxs_nand_dt.o
+-- 
+2.34.1
+

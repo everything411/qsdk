@@ -1,0 +1,39 @@
+From 8ace97d799e544b9c1db848b7bafb10d52381b70 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Mon, 30 Mar 2026 14:54:36 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Fix uninitialized addr buffer
+ breaking MAC address retry logic
+
+The retry logic in fetch_ap_mac_address_nl() determines whether a MAC
+address fetch failed by checking if the addr buffer is all zeros. If
+so, it retries up to FETCH_MAC_ADDRESS_MAX_RETRIES times to handle the
+interface initialization delay on split-PHY RDPs.
+
+Callers may pass uninitialized stack buffers to this function, leaving
+them with indeterminate (non-zero) values. As a result, the zero-check
+never triggers, retries never occur, and an invalid MAC address is
+silently returned to the caller.
+
+Add a memset to zero-initialize the addr buffer at the start of
+fetch_ap_mac_address_nl() to ensure the retry condition fires
+correctly regardless of the caller's buffer state.
+
+Patch-dependency: 113-UPSTREAM-PROTOCOL-sigma_dut-Add-retry-logic-for-fetc.patch
+Fixes: I5ff5ed495 (UPSTREAM:PROTOCOL:sigma_dut: Add retry logic for
+fetching MAC address and fix get_interface_handler crashes)
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -16141,6 +16141,7 @@ static int fetch_ap_mac_address_nl(struc
+ 	struct get_mac_addr_info arg;
+ 	int iter;
+
++	memset(addr, 0, ETH_ALEN);
+ 	arg.ifname = (char *)ifname;
+ 	arg.attr = attr;
+ 	arg.value = value;

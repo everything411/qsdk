@@ -1,0 +1,6 @@
+config ecm 'global'
+	option acceleration_engine 'auto'
+	option ip_post_routing_hook 'enable'
+	option br_post_routing_hook 'enable'
+#sixth_tuple_mode can be disable/vsi/vlan
+	option sixth_tuple_mode 'disable'

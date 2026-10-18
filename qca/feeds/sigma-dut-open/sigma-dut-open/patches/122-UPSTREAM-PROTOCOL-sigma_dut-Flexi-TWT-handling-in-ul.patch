@@ -1,0 +1,67 @@
+From e6929915c9a0131421bbf8bfb9761dbe4218f4f7 Mon Sep 17 00:00:00 2001
+From: Alok Singh <aloksing@qti.qualcomm.com>
+Date: Thu, 9 Apr 2026 17:41:45 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Flexi-TWT handling in ulofdma
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The ath11k-fwtest "-v 0 63 1000" command was originally intended to run
+only for UL-OFDMA testcases. During the Flexi-TWT integration, this
+command was gated solely on the flexiTWT configuration, which caused it
+to run for all testcases whenever Flexi‑TWT was enabled. This resulted
+in unintended behavior in non‑UL‑OFDMA scenarios.
+
+To correct this, Add flexi twt handling to UL‑OFDMA and align the
+behavior with the original intent so the fwtest command is applied only
+to the appropriate UL‑OFDMA cases.
+
+Issue:
+	Low throughput (~70 Mbps) observed on 6 GHz 160 MHz bandwidth
+	when running bursty Video and BE traffic during the rTWT SP window.
+
+Fixes: Ic454cfeb118c882e288979b39fb36129a916838f
+(UPSTREAM:PROTOCOL:sigma_dut: Restrict fwtest 63 1000 usage and remove Flexi-TWT handling in EHT)
+
+Patch-dependency: I5bd9fbede9f90784bd1ca8c8ce4b843c66eb1a4f
+
+Signed-off-by: Alok Singh <aloksing@qti.qualcomm.com>
+---
+ ap.c | 14 ++++++--------
+ 1 file changed, 6 insertions(+), 8 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index d336f5b..00ffe99 100644
+--- a/ap.c
++++ b/ap.c
+@@ -9760,6 +9760,12 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int
+ 
+ 		/* disable DL/UL TID weight-based optimization */
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 686 0 0", ifname);
++
++		if (dut->ap_twtresp == VALUE_ENABLED || dut->device_type == AP_dut ||
++		    (dut->ap_btwt == VALUE_ENABLED && dut->device_type == AP_testbed)) {
++			if (dut->ap_flextwt == VALUE_ENABLED)
++				fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1800", ifname);
++		}
+ 	}
+ 
+ 	/* sp_guard_interval_in_us WAR */
+@@ -9879,14 +9885,6 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int
+ 		/* SIFS Burst disable to handle short SP */
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 2 1", ifname);
+ 	}
+-
+-	if (dut->ap_twtresp == VALUE_ENABLED || dut->device_type == AP_dut ||
+-	    (dut->ap_btwt == VALUE_ENABLED && dut->device_type == AP_testbed)) {
+-		if (dut->ap_flextwt == VALUE_ENABLED)
+-			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1800", ifname);
+-		else
+-			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000", ifname);
+-	}
+ }
+ 
+ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+-- 
+2.34.1
+

@@ -1,0 +1,2973 @@
+/*
+ * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+/**
+ * @defgroup
+ * @{
+ */
+#ifndef _ADPT_H_
+#define _ADPT_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif                          /* __cplusplus */
+
+#include "sw.h"
+#include "fal_fdb.h"
+#include "fal_portvlan.h"
+#include "fal_ctrlpkt.h"
+#include "fal_servcode.h"
+#include "fal_rss_hash.h"
+#include "fal_mib.h"
+#include "fal_port_ctrl.h"
+#include "fal_mirror.h"
+#include "fal_trunk.h"
+#include "fal_ip.h"
+#include "fal_qm.h"
+#include "fal_flow.h"
+#include "ssdk_init.h"
+#include "fal_type.h"
+#include "fal_stp.h"
+#include "fal_vsi.h"
+#include "fal_pppoe.h"
+#include "fal_sec.h"
+#include "fal_acl.h"
+#include "fal_qos.h"
+#include "fal_shaper.h"
+#include "fal_bm.h"
+#include "fal_init.h"
+#include "fal_policer.h"
+#include "fal_misc.h"
+#include "fal_sfp.h"
+#include "fal_tunnel.h"
+#include "fal_vxlan.h"
+#include "fal_geneve.h"
+#include "fal_tunnel_program.h"
+#include "fal_mapt.h"
+#include "fal_vport.h"
+#include "fal_athtag.h"
+#include "fal_pktedit.h"
+#include "fal_sampling.h"
+#include "fal_pon.h"
+#include "fal_pon_pm.h"
+#include "fal_ipmc.h"
+#include "fal_crosschip.h"
+#include "ssdk_plat.h"
+#include "hsl_api.h"
+#include "hsl_phy.h"
+
+#define ADPT_DEV_ID_CHECK(dev_id) \
+do { \
+    if (dev_id >= SW_MAX_NR_DEV) \
+        return SW_OUT_OF_RANGE; \
+} while (0)
+
+#define ADPT_PPE_PORT_ID_CHECK(port_id) \
+do { \
+    if (port_id > SSDK_MAX_VIRTUAL_PORT_ID) \
+        return SW_OUT_OF_RANGE; \
+} while (0)
+
+#define ADPT_NULL_POINT_CHECK(point) \
+do { \
+    if (point == NULL) \
+        return SW_BAD_PTR; \
+} while (0)
+
+typedef sw_error_t (*adpt_fdb_first_func)(a_uint32_t dev_id, fal_fdb_entry_t * entry);
+typedef sw_error_t (*adpt_fdb_next_func)(a_uint32_t dev_id, fal_fdb_entry_t * entry);
+typedef sw_error_t (*adpt_fdb_add_func)(a_uint32_t dev_id, const fal_fdb_entry_t * entry);
+typedef sw_error_t (*adpt_fdb_age_time_set_func)(a_uint32_t dev_id, a_uint32_t * time);
+typedef sw_error_t (*adpt_fdb_extend_next_func)(a_uint32_t dev_id, fal_fdb_op_t * option,
+                        fal_fdb_entry_t * entry);
+typedef sw_error_t (*adpt_fdb_learn_ctrl_get_func)(a_uint32_t dev_id, fal_fdb_learning_ctrl *ctrl);
+typedef sw_error_t (*adpt_fdb_age_time_get_func)(a_uint32_t dev_id, a_uint32_t * time);
+typedef sw_error_t (*adpt_port_fdb_learn_limit_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+                                 a_bool_t enable, a_uint32_t cnt);
+typedef sw_error_t (*adpt_fdb_port_add_func)(a_uint32_t dev_id, a_uint32_t fid, fal_mac_addr_t * addr, fal_port_t port_id);
+typedef sw_error_t (*adpt_fdb_port_learn_set_func)(a_uint32_t dev_id, fal_port_t port_id, a_bool_t enable);
+typedef sw_error_t (*adpt_fdb_port_learn_get_func)(a_uint32_t dev_id, fal_port_t port_id, a_bool_t *enable);
+typedef sw_error_t (*adpt_fdb_port_newaddr_lrn_set_func)(a_uint32_t dev_id, fal_port_t port_id, a_bool_t enable, fal_fwd_cmd_t cmd);
+typedef sw_error_t (*adpt_fdb_port_newaddr_lrn_get_func)(a_uint32_t dev_id, fal_port_t port_id, a_bool_t *enable, fal_fwd_cmd_t *cmd);
+typedef sw_error_t (*adpt_fdb_port_stamove_set_func)(a_uint32_t dev_id, fal_port_t port_id, a_bool_t enable, fal_fwd_cmd_t cmd);
+typedef sw_error_t (*adpt_fdb_port_stamove_get_func)(a_uint32_t dev_id, fal_port_t port_id, a_bool_t *enable, fal_fwd_cmd_t *cmd);
+typedef sw_error_t (*adpt_port_fdb_learn_counter_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+                                  a_uint32_t * cnt);
+typedef sw_error_t (*adpt_fdb_extend_first_func)(a_uint32_t dev_id, fal_fdb_op_t * option,
+                         fal_fdb_entry_t * entry);
+typedef sw_error_t (*adpt_fdb_transfer_func)(a_uint32_t dev_id, fal_port_t old_port, fal_port_t new_port,
+                     a_uint32_t fid, fal_fdb_op_t * option);
+typedef sw_error_t (*adpt_fdb_port_del_func)(a_uint32_t dev_id, a_uint32_t fid, fal_mac_addr_t * addr, fal_port_t port_id);
+typedef sw_error_t (*adpt_fdb_find_func)(a_uint32_t dev_id, fal_fdb_entry_t * entry);
+typedef sw_error_t (*adpt_fdb_learn_ctrl_set_func)(a_uint32_t dev_id, fal_fdb_learning_ctrl ctrl);
+typedef sw_error_t (*adpt_port_fdb_learn_exceed_cmd_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+                                      fal_fwd_cmd_t * cmd);
+typedef sw_error_t (*adpt_fdb_del_by_port_func)(a_uint32_t dev_id, a_uint32_t port_id, a_uint32_t flag);
+typedef sw_error_t (*adpt_port_fdb_learn_limit_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+                                 a_bool_t * enable, a_uint32_t * cnt);
+typedef sw_error_t (*adpt_fdb_age_ctrl_set_func)(a_uint32_t dev_id, fal_fdb_age_ctrl_t ctrl);
+typedef sw_error_t (*adpt_fdb_del_by_mac_func)(a_uint32_t dev_id, const fal_fdb_entry_t *entry);
+typedef sw_error_t (*adpt_fdb_iterate_func)(a_uint32_t dev_id, a_uint32_t * iterator, fal_fdb_entry_t * entry);
+typedef sw_error_t (*adpt_port_fdb_learn_exceed_cmd_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+                                      fal_fwd_cmd_t cmd);
+typedef sw_error_t (*adpt_fdb_del_all_func)(a_uint32_t dev_id, a_uint32_t flag);
+typedef sw_error_t (*adpt_fdb_age_ctrl_get_func)(a_uint32_t dev_id, fal_fdb_age_ctrl_t * ctrl);
+typedef sw_error_t (*adpt_fdb_port_maclimit_ctrl_set_func)(a_uint32_t dev_id, fal_port_t port_id, fal_maclimit_ctrl_t * maclimit_ctrl);
+typedef sw_error_t (*adpt_fdb_port_maclimit_ctrl_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_maclimit_ctrl_t * maclimit_ctrl);
+typedef sw_error_t (*adpt_fdb_del_by_fid_func)(a_uint32_t dev_id, a_uint16_t fid, a_uint32_t flag);
+
+typedef sw_error_t (*adpt_mib_cpukeep_get_func)(a_uint32_t dev_id, a_bool_t * enable);
+typedef sw_error_t (*adpt_mib_cpukeep_set_func)(a_uint32_t dev_id, a_bool_t  enable);
+typedef sw_error_t (*adpt_get_mib_info_func)(a_uint32_t dev_id, fal_port_t port_id,
+                     fal_mib_info_t * mib_info );
+typedef sw_error_t (*adpt_get_tx_mib_info_func)(a_uint32_t dev_id, fal_port_t port_id,
+                     fal_mib_info_t * mib_info );
+typedef sw_error_t (*adpt_mib_status_set_func)(a_uint32_t dev_id, a_bool_t enable);
+typedef sw_error_t (*adpt_mib_port_flush_counters_func)(a_uint32_t dev_id, fal_port_t port_id);
+typedef sw_error_t (*adpt_mib_status_get_func)(a_uint32_t dev_id, a_bool_t * enable);
+typedef sw_error_t (*adpt_get_rx_mib_info_func)(a_uint32_t dev_id, fal_port_t port_id,
+                     fal_mib_info_t * mib_info );
+typedef sw_error_t (*adpt_get_xgmib_info_func)(a_uint32_t dev_id, fal_port_t port_id,
+                     fal_xgmib_info_t * mib_info );
+typedef sw_error_t (*adpt_get_tx_xgmib_info_func)(a_uint32_t dev_id, fal_port_t port_id,
+                     fal_xgmib_info_t * mib_info );
+typedef sw_error_t (*adpt_get_rx_xgmib_info_func)(a_uint32_t dev_id, fal_port_t port_id,
+                     fal_xgmib_info_t * mib_info );
+
+typedef sw_error_t (*adpt_stp_port_state_get_func)(a_uint32_t dev_id, a_uint32_t st_id,
+                     fal_port_t port_id, fal_stp_state_t * state);
+typedef sw_error_t (*adpt_stp_port_state_set_func)(a_uint32_t dev_id, a_uint32_t st_id,
+                     fal_port_t port_id, fal_stp_state_t state);
+
+typedef sw_error_t (*adpt_port_vlan_vsi_set_func)(a_uint32_t dev_id, fal_port_t port_id, a_uint32_t stag_vid, a_uint32_t ctag_vid, a_uint32_t vsi_id);
+typedef sw_error_t (*adpt_port_vlan_vsi_get_func)(a_uint32_t dev_id, fal_port_t port_id, a_uint32_t stag_vid, a_uint32_t ctag_vid, a_uint32_t *vsi_id);
+typedef sw_error_t (*adpt_port_vsi_set_func)(a_uint32_t dev_id, fal_port_t port_id, a_uint32_t vsi_id);
+typedef sw_error_t (*adpt_port_vsi_get_func)(a_uint32_t dev_id, fal_port_t port_id, a_uint32_t *vsi_id);
+typedef sw_error_t (*adpt_vsi_stamove_set_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_stamove_t *stamove);
+typedef sw_error_t (*adpt_vsi_stamove_get_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_stamove_t *stamove);
+typedef sw_error_t (*adpt_vsi_newaddr_lrn_set_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_newaddr_lrn_t *newaddr_lrn);
+typedef sw_error_t (*adpt_vsi_newaddr_lrn_get_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_newaddr_lrn_t *newaddr_lrn);
+typedef sw_error_t (*adpt_vsi_member_set_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_member_t *vsi_member);
+typedef sw_error_t (*adpt_vsi_member_get_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_member_t *vsi_member);
+typedef sw_error_t (*adpt_vsi_counter_get_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_counter_t *counter);
+typedef sw_error_t (*adpt_vsi_counter_cleanup_func)(a_uint32_t dev_id, a_uint32_t vsi_id);
+typedef sw_error_t (*adpt_vsi_bridge_vsi_get_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_bridge_vsi_t *bridge_vsi);
+typedef sw_error_t (*adpt_vsi_bridge_vsi_set_func)(a_uint32_t dev_id, a_uint32_t vsi_id, fal_vsi_bridge_vsi_t *bridge_vsi);
+typedef sw_error_t (*adpt_vsi_invalidvsi_ctrl_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_vsi_invalidvsi_ctrl_t *invalidvsi_ctrl);
+typedef sw_error_t (*adpt_vsi_invalidvsi_ctrl_set_func)(a_uint32_t dev_id, fal_port_t port_id, fal_vsi_invalidvsi_ctrl_t *invalidvsi_ctrl);
+
+// portctrl function.
+
+typedef sw_error_t (*adpt_port_local_loopback_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					a_bool_t * enable);
+typedef sw_error_t (*adpt_port_autoneg_restart_func)(a_uint32_t dev_id, fal_port_t port_id);
+typedef sw_error_t (*adpt_port_duplex_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				fal_port_duplex_t duplex);
+typedef sw_error_t (*adpt_port_rxmac_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					  a_bool_t * enable);
+typedef sw_error_t (*adpt_port_cdt_func)(a_uint32_t dev_id, fal_port_t port_id,
+		a_uint32_t mdi_pair, fal_cable_status_t * cable_status,
+		a_uint32_t * cable_len);
+typedef sw_error_t (*adpt_port_txmac_status_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					  a_bool_t enable);
+typedef sw_error_t (*adpt_port_combo_fiber_mode_set_func)(a_uint32_t dev_id,
+						  a_uint32_t port_id,
+						  fal_port_fiber_mode_t mode);
+typedef sw_error_t (*adpt_port_combo_medium_status_get_func)(a_uint32_t dev_id,
+							 a_uint32_t port_id,
+							 fal_port_medium_t *
+							 medium);
+typedef sw_error_t (*adpt_port_magic_frame_mac_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				   fal_mac_addr_t * mac);
+typedef sw_error_t (*adpt_port_powersave_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+			  a_bool_t enable);
+typedef sw_error_t (*adpt_port_hibernate_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+			  a_bool_t enable);
+typedef sw_error_t (*adpt_port_max_frame_size_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		a_uint32_t max_frame);
+typedef sw_error_t (*adpt_port_8023az_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				a_bool_t * enable);
+typedef sw_error_t (*adpt_port_rxfc_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_bool_t * enable);
+typedef sw_error_t (*adpt_port_txfc_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_bool_t * enable);
+typedef sw_error_t (*adpt_port_remote_loopback_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_bool_t enable);
+typedef sw_error_t (*adpt_port_flowctrl_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  a_bool_t enable);
+typedef sw_error_t (*adpt_port_mru_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_mru_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_port_autoneg_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					a_bool_t * status);
+typedef sw_error_t (*adpt_port_txmac_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					  a_bool_t * enable);
+typedef sw_error_t (*adpt_port_mdix_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  fal_port_mdix_mode_t * mode);
+typedef sw_error_t (*adpt_ports_link_status_get_func)(a_uint32_t dev_id, a_uint32_t * status);
+typedef sw_error_t (*adpt_port_mac_loopback_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				 a_bool_t enable);
+typedef sw_error_t (*adpt_port_phy_id_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+			  a_uint16_t * org_id, a_uint16_t * rev_id);
+typedef sw_error_t (*adpt_port_mru_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_mru_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_port_speed_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				   fal_port_speed_t speed);
+typedef sw_error_t (*adpt_port_interface_mode_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  fal_port_interface_mode_t * mode);
+typedef sw_error_t (*adpt_port_duplex_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				fal_port_duplex_t * pduplex);
+typedef sw_error_t (*adpt_port_autoneg_adv_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_uint32_t * autoadv);
+typedef sw_error_t (*adpt_port_mdix_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 fal_port_mdix_status_t * mode);
+typedef sw_error_t (*adpt_port_mtu_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_mtu_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_port_link_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_bool_t * status);
+typedef sw_error_t (*adpt_port_8023az_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				a_bool_t enable);
+typedef sw_error_t (*adpt_port_powersave_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+			  a_bool_t * enable);
+typedef sw_error_t (*adpt_port_combo_prefer_medium_get_func)(a_uint32_t dev_id,
+							 a_uint32_t port_id,
+							 fal_port_medium_t *
+							 medium);
+typedef sw_error_t (*adpt_port_max_frame_size_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		a_uint32_t *max_frame);
+typedef sw_error_t (*adpt_port_combo_prefer_medium_set_func)(a_uint32_t dev_id,
+						 a_uint32_t port_id,
+						 fal_port_medium_t medium);
+typedef sw_error_t (*adpt_port_txfc_status_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_bool_t enable);
+typedef sw_error_t (*adpt_port_counter_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		   a_bool_t enable);
+typedef sw_error_t (*adpt_port_combo_fiber_mode_get_func)(a_uint32_t dev_id,
+						  a_uint32_t port_id,
+						  fal_port_fiber_mode_t * mode);
+typedef sw_error_t (*adpt_port_local_loopback_set_func)(a_uint32_t dev_id,
+						fal_port_t port_id,
+						a_bool_t enable);
+typedef sw_error_t (*adpt_port_wol_status_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  a_bool_t enable);
+typedef sw_error_t (*adpt_port_magic_frame_mac_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				   fal_mac_addr_t * mac);
+typedef sw_error_t (*adpt_port_flowctrl_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  a_bool_t * enable);
+typedef sw_error_t (*adpt_port_rxmac_status_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					  a_bool_t enable);
+typedef sw_error_t (*adpt_port_counter_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		   a_bool_t * enable);
+typedef sw_error_t (*adpt_port_interface_mode_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  fal_port_interface_mode_t mode);
+typedef sw_error_t (*adpt_port_mac_loopback_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				 a_bool_t * enable);
+typedef sw_error_t (*adpt_port_hibernate_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+			  a_bool_t * enable);
+typedef sw_error_t (*adpt_port_autoneg_adv_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_uint32_t autoadv);
+typedef sw_error_t (*adpt_port_remote_loopback_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_bool_t * enable);
+typedef sw_error_t (*adpt_port_counter_show_func)(a_uint32_t dev_id, fal_port_t port_id,
+				 fal_port_counter_info_t * counter_info);
+typedef sw_error_t (*adpt_port_autoneg_enable_func)(a_uint32_t dev_id, fal_port_t port_id);
+typedef sw_error_t (*adpt_port_mtu_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_mtu_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_port_interface_mode_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  fal_port_interface_mode_t * mode);
+typedef sw_error_t (*adpt_port_reset_func)(a_uint32_t dev_id, fal_port_t port_id);
+typedef sw_error_t (*adpt_port_rxfc_status_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					 a_bool_t enable);
+typedef sw_error_t (*adpt_port_speed_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				   fal_port_speed_t * pspeed);
+typedef sw_error_t (*adpt_port_mdix_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  fal_port_mdix_mode_t mode);
+typedef sw_error_t (*adpt_port_wol_status_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				  a_bool_t * enable);
+typedef sw_error_t (*adpt_port_source_filter_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+				a_bool_t * enable);
+typedef sw_error_t (*adpt_port_source_filter_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				a_bool_t enable);
+typedef sw_error_t (*adpt_port_mux_mac_type_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+	a_uint32_t mode0,	a_uint32_t mode1, a_uint32_t mode2);
+typedef sw_error_t (*adpt_port_mac_speed_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				fal_port_speed_t speed);
+typedef sw_error_t (*adpt_port_mac_duplex_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+				fal_port_duplex_t duplex);
+typedef sw_error_t (*adpt_port_polling_sw_sync_func)(struct qca_phy_priv *priv);
+
+typedef sw_error_t (*adpt_port_bridge_txmac_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, a_bool_t enable);
+
+typedef sw_error_t (*adpt_port_interface_mode_apply_func)(a_uint32_t dev_id);
+
+typedef sw_error_t (*adpt_port_flowctrl_forcemode_set_func) (a_uint32_t dev_id,
+		fal_port_t port_id, a_bool_t enable);
+typedef sw_error_t (*adpt_port_flowctrl_forcemode_get_func) (a_uint32_t dev_id,
+		fal_port_t port_id, a_bool_t * enable);
+typedef sw_error_t (*adpt_port_promisc_mode_set_func)(a_uint32_t dev_id,
+			fal_port_t port_id, a_bool_t enable);
+typedef sw_error_t (*adpt_port_promisc_mode_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, a_bool_t *enable);
+typedef sw_error_t (*adpt_port_interface_eee_cfg_set_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_port_eee_cfg_t *port_eee_cfg);
+typedef sw_error_t (*adpt_port_interface_eee_cfg_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_port_eee_cfg_t *port_eee_cfg);
+typedef sw_error_t (*adpt_port_source_filter_config_set_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_src_filter_config_t *src_filter_config);
+typedef sw_error_t (*adpt_port_source_filter_config_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_src_filter_config_t *src_filter_config);
+typedef sw_error_t (*adpt_switch_port_loopback_set_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_loopback_config_t *loopback_cfg);
+typedef sw_error_t (*adpt_switch_port_loopback_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_loopback_config_t *loopback_cfg);
+typedef sw_error_t (*adpt_port_8023ah_set_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_port_8023ah_ctrl_t *port_8023ah_ctrl);
+typedef sw_error_t (*adpt_port_8023ah_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_port_8023ah_ctrl_t *port_8023ah_ctrl);
+typedef sw_error_t (*adpt_port_mtu_cfg_set_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_mtu_cfg_t *mtu_cfg);
+typedef sw_error_t (*adpt_port_mtu_cfg_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, fal_mtu_cfg_t *mtu_cfg);
+typedef sw_error_t (*adpt_port_mru_mtu_set_func)(a_uint32_t dev_id,
+			fal_port_t port_id, a_uint32_t mru_size, a_uint32_t mtu_size);
+typedef sw_error_t (*adpt_port_mru_mtu_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, a_uint32_t *mru_size, a_uint32_t *mtu_size);
+typedef sw_error_t (*adpt_port_netdev_notify_func)(struct qca_phy_priv *priv,
+			a_uint32_t port_id);
+typedef sw_error_t (*adpt_port_phy_status_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, struct port_phy_status *phy_status);
+typedef sw_error_t (*adpt_port_cnt_cfg_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_port_cnt_cfg_t *cnt_cfg);
+typedef sw_error_t (*adpt_port_cnt_cfg_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_port_cnt_cfg_t *cnt_cfg);
+typedef sw_error_t (*adpt_port_cnt_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_port_cnt_t *port_cnt);
+typedef sw_error_t (*adpt_port_cnt_flush_func)(a_uint32_t dev_id,
+		fal_port_t port_id);
+typedef sw_error_t (*adpt_port_tx_buff_thresh_set_func)(a_uint32_t dev_id,
+		a_uint32_t port, a_uint16_t on_thresh, a_uint16_t off_thresh);
+typedef sw_error_t (*adpt_port_tx_buff_thresh_get_func)(a_uint32_t dev_id,
+		a_uint32_t port, a_uint16_t *on_thresh, a_uint16_t *off_thresh);
+typedef sw_error_t (*adpt_port_rx_buff_thresh_set_func)(a_uint32_t dev_id,
+		a_uint32_t port, a_uint16_t thresh);
+typedef sw_error_t (*adpt_port_rx_buff_thresh_get_func)(a_uint32_t dev_id,
+		a_uint32_t port, a_uint16_t *thresh);
+typedef sw_error_t (*adpt_port_erp_power_mode_set_func)(a_uint32_t dev_id,
+		a_uint32_t port, fal_port_erp_power_mode_t power_mode);
+typedef sw_error_t (*adpt_switch_loopback_port_get_func)(a_uint32_t dev_id,
+			fal_port_t *port_id);
+typedef sw_error_t (*adpt_port_pps_ctrl_set_func)(a_uint32_t dev_id,
+		fal_port_pps_ctrl_t *pps_ctrl);
+typedef sw_error_t (*adpt_port_pps_ctrl_get_func)(a_uint32_t dev_id,
+		fal_port_pps_ctrl_t *pps_ctrl);
+typedef sw_error_t (*adpt_port_fec_set_func)(a_uint32_t dev_id, a_uint32_t port_id,
+		fal_port_fec_config_t *ptfec);
+typedef sw_error_t (*adpt_port_fec_get_func)(a_uint32_t dev_id, a_uint32_t port_id,
+		fal_port_fec_config_t *ptfec);
+
+// mirror
+typedef sw_error_t (*adpt_mirr_port_in_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+                         a_bool_t enable);
+typedef sw_error_t (*adpt_mirr_port_in_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+                         a_bool_t * enable);
+typedef sw_error_t (*adpt_mirr_port_eg_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+                         a_bool_t enable);
+typedef sw_error_t (*adpt_mirr_port_eg_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+                         a_bool_t * enable);
+typedef sw_error_t (*adpt_mirr_analysis_port_set_func)(a_uint32_t dev_id, fal_port_t port_id);
+typedef sw_error_t (*adpt_mirr_analysis_port_get_func)(a_uint32_t dev_id, fal_port_t * port_id);
+typedef sw_error_t (*adpt_mirr_analysis_config_set_func)(a_uint32_t dev_id, fal_mirr_direction_t direction,
+				fal_mirr_analysis_config_t * config);
+typedef sw_error_t (*adpt_mirr_analysis_config_get_func)(a_uint32_t dev_id, fal_mirr_direction_t direction,
+				fal_mirr_analysis_config_t * config);
+
+//rss hash
+typedef sw_error_t (*adpt_rss_hash_config_set_func)(a_uint32_t dev_id, fal_rss_hash_mode_t mode, fal_rss_hash_config_t * config);
+typedef sw_error_t (*adpt_rss_hash_config_get_func)(a_uint32_t dev_id, fal_rss_hash_mode_t mode, fal_rss_hash_config_t * config);
+
+//trunk
+typedef sw_error_t (*adpt_trunk_fail_over_en_get_func)(a_uint32_t dev_id, a_bool_t * fail_over);
+typedef sw_error_t (*adpt_trunk_hash_mode_get_func)(a_uint32_t dev_id, a_uint32_t * hash_mode);
+typedef sw_error_t (*adpt_trunk_group_get_func)(a_uint32_t dev_id, a_uint32_t trunk_id,
+                        a_bool_t * enable, fal_pbmp_t * member);
+typedef sw_error_t (*adpt_trunk_group_set_func)(a_uint32_t dev_id, a_uint32_t trunk_id,
+                        a_bool_t enable, fal_pbmp_t member);
+typedef sw_error_t (*adpt_trunk_fail_over_en_set_func)(a_uint32_t dev_id, a_bool_t fail_over);
+typedef sw_error_t (*adpt_trunk_hash_mode_set_func)(a_uint32_t dev_id, a_uint32_t hash_mode);
+
+typedef sw_error_t (*adpt_ip_network_route_get_func)(a_uint32_t dev_id,
+			a_uint32_t index, a_uint8_t type,
+			fal_network_route_entry_t *entry);
+typedef sw_error_t (*adpt_ip_network_route_add_func)(a_uint32_t dev_id,
+			a_uint32_t index,
+			fal_network_route_entry_t *entry);
+typedef sw_error_t (*adpt_ip_network_route_del_func)(a_uint32_t dev_id,
+			a_uint32_t index,
+			a_uint8_t type);
+typedef sw_error_t (*adpt_ip_host_add_func)(
+			a_uint32_t dev_id, fal_host_entry_t * host_entry);
+typedef sw_error_t (*adpt_ip_vsi_sg_cfg_get_func)(
+			a_uint32_t dev_id, a_uint32_t vsi,
+    			fal_sg_cfg_t *sg_cfg);
+typedef sw_error_t (*adpt_ip_pub_addr_set_func)(
+			a_uint32_t dev_id, a_uint32_t index,
+			fal_ip_pub_addr_t *entry);
+typedef sw_error_t (*adpt_ip_pub_addr_get_func)(
+			a_uint32_t dev_id, a_uint32_t index,
+			fal_ip_pub_addr_t *entry);
+typedef sw_error_t (*adpt_ip_port_sg_cfg_set_func)(
+			a_uint32_t dev_id, fal_port_t port_id,
+    			fal_sg_cfg_t *sg_cfg);
+typedef sw_error_t (*adpt_ip_port_intf_get_func)(
+			a_uint32_t dev_id, fal_port_t port_id, fal_intf_id_t *id);
+typedef sw_error_t (*adpt_ip_vsi_arp_sg_cfg_set_func)(
+			a_uint32_t dev_id, a_uint32_t vsi,
+    			fal_arp_sg_cfg_t *arp_sg_cfg);
+typedef sw_error_t (*adpt_ip_port_intf_set_func)(
+			a_uint32_t dev_id, fal_port_t port_id, fal_intf_id_t *id);
+typedef sw_error_t (*adpt_ip_vsi_sg_cfg_set_func)(
+			a_uint32_t dev_id, a_uint32_t vsi,
+    			fal_sg_cfg_t *sg_cfg);
+typedef sw_error_t (*adpt_ip_host_next_func)(
+			a_uint32_t dev_id, a_uint32_t next_mode,
+			fal_host_entry_t * host_entry);
+typedef sw_error_t (*adpt_ip_port_macaddr_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+    			fal_macaddr_entry_t *macaddr);
+typedef sw_error_t (*adpt_ip_vsi_intf_get_func)(
+			a_uint32_t dev_id, a_uint32_t vsi, fal_intf_id_t *id);
+typedef sw_error_t (*adpt_ip_port_sg_cfg_get_func)(
+			a_uint32_t dev_id, fal_port_t port_id,
+    			fal_sg_cfg_t *sg_cfg);
+typedef sw_error_t (*adpt_ip_intf_get_func)(
+    			a_uint32_t dev_id,
+    			a_uint32_t index,
+    			fal_intf_entry_t *entry);
+typedef sw_error_t (*adpt_ip_host_del_func)(
+			a_uint32_t dev_id, a_uint32_t del_mode,
+			fal_host_entry_t * host_entry);
+typedef sw_error_t (*adpt_ip_route_mismatch_get_func)(
+			a_uint32_t dev_id, fal_fwd_cmd_t *cmd);
+typedef sw_error_t (*adpt_ip_vsi_arp_sg_cfg_get_func)(
+			a_uint32_t dev_id, a_uint32_t vsi,
+    			fal_arp_sg_cfg_t *arp_sg_cfg);
+typedef sw_error_t (*adpt_ip_port_arp_sg_cfg_set_func)(
+			a_uint32_t dev_id, fal_port_t port_id,
+    			fal_arp_sg_cfg_t *arp_sg_cfg);
+typedef sw_error_t (*adpt_ip_vsi_mc_mode_set_func)(
+			a_uint32_t dev_id, a_uint32_t vsi,
+    			fal_mc_mode_cfg_t *cfg);
+typedef sw_error_t (*adpt_ip_vsi_intf_set_func)(
+			a_uint32_t dev_id, a_uint32_t vsi, fal_intf_id_t *id);
+typedef sw_error_t (*adpt_ip_nexthop_get_func)(a_uint32_t dev_id,
+			a_uint32_t index, fal_ip_nexthop_t *entry);
+typedef sw_error_t (*adpt_ip_route_mismatch_set_func)(
+			a_uint32_t dev_id, fal_fwd_cmd_t cmd);
+typedef sw_error_t (*adpt_ip_host_get_func)(
+			a_uint32_t dev_id, a_uint32_t get_mode,
+                    fal_host_entry_t * host_entry);
+typedef sw_error_t (*adpt_ip_intf_set_func)(
+    			a_uint32_t dev_id,
+    			a_uint32_t index,
+    			fal_intf_entry_t *entry);
+typedef sw_error_t (*adpt_ip_vsi_mc_mode_get_func)(
+			a_uint32_t dev_id,
+			a_uint32_t vsi,
+    			fal_mc_mode_cfg_t *cfg);
+typedef sw_error_t (*adpt_ip_port_macaddr_get_func)(
+			a_uint32_t dev_id, fal_port_t port_id,
+    			fal_macaddr_entry_t *macaddr);
+typedef sw_error_t (*adpt_ip_port_arp_sg_cfg_get_func)(
+			a_uint32_t dev_id, fal_port_t port_id,
+    			fal_arp_sg_cfg_t *arp_sg_cfg);
+typedef sw_error_t (*adpt_ip_nexthop_set_func)(a_uint32_t dev_id,
+			a_uint32_t index, fal_ip_nexthop_t *entry);
+typedef sw_error_t (*adpt_ip_global_ctrl_get_func)(a_uint32_t dev_id,
+			fal_ip_global_cfg_t *cfg);
+typedef sw_error_t (*adpt_ip_global_ctrl_set_func)(a_uint32_t dev_id,
+			fal_ip_global_cfg_t *cfg);
+
+typedef sw_error_t (*adpt_ip_port_vlan_as_flow_key_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id,
+		fal_ip_vlan_as_flow_key_t *vlan_key);
+
+typedef sw_error_t (*adpt_ip_port_vlan_as_flow_key_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id,
+		fal_ip_vlan_as_flow_key_t *vlan_key);
+
+typedef sw_error_t (*adpt_ip_intf_vlan_as_flow_key_get_func)(a_uint32_t dev_id,
+		a_uint32_t intf,
+		fal_ip_vlan_as_flow_key_t *vlan_key);
+
+typedef sw_error_t (*adpt_ip_intf_vlan_as_flow_key_set_func)(a_uint32_t dev_id,
+		a_uint32_t intf,
+		fal_ip_vlan_as_flow_key_t *vlan_key);
+
+typedef sw_error_t (*adpt_ip_intf_mtu_mru_set_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, a_uint32_t mtu, a_uint32_t mru);
+typedef sw_error_t (*adpt_ip_intf_mtu_mru_get_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, a_uint32_t *mtu, a_uint32_t *mru);
+typedef sw_error_t (*adpt_ip6_intf_mtu_mru_set_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, a_uint32_t mtu, a_uint32_t mru);
+typedef sw_error_t (*adpt_ip6_intf_mtu_mru_get_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, a_uint32_t *mtu, a_uint32_t *mru);
+typedef sw_error_t (*adpt_ip_intf_macaddr_add_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, fal_intf_macaddr_t *mac);
+typedef sw_error_t (*adpt_ip_intf_macaddr_del_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, fal_intf_macaddr_t *mac);
+typedef sw_error_t (*adpt_ip_intf_macaddr_get_first_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, fal_intf_macaddr_t *mac);
+typedef sw_error_t (*adpt_ip_intf_macaddr_get_next_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, fal_intf_macaddr_t *mac);
+typedef sw_error_t (*adpt_ip_intf_dmac_check_set_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, a_bool_t enable);
+typedef sw_error_t (*adpt_ip_intf_dmac_check_get_func)
+	(a_uint32_t dev_id, a_uint32_t l3_if, a_bool_t *enable);
+
+typedef sw_error_t (*adpt_flow_global_cfg_get_func)(
+		a_uint32_t dev_id,
+		fal_flow_global_cfg_t *cfg);
+typedef sw_error_t (*adpt_flow_global_cfg_set_func)(
+		a_uint32_t dev_id,
+		fal_flow_global_cfg_t *cfg);
+typedef sw_error_t (*adpt_flow_host_add_func)(
+		a_uint32_t dev_id,
+		a_uint32_t add_mode,
+		fal_flow_host_entry_t *flow_host_entry);
+typedef sw_error_t (*adpt_flow_entry_get_func)(
+		a_uint32_t dev_id,
+		a_uint32_t get_mode,
+		fal_flow_entry_t *flow_entry);
+typedef sw_error_t (*adpt_flow_entry_del_func)(
+		a_uint32_t dev_id,
+		a_uint32_t del_mode,
+		fal_flow_entry_t *flow_entry);
+typedef sw_error_t (*adpt_flow_entry_next_func)(
+		a_uint32_t dev_id,
+		a_uint32_t next_mode,
+		fal_flow_entry_t *flow_entry);
+typedef sw_error_t (*adpt_flow_status_get_func)(
+		a_uint32_t dev_id, a_bool_t *enable);
+typedef sw_error_t (*adpt_flow_ctrl_set_func)(
+		a_uint32_t dev_id,
+		fal_flow_pkt_type_t type,
+		fal_flow_direction_t dir,
+		fal_flow_mgmt_t *ctrl);
+typedef sw_error_t (*adpt_flow_age_timer_get_func)(
+		a_uint32_t dev_id, fal_flow_age_timer_t *age_timer);
+typedef sw_error_t (*adpt_flow_status_set_func)(
+		a_uint32_t dev_id, a_bool_t enable);
+typedef sw_error_t (*adpt_flow_host_get_func)(
+		a_uint32_t dev_id,
+		a_uint32_t get_mode,
+		fal_flow_host_entry_t *flow_host_entry);
+typedef sw_error_t (*adpt_flow_host_del_func)(
+		a_uint32_t dev_id,
+		a_uint32_t del_mode,
+		fal_flow_host_entry_t *flow_host_entry);
+typedef sw_error_t (*adpt_flow_ctrl_get_func)(
+		a_uint32_t dev_id,
+		fal_flow_pkt_type_t type,
+		fal_flow_direction_t dir,
+		fal_flow_mgmt_t *ctrl);
+typedef sw_error_t (*adpt_flow_age_timer_set_func)(
+		a_uint32_t dev_id, fal_flow_age_timer_t *age_timer);
+typedef sw_error_t (*adpt_flow_entry_add_func)(
+		a_uint32_t dev_id,
+		a_uint32_t add_mode, /*index or hash*/
+		fal_flow_entry_t *flow_entry);
+
+typedef sw_error_t (*adpt_flow_counter_get_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, fal_entry_counter_t *flow_counter);
+
+typedef sw_error_t (*adpt_flow_counter_cleanup_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index);
+
+typedef sw_error_t (*adpt_flow_entry_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, a_bool_t enable);
+
+typedef sw_error_t (*adpt_flow_entry_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, a_bool_t *enable);
+
+typedef sw_error_t (*adpt_flow_qos_set_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, fal_flow_qos_t *flow_qos);
+
+typedef sw_error_t (*adpt_flow_qos_get_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, fal_flow_qos_t *flow_qos);
+
+typedef sw_error_t (*adpt_flow_npt66_prefix_add_func)(a_uint32_t dev_id,
+		a_uint32_t l3_if_index, fal_ip6_addr_t *ip6, a_uint32_t prefix_len);
+
+typedef sw_error_t (*adpt_flow_npt66_prefix_get_func)(a_uint32_t dev_id,
+		a_uint32_t l3_if_index, fal_ip6_addr_t *ip6, a_uint32_t *prefix_len);
+
+typedef sw_error_t (*adpt_flow_npt66_prefix_del_func)(a_uint32_t dev_id,
+		a_uint32_t l3_if_index);
+
+typedef sw_error_t (*adpt_flow_npt66_iid_cal_func)(a_uint32_t dev_id,
+		fal_flow_npt66_iid_calc_t *iid_cal, fal_flow_npt66_iid_t *iid_result);
+
+typedef sw_error_t (*adpt_flow_npt66_iid_add_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, fal_flow_npt66_iid_t *iid_entry);
+
+typedef sw_error_t (*adpt_flow_npt66_iid_get_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, fal_flow_npt66_iid_t *iid_entry);
+
+typedef sw_error_t (*adpt_flow_npt66_iid_del_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index);
+
+typedef sw_error_t (*adpt_flow_npt66_status_set_func)(a_uint32_t dev_id,
+		a_bool_t enable);
+
+typedef sw_error_t (*adpt_flow_npt66_status_get_func)(a_uint32_t dev_id,
+		a_bool_t *enable);
+
+typedef sw_error_t (*adpt_flow_key_get_func)(a_uint32_t dev_id,
+		fal_flow_protocol_type_t key_type,
+		fal_flow_key_t *flow_key);
+
+typedef sw_error_t (*adpt_flow_key_set_func)(a_uint32_t dev_id,
+		fal_flow_protocol_type_t key_type,
+		fal_flow_key_t *flow_key);
+
+typedef sw_error_t (*adpt_flow_sampling_id_get_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, a_uint32_t *sampling_id);
+
+typedef sw_error_t (*adpt_flow_sampling_id_set_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, a_uint32_t sampling_id);
+
+typedef sw_error_t (*adpt_flow_gro_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, a_bool_t *enable);
+
+typedef sw_error_t (*adpt_flow_gro_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t flow_index, a_bool_t enable);
+
+typedef sw_error_t (*adpt_flow_eip_lookup_mode_set_func)(a_uint32_t dev_id,
+		fal_flow_eip_lookup_mode_t mode);
+
+typedef sw_error_t (*adpt_flow_eip_lookup_mode_get_func)(a_uint32_t dev_id,
+		fal_flow_eip_lookup_mode_t *mode);
+
+typedef sw_error_t (*adpt_flow_fwd_type_set_func)(a_uint32_t dev_id, a_uint32_t
+		flow_index, fal_flow_fwd_type_t fwd_type);
+
+typedef sw_error_t (*adpt_flow_fwd_type_get_func)(a_uint32_t dev_id, a_uint32_t
+		flow_index, fal_flow_fwd_type_t *fwd_type);
+
+typedef sw_error_t (*adpt_flow_app_entry_add_func)(a_uint32_t dev_id,
+		fal_flow_app_entry_t *entry);
+
+typedef sw_error_t (*adpt_flow_app_entry_get_func)(a_uint32_t dev_id,
+		fal_flow_app_entry_t *entry);
+
+typedef sw_error_t (*adpt_flow_app_entry_del_func)(a_uint32_t dev_id,
+		fal_flow_app_entry_t *entry);
+
+typedef sw_error_t (*adpt_ucast_hash_map_set_func)(
+		a_uint32_t dev_id,
+		a_uint8_t profile,
+		a_uint8_t rss_hash,
+		a_int8_t queue_hash);
+typedef sw_error_t (*adpt_ac_dynamic_threshold_get_func)(
+		a_uint32_t dev_id,
+		a_uint32_t queue_id,
+		fal_ac_dynamic_threshold_t *cfg);
+typedef sw_error_t (*adpt_ucast_queue_base_profile_get_func)(
+		a_uint32_t dev_id,
+		fal_ucast_queue_dest_t *queue_dest,
+		a_uint32_t *queue_base, a_uint8_t *profile);
+typedef sw_error_t (*adpt_port_mcast_priority_class_get_func)(
+		a_uint32_t dev_id,
+		fal_port_t port,
+		a_uint8_t priority,
+		a_uint8_t *queue_class);
+typedef sw_error_t (*adpt_ac_dynamic_threshold_set_func)(
+		a_uint32_t dev_id,
+		a_uint32_t queue_id,
+		fal_ac_dynamic_threshold_t *cfg);
+typedef sw_error_t (*adpt_ac_prealloc_buffer_set_func)(
+		a_uint32_t dev_id,
+		fal_ac_obj_t *obj,
+		a_uint16_t num);
+typedef sw_error_t (*adpt_ucast_default_hash_get_func)(
+		a_uint32_t dev_id,
+		a_uint8_t *hash_value);
+typedef sw_error_t (*adpt_ucast_default_hash_set_func)(
+		a_uint32_t dev_id,
+		a_uint8_t hash_value);
+typedef sw_error_t (*adpt_ac_queue_group_get_func)(
+		a_uint32_t dev_id,
+		a_uint32_t queue_id,
+		a_uint8_t *group_id);
+typedef sw_error_t (*adpt_ac_ctrl_get_func)(
+		a_uint32_t dev_id,
+		fal_ac_obj_t *obj,
+		fal_ac_ctrl_t *cfg);
+typedef sw_error_t (*adpt_ac_prealloc_buffer_get_func)(
+		a_uint32_t dev_id,
+		fal_ac_obj_t *obj,
+		a_uint16_t *num);
+typedef sw_error_t (*adpt_port_mcast_priority_class_set_func)(
+		a_uint32_t dev_id,
+		fal_port_t port,
+		a_uint8_t priority,
+		a_uint8_t queue_class);
+typedef sw_error_t (*adpt_ucast_hash_map_get_func)(
+		a_uint32_t dev_id,
+		a_uint8_t profile,
+		a_uint8_t rss_hash,
+		a_int8_t *queue_hash);
+typedef sw_error_t (*adpt_ac_static_threshold_set_func)(
+		a_uint32_t dev_id,
+		fal_ac_obj_t *obj,
+		fal_ac_static_threshold_t *cfg);
+typedef sw_error_t (*adpt_ac_queue_group_set_func)(
+		a_uint32_t dev_id,
+		a_uint32_t queue_id,
+		a_uint8_t group_id);
+typedef sw_error_t (*adpt_ac_group_buffer_get_func)(
+		a_uint32_t dev_id,
+		a_uint8_t group_id,
+		fal_ac_group_buffer_t *cfg);
+typedef sw_error_t (*adpt_mcast_cpu_code_class_get_func)(
+		a_uint32_t dev_id,
+		a_uint8_t cpu_code,
+		a_uint8_t *queue_class);
+typedef sw_error_t (*adpt_ac_ctrl_set_func)(
+		a_uint32_t dev_id,
+		fal_ac_obj_t *obj,
+		fal_ac_ctrl_t *cfg);
+typedef sw_error_t (*adpt_ucast_priority_class_get_func)(
+		a_uint32_t dev_id,
+		a_uint8_t profile,
+		a_uint8_t priority,
+		a_uint8_t *class);
+typedef sw_error_t (*adpt_queue_flush_func)(
+		a_uint32_t dev_id,
+		fal_port_t port,
+		a_uint16_t queue_id);
+typedef sw_error_t (*adpt_mcast_cpu_code_class_set_func)(
+		a_uint32_t dev_id,
+		a_uint8_t cpu_code,
+		a_uint8_t queue_class);
+typedef sw_error_t (*adpt_ucast_priority_class_set_func)(
+		a_uint32_t dev_id,
+		a_uint8_t profile,
+		a_uint8_t priority,
+		a_uint8_t class);
+typedef sw_error_t (*adpt_ac_static_threshold_get_func)(
+		a_uint32_t dev_id,
+		fal_ac_obj_t *obj,
+		fal_ac_static_threshold_t *cfg);
+typedef sw_error_t (*adpt_ucast_queue_base_profile_set_func)(
+		a_uint32_t dev_id,
+		fal_ucast_queue_dest_t *queue_dest,
+		a_uint32_t queue_base, a_uint8_t profile);
+typedef sw_error_t (*adpt_ac_group_buffer_set_func)(
+		a_uint32_t dev_id,
+		a_uint8_t group_id,
+		fal_ac_group_buffer_t *cfg);
+typedef sw_error_t (*adpt_queue_counter_cleanup_func)(
+		a_uint32_t dev_id, a_uint32_t queue_id);
+typedef sw_error_t (*adpt_queue_counter_get_func)(
+		a_uint32_t dev_id, a_uint32_t queue_id,
+		fal_queue_stats_t *info);
+typedef sw_error_t (*adpt_queue_counter_ctrl_get_func)(
+		a_uint32_t dev_id, a_bool_t *cnt_en);
+typedef sw_error_t (*adpt_queue_counter_ctrl_set_func)(
+		a_uint32_t dev_id, a_bool_t cnt_en);
+typedef sw_error_t (*adpt_qm_enqueue_ctrl_set_func)(
+		a_uint32_t dev_id, a_uint32_t queue_id, a_bool_t enable);
+typedef sw_error_t (*adpt_qm_enqueue_ctrl_get_func)(
+		a_uint32_t dev_id, a_uint32_t queue_id, a_bool_t *enable);
+typedef sw_error_t (*adpt_qm_port_source_profile_set_func)(
+		a_uint32_t dev_id, fal_port_t port, a_uint32_t src_profile);
+typedef sw_error_t (*adpt_qm_port_source_profile_get_func)(
+		a_uint32_t dev_id, fal_port_t port, a_uint32_t *src_profile);
+typedef sw_error_t (*adpt_qm_enqueue_config_get_func)(a_uint32_t dev_id,
+		fal_enqueue_cfg_t *enqueue_cfg);
+typedef sw_error_t (*adpt_qm_enqueue_config_set_func)(a_uint32_t dev_id,
+		fal_enqueue_cfg_t *enqueue_cfg);
+typedef sw_error_t (*adpt_qm_threshold_reset_func)(a_uint32_t dev_id,
+		a_uint32_t queue_id);
+typedef sw_error_t (*adpt_qm_counter_monitor_en_set_func)(a_uint32_t dev_id,
+		a_bool_t enable);
+typedef sw_error_t (*adpt_qm_counter_monitor_en_get_func)(a_uint32_t dev_id,
+		a_bool_t *enable);
+typedef sw_error_t (*adpt_qm_counter_monitor_stats_cleanup_func)(a_uint32_t dev_id);
+typedef sw_error_t (*adpt_qm_counter_monitor_status_get_func)(a_uint32_t dev_id,
+		fal_qm_queue_type_t type, a_uint32_t cnt_id, a_bool_t *status);
+typedef sw_error_t (*adpt_qm_counter_monitor_map_set_func)(a_uint32_t dev_id,
+		fal_qm_queue_type_t type, a_uint32_t map_id,
+		fal_qm_monitor_map_t *monitor_map);
+typedef sw_error_t (*adpt_qm_counter_monitor_map_get_func)(a_uint32_t dev_id,
+		fal_qm_queue_type_t type, a_uint32_t map_id,
+		fal_qm_monitor_map_t *monitor_map);
+typedef sw_error_t (*adpt_qm_counter_monitor_ctrl_set_func)(a_uint32_t dev_id,
+		fal_qm_queue_type_t type, a_uint32_t cnt_id,
+		fal_qm_monitor_ctrl_t *monitor_ctrl);
+typedef sw_error_t (*adpt_qm_counter_monitor_ctrl_get_func)(a_uint32_t dev_id,
+		fal_qm_queue_type_t type, a_uint32_t cnt_id,
+		fal_qm_monitor_ctrl_t *monitor_ctrl);
+typedef sw_error_t (*adpt_qm_counter_monitor_stats_get_func)(a_uint32_t dev_id,
+		fal_qm_queue_type_t type, a_uint32_t cnt_id,
+		fal_qm_monitor_stats_t *monitor_stats);
+typedef sw_error_t (*adpt_qm_tcont_set_func)(a_uint32_t dev_id,
+		    a_uint32_t queue_id,
+		    fal_queue_tcont_cfg_t *cfg);
+
+typedef sw_error_t (*adpt_qm_tcont_get_func)(a_uint32_t dev_id,
+		    a_uint32_t queue_id,
+		    fal_queue_tcont_cfg_t *cfg);
+
+typedef sw_error_t (*adpt_qm_tcont_stat_get_func)(a_uint32_t dev_id,
+						  a_uint32_t tcont_id,
+						  fal_queue_tcont_stat_t *stat);
+
+typedef sw_error_t (*adpt_qm_tcont_stat_set_func)(a_uint32_t dev_id,
+						  a_uint32_t tcont_id,
+						  fal_queue_tcont_stat_t *stat);
+
+typedef sw_error_t (*adpt_qm_cpucode_enqueue_get_func)(a_uint32_t dev_id,
+		a_uint32_t cpu_code, a_bool_t *enable);
+
+typedef sw_error_t (*adpt_qm_cpucode_enqueue_set_func)(a_uint32_t dev_id,
+		a_uint32_t cpu_code, a_bool_t enable);
+
+typedef sw_error_t (*adpt_ucast_queue_ddrq_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t queue_id, fal_ucast_queue_ddrq_en_t *ddrqen);
+
+typedef sw_error_t (*adpt_ucast_queue_ddrq_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t queue_id, fal_ucast_queue_ddrq_en_t *ddrqen);
+
+typedef sw_error_t (*adpt_qm_passthrough_source_profile_set_func)(a_uint32_t dev_id,
+		fal_passthrough_mode_t mode, fal_passthrough_src_profile_t *profile);
+
+typedef sw_error_t (*adpt_qm_passthrough_source_profile_get_func)(a_uint32_t dev_id,
+		fal_passthrough_mode_t mode, fal_passthrough_src_profile_t *profile);
+
+typedef sw_error_t (*adpt_qm_passthrough_direct_enqueue_set_func)(a_uint32_t dev_id,
+		fal_passthrough_mode_t mode, a_bool_t enable);
+
+typedef sw_error_t (*adpt_qm_passthrough_direct_enqueue_get_func)(a_uint32_t dev_id,
+		fal_passthrough_mode_t mode, a_bool_t *enable);
+
+typedef sw_error_t (*adpt_qm_passthrough_cpucode_set_func)(a_uint32_t dev_id,
+		fal_passthrough_cpucode_t *cpucode);
+
+typedef sw_error_t (*adpt_qm_passthrough_cpucode_get_func)(a_uint32_t dev_id,
+		fal_passthrough_cpucode_t *cpucode);
+
+typedef sw_error_t (*adpt_qm_passthrough_cpucode_en_set_func)(a_uint32_t dev_id,
+		fal_passthrough_mode_t mode, a_bool_t enable);
+
+typedef sw_error_t (*adpt_qm_passthrough_cpucode_en_get_func)(a_uint32_t dev_id,
+		fal_passthrough_mode_t mode, a_bool_t *enable);
+
+typedef sw_error_t (*adpt_qm_dequeue_drop_set_func)(
+		a_uint32_t dev_id, a_uint32_t queue_id, a_bool_t enable);
+
+typedef sw_error_t (*adpt_qm_dequeue_drop_get_func)(
+		a_uint32_t dev_id, a_uint32_t queue_id, a_bool_t *enable);
+
+typedef sw_error_t (*adpt_qm_crosschip_bp_qmap_set_func)(
+		a_uint32_t dev_id, a_uint32_t lp_qid, fal_bp_queue_bmp_t *queue_bmp);
+
+typedef sw_error_t (*adpt_qm_crosschip_bp_qmap_get_func)(
+		a_uint32_t dev_id, a_uint32_t lp_qid, fal_bp_queue_bmp_t *queue_bmp);
+
+typedef sw_error_t (*adpt_qm_crosschip_bp_status_get_func)(
+		a_uint32_t dev_id, fal_bp_queue_bmp_t *queue_bmp);
+
+typedef sw_error_t (*adpt_qm_ac_drop_state_set_func)(a_uint32_t dev_id,
+		fal_ac_obj_t *obj, fal_ac_drop_state_t *cfg);
+
+typedef sw_error_t (*adpt_qm_ac_drop_state_get_func)(a_uint32_t dev_id,
+		fal_ac_obj_t *obj, fal_ac_drop_state_t *cfg);
+typedef sw_error_t (*adpt_qm_mcast_enqueue_ctrl_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		a_bool_t ucast_enqueue_en);
+
+typedef sw_error_t (*adpt_qm_mcast_enqueue_ctrl_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		a_bool_t *ucast_enqueue_en);
+
+/*portvlan module begin*/
+typedef sw_error_t (*adpt_global_qinq_mode_set_func)(a_uint32_t dev_id, fal_global_qinq_mode_t *mode);
+typedef sw_error_t (*adpt_global_qinq_mode_get_func)(a_uint32_t dev_id, fal_global_qinq_mode_t *mode);
+typedef sw_error_t (*adpt_tpid_set_func)(a_uint32_t dev_id, fal_tpid_t *tpid);
+typedef sw_error_t (*adpt_tpid_get_func)(a_uint32_t dev_id, fal_tpid_t *tpid);
+typedef sw_error_t (*adpt_egress_tpid_set_func)(a_uint32_t dev_id, fal_tpid_t *tpid);
+typedef sw_error_t (*adpt_egress_tpid_get_func)(a_uint32_t dev_id, fal_tpid_t *tpid);
+typedef sw_error_t (*adpt_port_qinq_mode_set_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_qinq_role_t *mode);
+typedef sw_error_t (*adpt_port_qinq_mode_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_qinq_role_t *mode);
+typedef sw_error_t (*adpt_port_ingress_vlan_filter_set_func)(a_uint32_t dev_id, fal_port_t port_id, fal_ingress_vlan_filter_t *filter);
+typedef sw_error_t (*adpt_port_ingress_vlan_filter_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_ingress_vlan_filter_t *filter);
+typedef sw_error_t (*adpt_port_default_vlantag_set_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_vlan_direction_t direction,
+                                 fal_port_default_vid_enable_t *default_vid_en, fal_port_vlan_tag_t *default_tag);
+typedef sw_error_t (*adpt_port_default_vlantag_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_vlan_direction_t direction,
+                                 fal_port_default_vid_enable_t *default_vid_en, fal_port_vlan_tag_t *default_tag);
+typedef sw_error_t (*adpt_port_tag_propagation_set_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_vlan_direction_t direction,
+                                 fal_vlantag_propagation_t *prop);
+typedef sw_error_t (*adpt_port_tag_propagation_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_vlan_direction_t direction,
+                                 fal_vlantag_propagation_t *prop);
+typedef sw_error_t (*adpt_port_vlantag_egmode_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+                            fal_vlantag_egress_mode_t *port_egvlanmode);
+typedef sw_error_t (*adpt_port_vlantag_egmode_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+                            fal_vlantag_egress_mode_t *port_egvlanmode);
+typedef sw_error_t (*adpt_port_vlan_xlt_miss_cmd_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+                                 fal_fwd_cmd_t *cmd);
+typedef sw_error_t (*adpt_port_vlan_xlt_miss_cmd_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+                                 fal_fwd_cmd_t cmd);
+typedef sw_error_t (*adpt_port_vlan_trans_add_func)(a_uint32_t dev_id, fal_port_t port_id, fal_vlan_trans_entry_t *entry);
+typedef sw_error_t (*adpt_port_vlan_trans_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_vlan_trans_entry_t *entry);
+typedef sw_error_t (*adpt_port_vlan_trans_del_func)(a_uint32_t dev_id, fal_port_t port_id, fal_vlan_trans_entry_t *entry);
+typedef sw_error_t (*adpt_port_vlan_trans_iterate_func)(a_uint32_t dev_id, fal_port_t port_id,
+                                a_uint32_t * iterator, fal_vlan_trans_entry_t *entry);
+typedef sw_error_t (*adpt_port_vsi_egmode_set_func)(a_uint32_t dev_id, a_uint32_t vsi, a_uint32_t port_id, fal_pt_1q_egmode_t egmode);
+typedef sw_error_t (*adpt_port_vsi_egmode_get_func)(a_uint32_t dev_id, a_uint32_t vsi, a_uint32_t port_id, fal_pt_1q_egmode_t * egmode);
+typedef sw_error_t (*adpt_port_vlantag_vsi_egmode_enable_set_func)(a_uint32_t dev_id, fal_port_t port_id, a_bool_t enable);
+typedef sw_error_t (*adpt_port_vlantag_vsi_egmode_enable_get_func)(a_uint32_t dev_id, fal_port_t port_id, a_bool_t * enable);
+typedef sw_error_t (*adpt_qinq_mode_set_func)(a_uint32_t dev_id, fal_qinq_mode_t mode);
+typedef sw_error_t (*adpt_qinq_mode_get_func)(a_uint32_t dev_id, fal_qinq_mode_t * mode);
+typedef sw_error_t (*adpt_port_qinq_role_set_func)(a_uint32_t dev_id, fal_port_t port_id, fal_qinq_port_role_t role);
+typedef sw_error_t (*adpt_port_qinq_role_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_qinq_port_role_t * role);
+typedef sw_error_t (*adpt_port_invlan_mode_set_func)(a_uint32_t dev_id, fal_port_t port_id, fal_pt_invlan_mode_t mode);
+typedef sw_error_t (*adpt_port_invlan_mode_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_pt_invlan_mode_t * mode);
+typedef sw_error_t (*adpt_port_vlan_trans_adv_add_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_vlan_direction_t direction,
+                                fal_vlan_trans_adv_rule_t * rule, fal_vlan_trans_adv_action_t * action);
+typedef sw_error_t (*adpt_port_vlan_trans_adv_del_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_vlan_direction_t direction,
+                                fal_vlan_trans_adv_rule_t * rule, fal_vlan_trans_adv_action_t * action);
+typedef sw_error_t (*adpt_port_vlan_trans_adv_get_func)(a_uint32_t dev_id, fal_port_vlan_direction_t direction, a_uint32_t index,
+                                fal_vlan_trans_adv_rule_t * rule, fal_vlan_trans_adv_action_t * action);
+typedef sw_error_t (*adpt_port_vlan_trans_adv_set_func)(a_uint32_t dev_id, fal_port_vlan_direction_t direction, a_uint32_t index,
+                                fal_vlan_trans_adv_rule_t * rule, fal_vlan_trans_adv_action_t * action);
+typedef sw_error_t (*adpt_port_vlan_trans_adv_getfirst_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_vlan_direction_t direction,
+                                fal_vlan_trans_adv_rule_t * rule, fal_vlan_trans_adv_action_t * action);
+typedef sw_error_t (*adpt_port_vlan_trans_adv_getnext_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_vlan_direction_t direction,
+                                fal_vlan_trans_adv_rule_t * rule, fal_vlan_trans_adv_action_t * action);
+typedef sw_error_t (*adpt_port_vlan_counter_get_func)(a_uint32_t dev_id, a_uint32_t cnt_index, fal_port_vlan_counter_t * counter);
+typedef sw_error_t (*adpt_port_vlan_counter_cleanup_func)(a_uint32_t dev_id, a_uint32_t cnt_index);
+typedef sw_error_t (*adpt_portvlan_member_add_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_t mem_port_id);
+typedef sw_error_t (*adpt_portvlan_member_del_func)(a_uint32_t dev_id, fal_port_t port_id, fal_port_t mem_port_id);
+typedef sw_error_t (*adpt_portvlan_member_update_func)(a_uint32_t dev_id, fal_port_t port_id, fal_pbmp_t mem_port_map);
+typedef sw_error_t (*adpt_portvlan_member_get_func)(a_uint32_t dev_id, fal_port_t port_id, fal_pbmp_t * mem_port_map);
+typedef sw_error_t (*adpt_port_vlan_vpgroup_set_func)(a_uint32_t dev_id,
+		a_uint32_t vport, fal_port_vlan_direction_t direction, a_uint32_t vpgroup_id);
+typedef sw_error_t (*adpt_port_vlan_vpgroup_get_func)(a_uint32_t dev_id,
+		a_uint32_t vport, fal_port_vlan_direction_t direction, a_uint32_t *vpgroup_id);
+typedef sw_error_t (*adpt_port_isol_ctrl_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_port_isol_ctrl_t *isol_ctrl);
+typedef sw_error_t (*adpt_port_isol_ctrl_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_port_isol_ctrl_t *isol_ctrl);
+typedef sw_error_t (*adpt_port_isol_group_set_func)(a_uint32_t dev_id,
+		a_uint8_t isol_group_id, a_uint64_t *isol_group_bmp);
+typedef sw_error_t (*adpt_port_isol_group_get_func)(a_uint32_t dev_id,
+		a_uint8_t isol_group_id, a_uint64_t *isol_group_bmp);
+typedef sw_error_t (*adpt_port_egress_vlan_filter_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_egress_vlan_filter_t *filter);
+typedef sw_error_t (*adpt_port_egress_vlan_filter_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_egress_vlan_filter_t *filter);
+typedef sw_error_t (*adpt_vlan_trans_dscp_pcp_mapping_set_func)(a_uint32_t dev_id,
+		fal_port_vlan_direction_t direction,
+		a_uint8_t group_id, a_uint8_t dscp, a_uint8_t pcp);
+typedef sw_error_t (*adpt_vlan_trans_dscp_pcp_mapping_get_func)(a_uint32_t dev_id,
+		fal_port_vlan_direction_t direction,
+		a_uint8_t group_id, a_uint8_t dscp, a_uint8_t *pcp);
+typedef sw_error_t (*adpt_port_isol_action_ctrl_set_func)(a_uint32_t dev_id,
+		fal_port_isol_act_ctrl_t *act_ctrl);
+typedef sw_error_t (*adpt_port_isol_action_ctrl_get_func)(a_uint32_t dev_id,
+		fal_port_isol_act_ctrl_t *act_ctrl);
+typedef sw_error_t (*adpt_port_isol_action_set_func)(a_uint32_t dev_id,
+		fal_port_isol_act_idx_t *isol_id, fal_port_isol_act_t *isol_act);
+typedef sw_error_t (*adpt_port_isol_action_get_func)(a_uint32_t dev_id,
+		fal_port_isol_act_idx_t *isol_id, fal_port_isol_act_t *isol_act);
+typedef sw_error_t (*adpt_private_vlan_rx_cfg_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_pvtvlan_rx_cfg_t *cfg);
+typedef sw_error_t (*adpt_private_vlan_rx_cfg_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_pvtvlan_rx_cfg_t *cfg);
+typedef sw_error_t (*adpt_private_vlan_mapping_set_func)(a_uint32_t dev_id,
+		fal_direction_t direction, fal_pvtvlan_map_t *port_mapping);
+typedef sw_error_t (*adpt_private_vlan_mapping_get_func)(a_uint32_t dev_id,
+		fal_direction_t direction, fal_pvtvlan_map_t *port_mapping);
+typedef sw_error_t (*adpt_private_vlan_tx_cfg_set_func)(a_uint32_t dev_id, fal_pvtvlan_tx_cfg_t *cfg);
+typedef sw_error_t (*adpt_private_vlan_tx_cfg_get_func)(a_uint32_t dev_id, fal_pvtvlan_tx_cfg_t *cfg);
+/*portvlan module end*/
+
+/*ctrlpkt module end*/
+typedef sw_error_t (*adpt_mgmtctrl_ethtype_profile_set_func)(a_uint32_t dev_id, a_uint32_t profile_id, a_uint32_t ethtype);
+typedef sw_error_t (*adpt_mgmtctrl_ethtype_profile_get_func)(a_uint32_t dev_id, a_uint32_t profile_id, a_uint32_t * ethtype);
+typedef sw_error_t (*adpt_mgmtctrl_rfdb_profile_set_func)(a_uint32_t dev_id, a_uint32_t profile_id, fal_mac_addr_t *addr);
+typedef sw_error_t (*adpt_mgmtctrl_rfdb_profile_get_func)(a_uint32_t dev_id, a_uint32_t profile_id, fal_mac_addr_t *addr);
+typedef sw_error_t (*adpt_mgmtctrl_ctrlpkt_profile_add_func)(a_uint32_t dev_id, fal_ctrlpkt_profile_t *ctrlpkt);
+typedef sw_error_t (*adpt_mgmtctrl_ctrlpkt_profile_del_func)(a_uint32_t dev_id, fal_ctrlpkt_profile_t *ctrlpkt);
+typedef sw_error_t (*adpt_mgmtctrl_ctrlpkt_profile_getfirst_func)(a_uint32_t dev_id, fal_ctrlpkt_profile_t *ctrlpkt);
+typedef sw_error_t (*adpt_mgmtctrl_ctrlpkt_profile_getnext_func)(a_uint32_t dev_id, fal_ctrlpkt_profile_t *ctrlpkt);
+typedef sw_error_t (*adpt_mgmtctrl_vpgroup_set_func)(a_uint32_t dev_id, a_uint32_t port_id, a_uint32_t vpgroup_id);
+typedef sw_error_t (*adpt_mgmtctrl_vpgroup_get_func)(a_uint32_t dev_id, a_uint32_t port_id, a_uint32_t *vpgroup_id);
+typedef sw_error_t (*adpt_mgmtctrl_tunnel_decap_set_func)(a_uint32_t dev_id, a_uint32_t cpu_code_id, a_bool_t enable);
+typedef sw_error_t (*adpt_mgmtctrl_tunnel_decap_get_func)(a_uint32_t dev_id, a_uint32_t cpu_code_id, a_bool_t *enable);
+/*ctrlpkt module end*/
+
+/*service module end*/
+typedef sw_error_t (*adpt_servcode_config_set_func)(a_uint32_t dev_id,
+		a_uint32_t servcode_index, fal_servcode_config_t *entry);
+typedef sw_error_t (*adpt_servcode_config_get_func)(a_uint32_t dev_id,
+		a_uint32_t servcode_index, fal_servcode_config_t *entry);
+typedef sw_error_t (*adpt_servcode_loopcheck_en_func)(a_uint32_t dev_id, a_bool_t enable);
+typedef sw_error_t (*adpt_servcode_loopcheck_status_get_func)(a_uint32_t dev_id, a_bool_t *enable);
+typedef sw_error_t (*adpt_port_servcode_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, a_uint32_t servcode_index);
+typedef sw_error_t (*adpt_port_servcode_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, a_uint32_t *servcode_index);
+typedef sw_error_t (*adpt_servcode_athtag_set_func)(a_uint32_t dev_id,
+		a_uint32_t servcode_index, fal_servcode_athtag_t *entry);
+typedef sw_error_t (*adpt_servcode_athtag_get_func)(a_uint32_t dev_id,
+		a_uint32_t servcode_index, fal_servcode_athtag_t *entry);
+/*service module end*/
+
+//pppoe
+typedef sw_error_t (*adpt_pppoe_session_table_add_func)(
+		a_uint32_t dev_id,
+		fal_pppoe_session_t * session_tbl);
+typedef sw_error_t (*adpt_pppoe_session_table_del_func)(
+		a_uint32_t dev_id,
+		fal_pppoe_session_t * session_tbl);
+typedef sw_error_t (*adpt_pppoe_session_table_get_func)(
+		a_uint32_t dev_id,
+		fal_pppoe_session_t * session_tbl);
+typedef sw_error_t (*adpt_pppoe_en_set_func)(
+		a_uint32_t dev_id,
+		a_uint32_t l3_if,
+		a_uint32_t enable);
+typedef sw_error_t (*adpt_pppoe_en_get_func)(
+		a_uint32_t dev_id,
+		a_uint32_t l3_if,
+		a_uint32_t *enable);
+
+typedef sw_error_t (*adpt_pppoe_l3_intf_set_func)(a_uint32_t dev_id,
+		a_uint32_t pppoe_index, fal_intf_type_t l3_type, fal_intf_id_t *pppoe_intf);
+typedef sw_error_t (*adpt_pppoe_l3_intf_get_func)(a_uint32_t dev_id,
+		a_uint32_t pppoe_index, fal_intf_type_t l3_type, fal_intf_id_t *pppoe_intf);
+typedef sw_error_t (*adpt_pppoe_global_ctrl_set_func) (a_uint32_t dev_id,
+		fal_pppoe_global_cfg_t *cfg);
+typedef sw_error_t (*adpt_pppoe_global_ctrl_get_func) (a_uint32_t dev_id,
+		fal_pppoe_global_cfg_t *cfg);
+
+/*sec module*/
+typedef sw_error_t (*adpt_sec_l3_excep_parser_ctrl_set_func)(
+		a_uint32_t dev_id,
+		fal_l3_excep_parser_ctrl *ctrl);
+typedef sw_error_t (*adpt_sec_l3_excep_ctrl_get_func)(
+		a_uint32_t dev_id, a_uint32_t excep_type, fal_l3_excep_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_sec_l3_excep_parser_ctrl_get_func)(
+		a_uint32_t dev_id, fal_l3_excep_parser_ctrl *ctrl);
+typedef sw_error_t (*adpt_sec_l4_excep_parser_ctrl_set_func)(
+		a_uint32_t dev_id, fal_l4_excep_parser_ctrl *ctrl);
+typedef sw_error_t (*adpt_sec_l3_excep_ctrl_set_func)(
+		a_uint32_t dev_id, a_uint32_t excep_type, fal_l3_excep_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_sec_l4_excep_parser_ctrl_get_func)(
+		a_uint32_t dev_id, fal_l4_excep_parser_ctrl *ctrl);
+typedef sw_error_t (*adpt_sec_l2_excep_ctrl_set_func)(
+        a_uint32_t dev_id, a_uint32_t excep_type, fal_l2_excep_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_sec_l2_excep_ctrl_get_func)(
+		a_uint32_t dev_id, a_uint32_t excep_type, fal_l2_excep_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_sec_tunnel_excep_ctrl_set_func)(
+		a_uint32_t dev_id, a_uint32_t excep_type, fal_tunnel_excep_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_sec_tunnel_excep_ctrl_get_func)(
+		a_uint32_t dev_id, a_uint32_t excep_type, fal_tunnel_excep_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_sec_tunnel_l3_excep_parser_ctrl_set_func)(
+		a_uint32_t dev_id, fal_l3_excep_parser_ctrl *ctrl);
+typedef sw_error_t (*adpt_sec_tunnel_l3_excep_parser_ctrl_get_func)(
+		a_uint32_t dev_id, fal_l3_excep_parser_ctrl *ctrl);
+typedef sw_error_t (*adpt_sec_tunnel_l4_excep_parser_ctrl_set_func)(
+		a_uint32_t dev_id, fal_l4_excep_parser_ctrl *ctrl);
+typedef sw_error_t (*adpt_sec_tunnel_l4_excep_parser_ctrl_get_func)(
+		a_uint32_t dev_id, fal_l4_excep_parser_ctrl *ctrl);
+typedef sw_error_t (*adpt_sec_tunnel_flags_excep_parser_ctrl_set_func)(
+		a_uint32_t dev_id, a_uint32_t index, fal_tunnel_flags_excep_parser_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_sec_tunnel_flags_excep_parser_ctrl_get_func)(
+		a_uint32_t dev_id, a_uint32_t index, fal_tunnel_flags_excep_parser_ctrl_t *ctrl);
+
+typedef sw_error_t (*adpt_acl_list_bind_func)(a_uint32_t dev_id, a_uint32_t list_id, fal_acl_direc_t direc, fal_acl_bind_obj_t obj_t, a_uint32_t obj_idx);
+typedef sw_error_t (*adpt_acl_list_dump_func)(a_uint32_t dev_id);
+typedef sw_error_t (*adpt_acl_udf_profile_set_func)(a_uint32_t dev_id, fal_acl_udf_pkt_type_t pkt_type,a_uint32_t udf_idx, fal_acl_udf_type_t udf_type, a_uint32_t offset);
+typedef sw_error_t (*adpt_acl_rule_query_func)(a_uint32_t dev_id, a_uint32_t list_id, a_uint32_t rule_id, fal_acl_rule_t * rule);
+typedef sw_error_t (*adpt_acl_list_unbind_func)(a_uint32_t dev_id, a_uint32_t list_id, fal_acl_direc_t direc, fal_acl_bind_obj_t obj_t, a_uint32_t obj_idx);
+typedef sw_error_t (*adpt_acl_rule_add_func)(a_uint32_t dev_id, a_uint32_t list_id, a_uint32_t rule_id, a_uint32_t rule_nr, fal_acl_rule_t * rule);
+typedef sw_error_t (*adpt_acl_rule_delete_func)(a_uint32_t dev_id, a_uint32_t list_id, a_uint32_t rule_id, a_uint32_t rule_nr);
+typedef sw_error_t (*adpt_acl_rule_dump_func)(a_uint32_t dev_id);
+typedef sw_error_t (*adpt_acl_udf_profile_get_func)(a_uint32_t dev_id, fal_acl_udf_pkt_type_t pkt_type,a_uint32_t udf_idx, fal_acl_udf_type_t *udf_type, a_uint32_t *offset);
+typedef sw_error_t (*adpt_acl_list_creat_func)(a_uint32_t dev_id, a_uint32_t list_id, a_uint32_t list_pri);
+typedef sw_error_t (*adpt_acl_list_destroy_func)(a_uint32_t dev_id, a_uint32_t list_id);
+typedef sw_error_t
+(*adpt_acl_udf_profile_entry_add_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		fal_acl_udf_profile_entry_t * entry);
+typedef sw_error_t
+(*adpt_acl_udf_profile_entry_del_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		fal_acl_udf_profile_entry_t * entry);
+typedef sw_error_t
+(*adpt_acl_udf_profile_entry_getfirst_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		fal_acl_udf_profile_entry_t * entry);
+typedef sw_error_t
+(*adpt_acl_udf_profile_entry_getnext_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		fal_acl_udf_profile_entry_t * entry);
+typedef sw_error_t
+(*adpt_acl_udf_profile_cfg_set_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		a_uint32_t udf_idx, fal_acl_udf_type_t udf_type, a_uint32_t offset);
+typedef sw_error_t
+(*adpt_acl_udf_profile_cfg_get_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		a_uint32_t udf_idx, fal_acl_udf_type_t * udf_type, a_uint32_t * offset);
+typedef sw_error_t
+(*adpt_acl_vpgroup_set_func)(a_uint32_t dev_id, a_uint32_t vport_id,
+		fal_vport_type_t vport_type, a_uint32_t vpgroup_id);
+typedef sw_error_t
+(*adpt_acl_vpgroup_get_func)(a_uint32_t dev_id, a_uint32_t vport_id,
+		fal_vport_type_t vport_type, a_uint32_t * vpgroup_id);
+typedef sw_error_t
+(*adpt_acl_counter_get_func)(a_uint32_t dev_id, a_uint32_t entry_index,
+		fal_entry_counter_t *acl_counter);
+
+typedef sw_error_t
+(*adpt_acl_rule_priority_set_func)(a_uint32_t dev_id, a_uint32_t list_id,
+		a_uint32_t rule_id, a_uint32_t priority);
+typedef sw_error_t
+(*adpt_acl_rule_priority_get_func)(a_uint32_t dev_id, a_uint32_t list_id,
+		a_uint32_t rule_id, a_uint32_t *priority);
+typedef sw_error_t
+(*adpt_acl_dscp_pcp_mapping_set_func)(a_uint32_t dev_id, a_uint8_t group_id,
+		a_uint8_t dscp, a_uint8_t pcp);
+typedef sw_error_t
+(*adpt_acl_dscp_pcp_mapping_get_func)(a_uint32_t dev_id, a_uint8_t group_id,
+		a_uint8_t dscp, a_uint8_t *pcp);
+
+typedef sw_error_t (*adpt_qos_port_pri_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_qos_pri_precedence_t *pri);
+typedef sw_error_t (*adpt_qos_port_pri_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_qos_pri_precedence_t *pri);
+typedef sw_error_t (*adpt_qos_cosmap_pcp_get_func)(a_uint32_t dev_id, a_uint8_t group_id,
+					a_uint8_t pcp, fal_qos_cosmap_t *cosmap);
+typedef sw_error_t (*adpt_queue_scheduler_set_func)(a_uint32_t dev_id,
+					a_uint32_t node_id,
+					fal_queue_scheduler_level_t level,
+					fal_port_t port_id,
+					fal_qos_scheduler_cfg_t *scheduler_cfg);
+typedef sw_error_t (*adpt_queue_scheduler_get_func)(a_uint32_t dev_id,
+					a_uint32_t node_id,
+					fal_queue_scheduler_level_t level,
+					fal_port_t *port_id,
+					fal_qos_scheduler_cfg_t *scheduler_cfg);
+typedef sw_error_t (*adpt_port_queues_get_func)(a_uint32_t dev_id,
+					fal_port_t port_id,
+					fal_queue_bmp_t *queue_bmp);
+typedef sw_error_t (*adpt_qos_cosmap_pcp_set_func)(a_uint32_t dev_id, a_uint8_t group_id,
+					a_uint8_t pcp, fal_qos_cosmap_t *cosmap);
+typedef sw_error_t (*adpt_qos_cosmap_dscp_get_func)(a_uint32_t dev_id, a_uint8_t group_id,
+					a_uint8_t dscp, fal_qos_cosmap_t *cosmap);
+typedef sw_error_t (*adpt_qos_cosmap_flow_set_func)(a_uint32_t dev_id, a_uint8_t group_id,
+					a_uint16_t flow, fal_qos_cosmap_t *cosmap);
+typedef sw_error_t (*adpt_qos_port_group_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_qos_group_t *group);
+typedef sw_error_t (*adpt_ring_queue_map_set_func)(a_uint32_t dev_id,
+					a_uint32_t ring_id, fal_queue_bmp_t *queue_bmp);
+typedef sw_error_t (*adpt_qos_cosmap_dscp_set_func)(a_uint32_t dev_id, a_uint8_t group_id,
+					a_uint8_t dscp, fal_qos_cosmap_t *cosmap);
+typedef sw_error_t (*adpt_qos_cosmap_flow_get_func)(a_uint32_t dev_id, a_uint8_t group_id,
+					a_uint16_t flow, fal_qos_cosmap_t *cosmap);
+typedef sw_error_t (*adpt_qos_port_group_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_qos_group_t *group);
+typedef sw_error_t (*adpt_ring_queue_map_get_func)(a_uint32_t dev_id,
+					a_uint32_t ring_id, fal_queue_bmp_t *queue_bmp);
+typedef sw_error_t (*adpt_qos_port_pcp_cfg_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_qos_pcp_cfg_t *pcp_cfg);
+typedef sw_error_t (*adpt_qos_port_pcp_cfg_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_qos_pcp_cfg_t *pcp_cfg);
+
+//shaper
+
+typedef sw_error_t (*adpt_flow_shaper_set_func)(a_uint32_t dev_id, a_uint32_t flow_id,
+					fal_shaper_config_t * shaper);
+typedef sw_error_t (*adpt_queue_shaper_get_func)(a_uint32_t dev_id, a_uint32_t queue_id,
+					fal_shaper_config_t * shaper);
+typedef sw_error_t (*adpt_queue_shaper_token_number_set_func)(a_uint32_t dev_id,a_uint32_t queue_id,
+					fal_shaper_token_number_t *token_number);
+typedef sw_error_t (*adpt_port_shaper_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_shaper_config_t * shaper);
+typedef sw_error_t (*adpt_flow_shaper_time_slot_get_func)(a_uint32_t dev_id, a_uint32_t *time_slot);
+typedef sw_error_t (*adpt_port_shaper_time_slot_get_func)(a_uint32_t dev_id, a_uint32_t *time_slot);
+typedef sw_error_t (*adpt_flow_shaper_time_slot_set_func)(a_uint32_t dev_id, a_uint32_t time_slot);
+typedef sw_error_t (*adpt_port_shaper_token_number_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_shaper_token_number_t *token_number);
+typedef sw_error_t (*adpt_queue_shaper_token_number_get_func)(a_uint32_t dev_id, a_uint32_t queue_id,
+					fal_shaper_token_number_t *token_number);
+typedef sw_error_t (*adpt_queue_shaper_time_slot_get_func)(a_uint32_t dev_id, a_uint32_t *time_slot);
+typedef sw_error_t (*adpt_port_shaper_token_number_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_shaper_token_number_t *token_number);
+typedef sw_error_t (*adpt_flow_shaper_token_number_set_func)(a_uint32_t dev_id, a_uint32_t flow_id,
+					fal_shaper_token_number_t *token_number);
+typedef sw_error_t (*adpt_flow_shaper_token_number_get_func)(a_uint32_t dev_id, a_uint32_t flow_id,
+					fal_shaper_token_number_t *token_number);
+typedef sw_error_t (*adpt_port_shaper_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_shaper_config_t * shaper);
+typedef sw_error_t (*adpt_port_shaper_time_slot_set_func)(a_uint32_t dev_id, a_uint32_t time_slot);
+typedef sw_error_t (*adpt_flow_shaper_get_func)(a_uint32_t dev_id, a_uint32_t flow_id,
+					fal_shaper_config_t * shaper);
+typedef sw_error_t (*adpt_queue_shaper_set_func)(a_uint32_t dev_id,a_uint32_t queue_id,
+					fal_shaper_config_t * shaper);
+typedef sw_error_t (*adpt_queue_shaper_time_slot_set_func)(a_uint32_t dev_id, a_uint32_t time_slot);
+typedef sw_error_t (*adpt_shaper_ipg_preamble_length_get_func)(a_uint32_t dev_id, a_uint32_t *ipg_pre_length);
+typedef sw_error_t (*adpt_shaper_ipg_preamble_length_set_func)(a_uint32_t dev_id, a_uint32_t ipg_pre_length);
+typedef sw_error_t (*adpt_queue_shaper_ctrl_set_func)(a_uint32_t dev_id, fal_shaper_ctrl_t *queue_shaper_ctrl);
+typedef sw_error_t (*adpt_queue_shaper_ctrl_get_func)(a_uint32_t dev_id, fal_shaper_ctrl_t *queue_shaper_ctrl);
+typedef sw_error_t (*adpt_flow_shaper_ctrl_set_func)(a_uint32_t dev_id, fal_shaper_ctrl_t *flow_shaper_ctrl);
+typedef sw_error_t (*adpt_flow_shaper_ctrl_get_func)(a_uint32_t dev_id, fal_shaper_ctrl_t *flow_shaper_ctrl);
+
+typedef sw_error_t (*adpt_tdm_tick_num_set_func)(a_uint32_t dev_id, a_uint32_t tick_num);
+typedef sw_error_t (*adpt_tdm_tick_num_get_func)(a_uint32_t dev_id, a_uint32_t *tick_num);
+typedef sw_error_t (*adpt_port_scheduler_cfg_set_func)(a_uint32_t dev_id, a_uint32_t tick_index,
+					fal_port_scheduler_cfg_t *cfg);
+typedef sw_error_t (*adpt_port_scheduler_cfg_reset_func)(a_uint32_t dev_id, fal_port_t port_id);
+typedef sw_error_t (*adpt_port_scheduler_cfg_get_func)(a_uint32_t dev_id, a_uint32_t tick_index,
+					fal_port_scheduler_cfg_t *cfg);
+typedef sw_error_t (*adpt_scheduler_dequeue_ctrl_get_func)(a_uint32_t dev_id, a_uint32_t queue_id,
+					a_bool_t *enable);
+typedef sw_error_t (*adpt_scheduler_dequeue_ctrl_set_func)(a_uint32_t dev_id, a_uint32_t queue_id,
+					a_bool_t enable);
+typedef sw_error_t (*adpt_port_scheduler_resource_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+					fal_portscheduler_resource_t *cfg);
+typedef sw_error_t (*adpt_reservedpool_scheduler_resource_get_func)(a_uint32_t dev_id,
+		fal_portscheduler_resource_t *cfg);
+typedef sw_error_t (*adpt_port_bufgroup_map_get_func)(a_uint32_t dev_id, fal_port_t port,
+			a_uint8_t *group);
+typedef sw_error_t (*adpt_bm_port_reserved_buffer_get_func)(a_uint32_t dev_id, fal_port_t port,
+			a_uint16_t *prealloc_buff, a_uint16_t *react_buff);
+typedef sw_error_t (*adpt_bm_bufgroup_buffer_get_func)(a_uint32_t dev_id, a_uint8_t group,
+			a_uint16_t *buff_num);
+typedef sw_error_t (*adpt_bm_port_dynamic_thresh_get_func)(a_uint32_t dev_id, fal_port_t port,
+			fal_bm_dynamic_cfg_t *cfg);
+typedef sw_error_t (*adpt_port_bm_ctrl_get_func)(a_uint32_t dev_id, fal_port_t port, a_bool_t *enable);
+typedef sw_error_t (*adpt_bm_bufgroup_buffer_set_func)(a_uint32_t dev_id, a_uint8_t group,
+			a_uint16_t buff_num);
+typedef sw_error_t (*adpt_port_bufgroup_map_set_func)(a_uint32_t dev_id, fal_port_t port,
+			a_uint8_t group);
+typedef sw_error_t (*adpt_bm_port_static_thresh_get_func)(a_uint32_t dev_id, fal_port_t port,
+			fal_bm_static_cfg_t *cfg);
+typedef sw_error_t (*adpt_bm_port_reserved_buffer_set_func)(a_uint32_t dev_id, fal_port_t port,
+			a_uint16_t prealloc_buff, a_uint16_t react_buff);
+typedef sw_error_t (*adpt_bm_port_static_thresh_set_func)(a_uint32_t dev_id, fal_port_t port,
+			fal_bm_static_cfg_t *cfg);
+typedef sw_error_t (*adpt_bm_port_dynamic_thresh_set_func)(a_uint32_t dev_id, fal_port_t port,
+			fal_bm_dynamic_cfg_t *cfg);
+typedef sw_error_t (*adpt_port_bm_ctrl_set_func)(a_uint32_t dev_id, fal_port_t port, a_bool_t enable);
+typedef sw_error_t (*adpt_port_tdm_ctrl_set_func)(a_uint32_t dev_id, fal_port_tdm_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_port_tdm_tick_cfg_set_func)(a_uint32_t dev_id, a_uint32_t tick_index,
+			fal_port_tdm_tick_cfg_t *cfg);
+typedef sw_error_t (*adpt_bm_port_counter_get_func)(a_uint32_t dev_id, fal_port_t port,
+			fal_bm_port_counter_t *counter);
+
+//policer
+typedef sw_error_t (*adpt_acl_policer_counter_get_func)(a_uint32_t dev_id, a_uint32_t index,
+		fal_policer_counter_t *counter);
+typedef sw_error_t (*adpt_port_policer_counter_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_policer_counter_t *counter);
+typedef sw_error_t (*adpt_port_compensation_byte_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		a_uint32_t  *length);
+typedef sw_error_t (*adpt_port_policer_entry_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_policer_config_t *policer, fal_policer_action_t *ation);
+typedef sw_error_t (*adpt_port_policer_entry_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_policer_config_t *policer, fal_policer_action_t *ation);
+typedef sw_error_t (*adpt_acl_policer_entry_get_func)(a_uint32_t dev_id, a_uint32_t index,
+		fal_policer_config_t *policer, fal_policer_action_t *ation);
+typedef sw_error_t (*adpt_acl_policer_entry_set_func)(a_uint32_t dev_id, a_uint32_t index,
+		fal_policer_config_t *policer, fal_policer_action_t *ation);
+typedef sw_error_t (*adpt_policer_time_slot_get_func)(a_uint32_t dev_id, a_uint32_t *time_slot);
+typedef sw_error_t (*adpt_port_compensation_byte_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		a_uint32_t  length);
+typedef sw_error_t (*adpt_policer_time_slot_set_func)(a_uint32_t dev_id, a_uint32_t time_slot);
+
+typedef sw_error_t (*adpt_policer_global_counter_get_func)(a_uint32_t dev_id,
+		fal_policer_global_counter_t *counter);
+typedef sw_error_t (*adpt_policer_bypass_en_set_func)(a_uint32_t dev_id,
+	fal_policer_frame_type_t frame_type, a_bool_t enable);
+typedef sw_error_t (*adpt_policer_bypass_en_get_func)(a_uint32_t dev_id,
+	fal_policer_frame_type_t frame_type, a_bool_t *enable);
+typedef sw_error_t (*adpt_policer_priority_remap_get_func)(a_uint32_t dev_id, fal_policer_priority_t *priority,
+		fal_policer_remap_t *remap);
+typedef sw_error_t (*adpt_policer_priority_remap_set_func)(a_uint32_t dev_id, fal_policer_priority_t *priority,
+		fal_policer_remap_t *remap);
+typedef sw_error_t (*adpt_policer_ctrl_set_func)(a_uint32_t dev_id, fal_policer_ctrl_t *ctrl);
+typedef sw_error_t (*adpt_policer_ctrl_get_func)(a_uint32_t dev_id, fal_policer_ctrl_t *ctrl);
+
+/* misc */
+/* Buffer size for debug counter output */
+#define SSDK_COUNTER_BUF_SIZE (32 * 1024)  /* 32KB */
+/*
+ * SSDK_BUF_REMAINING - safely compute remaining bytes in the counter buffer.
+ *
+ * @count: pointer to the running offset (ssize_t *)
+ *
+ * Returns the number of bytes still available in the buffer as size_t.
+ * If *count has already reached or exceeded SSDK_COUNTER_BUF_SIZE (e.g. due
+ * to accumulated writes), the expression (SSDK_COUNTER_BUF_SIZE - *count)
+ * would be negative.  Passing a negative ssize_t to scnprintf() as its
+ * size_t 'size' argument wraps to a huge value and causes a heap overwrite.
+ * This macro clamps the result to 0 in that case.
+ */
+#define SSDK_BUF_REMAINING(count) \
+	(*(count) < (ssize_t)(SSDK_COUNTER_BUF_SIZE) ? \
+	 (size_t)((ssize_t)(SSDK_COUNTER_BUF_SIZE) - *(count)) : 0)
+
+typedef sw_error_t (*adpt_debug_counter_get_func)(a_uint32_t dev_id, a_bool_t show_type,
+		    char **buf, ssize_t *count);
+typedef sw_error_t (*adpt_debug_counter_set_func)(a_uint32_t dev_id);
+typedef sw_error_t (*adpt_intr_port_link_mask_set_func) (a_uint32_t dev_id,
+			fal_port_t port_id, a_uint32_t intr_mask);
+typedef sw_error_t (*adpt_intr_port_link_mask_get_func) (a_uint32_t dev_id,
+			fal_port_t port_id, a_uint32_t * intr_mask);
+typedef sw_error_t (*adpt_intr_port_link_status_get_func)(a_uint32_t dev_id,
+			fal_port_t port_id, a_uint32_t * intr_status);
+
+/* uniphy */
+typedef sw_error_t (*adpt_uniphy_mode_set_func)(a_uint32_t dev_id, a_uint32_t index, a_uint32_t mode);
+
+/* sfp */
+typedef sw_error_t (*adpt_sfp_eeprom_data_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_data_t *entry);
+typedef sw_error_t (*adpt_sfp_eeprom_data_set_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_data_t *entry);
+typedef sw_error_t (*adpt_sfp_diag_ctrl_status_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_ctrl_status_t *ctrl_status);
+typedef sw_error_t (*adpt_sfp_diag_extenal_calibration_const_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_cal_const_t *cal_const);
+typedef sw_error_t (*adpt_sfp_link_length_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_link_length_t *link_len);
+typedef sw_error_t (*adpt_sfp_diag_internal_threshold_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_internal_threshold_t *threshold);
+typedef sw_error_t (*adpt_sfp_diag_realtime_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_realtime_diag_t *real_diag);
+typedef sw_error_t (*adpt_sfp_laser_wavelength_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_laser_wavelength_t *laser_wavelen);
+typedef sw_error_t (*adpt_sfp_option_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_option_t *option);
+typedef sw_error_t (*adpt_sfp_checkcode_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_cc_type_t cc_type, a_uint8_t *ccode);
+typedef sw_error_t (*adpt_sfp_diag_alarm_warning_flag_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_alarm_warn_flag_t *alarm_warn_flag);
+typedef sw_error_t (*adpt_sfp_device_type_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_dev_type_t *sfp_id);
+typedef sw_error_t (*adpt_sfp_vendor_info_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_vendor_info_t *vender_info);
+typedef sw_error_t (*adpt_sfp_transceiver_code_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_transc_code_t *transc_code);
+typedef sw_error_t (*adpt_sfp_ctrl_rate_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_rate_t *rate_limit);
+typedef sw_error_t (*adpt_sfp_enhanced_cfg_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_enhanced_cfg_t *enhanced_feature);
+typedef sw_error_t (*adpt_sfp_rate_encode_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_sfp_rate_encode_t *encode);
+
+/*led*/
+typedef sw_error_t (*adpt_led_ctrl_pattern_set_func)(a_uint32_t dev_id,
+	led_pattern_group_t group, led_pattern_id_t led_pattern_id,
+	led_ctrl_pattern_t * pattern);
+typedef sw_error_t (*adpt_led_ctrl_pattern_get_func)(a_uint32_t dev_id,
+	led_pattern_group_t group, led_pattern_id_t led_pattern_id,
+	led_ctrl_pattern_t * pattern);
+typedef sw_error_t (*adpt_led_ctrl_source_set_func)(a_uint32_t dev_id,
+	a_uint32_t source_id, led_ctrl_pattern_t *pattern);
+
+/* vport */
+typedef sw_error_t (*adpt_vport_physical_port_id_set_func)(a_uint32_t dev_id,
+		fal_port_t vport, fal_port_t pport);
+typedef sw_error_t (*adpt_vport_physical_port_id_get_func)(a_uint32_t dev_id,
+		fal_port_t vport, fal_port_t *pport);
+typedef sw_error_t (*adpt_vport_state_check_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_vport_state_t *vp_state);
+typedef sw_error_t (*adpt_vport_state_check_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_vport_state_t *vp_state);
+
+/*vxlan*/
+typedef sw_error_t (*adpt_vxlan_entry_add_func)(a_uint32_t dev_id,
+	fal_vxlan_type_t type, fal_tunnel_udp_entry_t * entry);
+typedef sw_error_t (*adpt_vxlan_entry_del_func)(a_uint32_t dev_id,
+	fal_vxlan_type_t type, fal_tunnel_udp_entry_t * entry);
+typedef sw_error_t (*adpt_vxlan_entry_getfirst_func)(a_uint32_t dev_id,
+	fal_vxlan_type_t type, fal_tunnel_udp_entry_t * entry);
+typedef sw_error_t (*adpt_vxlan_entry_getnext_func)(a_uint32_t dev_id,
+	fal_vxlan_type_t type, fal_tunnel_udp_entry_t * entry);
+typedef sw_error_t (*adpt_vxlan_gpe_proto_cfg_set_func)(a_uint32_t dev_id,
+	fal_vxlan_gpe_proto_cfg_t * proto_cfg);
+typedef sw_error_t (*adpt_vxlan_gpe_proto_cfg_get_func)(a_uint32_t dev_id,
+	fal_vxlan_gpe_proto_cfg_t * proto_cfg);
+
+/*geneve*/
+typedef sw_error_t (*adpt_geneve_entry_add_func)(a_uint32_t dev_id,
+        fal_tunnel_udp_entry_t * entry);
+typedef sw_error_t (*adpt_geneve_entry_del_func)(a_uint32_t dev_id,
+        fal_tunnel_udp_entry_t * entry);
+typedef sw_error_t (*adpt_geneve_entry_getfirst_func)(a_uint32_t dev_id,
+        fal_tunnel_udp_entry_t * entry);
+typedef sw_error_t (*adpt_geneve_entry_getnext_func)(a_uint32_t dev_id,
+        fal_tunnel_udp_entry_t * entry);
+
+/* tunnel */
+typedef sw_error_t
+(*adpt_tunnel_decap_entry_add_func)(a_uint32_t dev_id,
+		fal_tunnel_op_mode_t add_mode, fal_tunnel_decap_entry_t *value);
+typedef sw_error_t
+(*adpt_tunnel_decap_entry_del_func)(a_uint32_t dev_id,
+		fal_tunnel_op_mode_t del_mode, fal_tunnel_decap_entry_t *value);
+typedef sw_error_t
+(*adpt_tunnel_decap_entry_get_func)(a_uint32_t dev_id,
+		fal_tunnel_op_mode_t get_mode, fal_tunnel_decap_entry_t *value);
+typedef sw_error_t
+(*adpt_tunnel_decap_entry_getnext_func)(a_uint32_t dev_id,
+		fal_tunnel_op_mode_t next_mode, fal_tunnel_decap_entry_t *value);
+typedef sw_error_t
+(*adpt_tunnel_decap_entry_flush_func)(a_uint32_t dev_id);
+typedef sw_error_t
+(*adpt_tunnel_encap_ecn_mode_get_func)(a_uint32_t dev_id,
+		fal_tunnel_encap_ecn_t *ecn_rule, fal_tunnel_ecn_val_t *ecn_value);
+typedef sw_error_t
+(*adpt_tunnel_encap_ecn_mode_set_func)(a_uint32_t dev_id,
+		fal_tunnel_encap_ecn_t *ecn_rule, fal_tunnel_ecn_val_t *ecn_value);
+typedef sw_error_t
+(*adpt_tunnel_decap_ecn_mode_get_func)(a_uint32_t dev_id,
+		fal_tunnel_decap_ecn_rule_t *ecn_rule, fal_tunnel_decap_ecn_action_t *ecn_action);
+typedef sw_error_t
+(*adpt_tunnel_decap_ecn_mode_set_func)(a_uint32_t dev_id,
+		fal_tunnel_decap_ecn_rule_t *ecn_rule, fal_tunnel_decap_ecn_action_t *ecn_action);
+typedef sw_error_t
+(*adpt_tunnel_encap_header_ctrl_set_func)(a_uint32_t dev_id,
+		fal_tunnel_encap_header_ctrl_t *header_ctrl);
+typedef sw_error_t
+(*adpt_tunnel_encap_header_ctrl_get_func)(a_uint32_t dev_id,
+		fal_tunnel_encap_header_ctrl_t *header_ctrl);
+typedef sw_error_t
+(*adpt_tunnel_global_cfg_get_func)(a_uint32_t dev_id, fal_tunnel_global_cfg_t *cfg);
+typedef sw_error_t
+(*adpt_tunnel_global_cfg_set_func)(a_uint32_t dev_id, fal_tunnel_global_cfg_t *cfg);
+typedef sw_error_t
+(*adpt_tunnel_port_intf_set_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_tunnel_port_intf_t *port_cfg);
+typedef sw_error_t
+(*adpt_tunnel_port_intf_get_func)(a_uint32_t dev_id, fal_port_t port_id,
+		fal_tunnel_port_intf_t *port_cfg);
+typedef sw_error_t
+(*adpt_tunnel_vlan_intf_add_func)(a_uint32_t dev_id, fal_tunnel_vlan_intf_t *vlan_cfg);
+typedef sw_error_t
+(*adpt_tunnel_vlan_intf_getfirst_func)(a_uint32_t dev_id, fal_tunnel_vlan_intf_t *vlan_cfg);
+typedef sw_error_t
+(*adpt_tunnel_vlan_intf_getnext_func)(a_uint32_t dev_id, fal_tunnel_vlan_intf_t *vlan_cfg);
+typedef sw_error_t
+(*adpt_tunnel_vlan_intf_del_func)(a_uint32_t dev_id, fal_tunnel_vlan_intf_t *vlan_cfg);
+typedef sw_error_t
+(*adpt_tunnel_intf_set_func)(a_uint32_t dev_id, a_uint32_t l3_if, fal_tunnel_intf_t *intf_t);
+typedef sw_error_t
+(*adpt_tunnel_intf_get_func)(a_uint32_t dev_id, a_uint32_t l3_if, fal_tunnel_intf_t *intf_t);
+typedef sw_error_t
+(*adpt_tunnel_encap_port_tunnelid_set_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_tunnel_id_t *tunnel_id);
+typedef sw_error_t
+(*adpt_tunnel_encap_port_tunnelid_get_func)(a_uint32_t dev_id,
+		a_uint32_t port_id, fal_tunnel_id_t *tunnel_id);
+typedef sw_error_t
+(*adpt_tunnel_encap_intf_tunnelid_set_func)(a_uint32_t dev_id,
+		a_uint32_t intf_id, fal_tunnel_id_t *tunnel_id);
+typedef sw_error_t
+(*adpt_tunnel_encap_intf_tunnelid_get_func)(a_uint32_t dev_id,
+		a_uint32_t intf_id, fal_tunnel_id_t *tunnel_id);
+typedef sw_error_t
+(*adpt_tunnel_encap_entry_add_func)(a_uint32_t dev_id, a_uint32_t tunnel_id,
+		fal_tunnel_encap_cfg_t *tunnel_encap_cfg);
+typedef sw_error_t
+(*adpt_tunnel_encap_entry_del_func)(a_uint32_t dev_id, a_uint32_t tunnel_id);
+typedef sw_error_t
+(*adpt_tunnel_encap_entry_get_func)(a_uint32_t dev_id, a_uint32_t tunnel_id,
+		fal_tunnel_encap_cfg_t *tunnel_encap_cfg);
+typedef sw_error_t
+(*adpt_tunnel_encap_entry_getnext_func)(a_uint32_t dev_id, a_uint32_t tunnel_id,
+		fal_tunnel_encap_cfg_t *tunnel_encap_cfg);
+typedef sw_error_t
+(*adpt_tunnel_encap_rule_entry_set_func)(a_uint32_t dev_id, a_uint32_t rule_id,
+		fal_tunnel_encap_rule_t *rule_entry);
+typedef sw_error_t
+(*adpt_tunnel_encap_rule_entry_get_func)(a_uint32_t dev_id, a_uint32_t rule_id,
+		fal_tunnel_encap_rule_t *rule_entry);
+typedef sw_error_t
+(*adpt_tunnel_encap_rule_entry_del_func)(a_uint32_t dev_id, a_uint32_t rule_id,
+		fal_tunnel_encap_rule_t *rule_entry);
+typedef sw_error_t
+(*adpt_tunnel_udf_profile_entry_add_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		fal_tunnel_udf_profile_entry_t * entry);
+typedef sw_error_t
+(*adpt_tunnel_udf_profile_entry_del_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		fal_tunnel_udf_profile_entry_t * entry);
+typedef sw_error_t
+(*adpt_tunnel_udf_profile_entry_getfirst_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		fal_tunnel_udf_profile_entry_t * entry);
+typedef sw_error_t
+(*adpt_tunnel_udf_profile_entry_getnext_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		fal_tunnel_udf_profile_entry_t * entry);
+typedef sw_error_t
+(*adpt_tunnel_udf_profile_cfg_set_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		a_uint32_t udf_idx, fal_tunnel_udf_type_t udf_type, a_uint32_t offset);
+typedef sw_error_t
+(*adpt_tunnel_udf_profile_cfg_get_func)(a_uint32_t dev_id, a_uint32_t profile_id,
+		a_uint32_t udf_idx, fal_tunnel_udf_type_t * udf_type, a_uint32_t * offset);
+typedef sw_error_t
+(*adpt_tunnel_exp_decap_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, a_bool_t *enable);
+typedef sw_error_t
+(*adpt_tunnel_exp_decap_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, a_bool_t *enable);
+typedef sw_error_t
+(*adpt_tunnel_decap_key_set_func)(a_uint32_t dev_id,
+		fal_tunnel_type_t tunnel_type, fal_tunnel_decap_key_t *key_gen);
+typedef sw_error_t
+(*adpt_tunnel_decap_key_get_func)(a_uint32_t dev_id,
+		fal_tunnel_type_t tunnel_type, fal_tunnel_decap_key_t *key_gen);
+typedef sw_error_t
+(*adpt_tunnel_decap_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t tunnel_index, a_bool_t en);
+typedef sw_error_t
+(*adpt_tunnel_decap_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t tunnel_index, a_bool_t *en);
+typedef sw_error_t
+(*adpt_tunnel_decap_action_update_func)(a_uint32_t dev_id,
+		a_uint32_t tunnel_index, fal_tunnel_action_t *update_action);
+typedef sw_error_t
+(*adpt_tunnel_decap_counter_get_func)(a_uint32_t dev_id,
+		a_uint32_t tunnel_index, fal_entry_counter_t *decap_counter);
+typedef sw_error_t
+(*adpt_tunnel_tuple_entry_add_func)(a_uint32_t dev_id, fal_tunnel_tuple_entry_t *entry);
+typedef sw_error_t
+(*adpt_tunnel_tuple_entry_del_func)(a_uint32_t dev_id, fal_tunnel_tuple_entry_t *entry);
+typedef sw_error_t
+(*adpt_tunnel_tuple_entry_getfirst_func)(a_uint32_t dev_id, fal_tunnel_tuple_entry_t *entry);
+typedef sw_error_t
+(*adpt_tunnel_tuple_entry_getnext_func)(a_uint32_t dev_id, fal_tunnel_tuple_entry_t *entry);
+typedef sw_error_t
+(*adpt_tunnel_decap_miss_action_set_func)(a_uint32_t dev_id, fal_tunnel_type_t tunnel_type,
+		fal_tunnel_decap_miss_action_t *miss_action);
+typedef sw_error_t
+(*adpt_tunnel_decap_miss_action_get_func)(a_uint32_t dev_id, fal_tunnel_type_t tunnel_type,
+		fal_tunnel_decap_miss_action_t *miss_action);
+
+/*tunnel program*/
+typedef sw_error_t (*adpt_tunnel_program_entry_add_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_entry_t * entry);
+typedef sw_error_t (*adpt_tunnel_program_entry_del_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_entry_t * entry);
+typedef sw_error_t (*adpt_tunnel_program_entry_getfirst_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_entry_t * entry);
+typedef sw_error_t (*adpt_tunnel_program_entry_getnext_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_entry_t * entry);
+typedef sw_error_t (*adpt_tunnel_program_cfg_set_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_cfg_t * cfg);
+typedef sw_error_t (*adpt_tunnel_program_cfg_get_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_cfg_t * cfg);
+typedef sw_error_t (*adpt_tunnel_program_udf_add_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_udf_t * udf);
+typedef sw_error_t (*adpt_tunnel_program_udf_del_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_udf_t * udf);
+typedef sw_error_t (*adpt_tunnel_program_udf_getfirst_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_udf_t * udf);
+typedef sw_error_t (*adpt_tunnel_program_udf_getnext_func)(a_uint32_t dev_id,
+        fal_tunnel_program_type_t type, fal_tunnel_program_udf_t * udf);
+
+/*mapt*/
+typedef sw_error_t (*adpt_mapt_decap_ctrl_set_func)(a_uint32_t dev_id,
+		fal_mapt_decap_ctrl_t *decap_ctrl);
+typedef sw_error_t (*adpt_mapt_decap_ctrl_get_func)(a_uint32_t dev_id,
+		fal_mapt_decap_ctrl_t *decap_ctrl);
+typedef sw_error_t (*adpt_mapt_decap_rule_entry_set_func)(a_uint32_t dev_id,
+		a_uint32_t rule_id, fal_mapt_decap_edit_rule_entry_t *mapt_rule_entry);
+typedef sw_error_t (*adpt_mapt_decap_rule_entry_get_func)(a_uint32_t dev_id,
+		a_uint32_t rule_id, fal_mapt_decap_edit_rule_entry_t *mapt_rule_entry);
+typedef sw_error_t (*adpt_mapt_decap_rule_entry_del_func)(a_uint32_t dev_id,
+		a_uint32_t rule_id, fal_mapt_decap_edit_rule_entry_t *mapt_rule_entry);
+typedef sw_error_t (*adpt_mapt_decap_entry_add_func)(a_uint32_t dev_id,
+		fal_mapt_decap_entry_t *mapt_entry);
+typedef sw_error_t (*adpt_mapt_decap_entry_del_func)(a_uint32_t dev_id,
+		fal_mapt_decap_entry_t *mapt_entry);
+typedef sw_error_t (*adpt_mapt_decap_entry_getfirst_func)(a_uint32_t dev_id,
+		fal_mapt_decap_entry_t *mapt_entry);
+typedef sw_error_t (*adpt_mapt_decap_entry_getnext_func)(a_uint32_t dev_id,
+		fal_mapt_decap_entry_t *mapt_entry);
+typedef sw_error_t (*adpt_mapt_decap_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t mapt_index, a_bool_t en);
+typedef sw_error_t (*adpt_mapt_decap_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t mapt_index, a_bool_t *en);
+
+/*athtag*/
+typedef sw_error_t (*adpt_athtag_pri_mapping_set_func)(a_uint32_t dev_id,
+		fal_direction_t direction, fal_athtag_pri_mapping_t * pri_mapping);
+typedef sw_error_t (*adpt_athtag_pri_mapping_get_func)(a_uint32_t dev_id,
+		fal_direction_t direction, fal_athtag_pri_mapping_t * pri_mapping);
+typedef sw_error_t (*adpt_athtag_port_mapping_set_func)(a_uint32_t dev_id,
+		fal_direction_t direction, fal_athtag_port_mapping_t * port_mapping);
+typedef sw_error_t (*adpt_athtag_port_mapping_get_func)(a_uint32_t dev_id,
+		fal_direction_t direction, fal_athtag_port_mapping_t * port_mapping);
+typedef sw_error_t (*adpt_port_athtag_rx_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_athtag_rx_cfg_t *cfg);
+typedef sw_error_t (*adpt_port_athtag_rx_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_athtag_rx_cfg_t *cfg);
+typedef sw_error_t (*adpt_port_athtag_tx_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_athtag_tx_cfg_t *cfg);
+typedef sw_error_t (*adpt_port_athtag_tx_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, fal_athtag_tx_cfg_t *cfg);
+typedef sw_error_t (*adpt_athtag_rx_src_port_mapping_set_func)(a_uint32_t dev_id,
+		fal_port_t ath_src_port, fal_dest_info_t *int_dest_info);
+typedef sw_error_t (*adpt_athtag_rx_src_port_mapping_get_func)(a_uint32_t dev_id,
+		fal_port_t ath_src_port, fal_dest_info_t *int_dest_info);
+typedef sw_error_t (*adpt_athtag_rx_dest_port_mapping_set_func)(a_uint32_t dev_id,
+		fal_port_t ath_dest_port, fal_dest_info_t *int_dest_info);
+typedef sw_error_t (*adpt_athtag_rx_dest_port_mapping_get_func)(a_uint32_t dev_id,
+		fal_port_t ath_dest_port, fal_dest_info_t *int_dest_info);
+typedef sw_error_t (*adpt_athtag_rx_servcode_mapping_set_func)(a_uint32_t dev_id,
+		a_uint32_t ath_servcode, a_uint32_t int_servcode);
+typedef sw_error_t (*adpt_athtag_rx_servcode_mapping_get_func)(a_uint32_t dev_id,
+		a_uint32_t ath_servcode, a_uint32_t *int_servcode);
+typedef sw_error_t (*adpt_athtag_tx_src_port_mapping_set_func)(a_uint32_t dev_id,
+		fal_port_t int_src_port, fal_port_t ath_src_port);
+typedef sw_error_t (*adpt_athtag_tx_src_port_mapping_get_func)(a_uint32_t dev_id,
+		fal_port_t int_src_port, fal_port_t *ath_src_port);
+
+/* toeplitz hash */
+typedef sw_error_t (*adpt_toeplitz_hash_secret_key_set_func)(a_uint32_t dev_id,
+		fal_toeplitz_secret_key_t *secret_key);
+typedef sw_error_t (*adpt_toeplitz_hash_secret_key_get_func)(a_uint32_t dev_id,
+		fal_toeplitz_secret_key_t *secret_key);
+typedef sw_error_t (*adpt_rsshash_algm_set_func)(a_uint32_t dev_id, fal_rss_hash_algm_t *rsshash_algm);
+typedef sw_error_t (*adpt_rsshash_algm_get_func)(a_uint32_t dev_id, fal_rss_hash_algm_t *rsshash_algm);
+typedef sw_error_t (*adpt_toeplitz_hash_config_add_func)(a_uint32_t dev_id,
+		fal_toeplitz_hash_config_t *toeplitz_cfg);
+typedef sw_error_t (*adpt_toeplitz_hash_config_del_func)(a_uint32_t dev_id,
+		fal_toeplitz_hash_config_t *toeplitz_cfg);
+typedef sw_error_t (*adpt_toeplitz_hash_config_getfirst_func)(a_uint32_t dev_id,
+		fal_toeplitz_hash_config_t *toeplitz_cfg);
+typedef sw_error_t (*adpt_toeplitz_hash_config_getnext_func)(a_uint32_t dev_id,
+		fal_toeplitz_hash_config_t *toeplitz_cfg);
+
+typedef sw_error_t (*adpt_pktedit_padding_set_func)(a_uint32_t dev_id,
+		fal_pktedit_padding_t *padding);
+typedef sw_error_t (*adpt_pktedit_padding_get_func)(a_uint32_t dev_id,
+		fal_pktedit_padding_t *padding);
+
+typedef sw_error_t (*adpt_pktedit_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t cpucode, a_bool_t enable);
+typedef sw_error_t (*adpt_pktedit_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t cpucode, a_bool_t *enable);
+typedef sw_error_t (*adpt_rxdesc_cpucode_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t cpucode, a_bool_t enable);
+typedef sw_error_t (*adpt_rxdesc_cpucode_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t cpucode, a_bool_t *enable);
+
+/* sampling */
+typedef sw_error_t (*adpt_sampling_time_set_func)(a_uint32_t dev_id,
+		a_uint32_t buff_index, a_uint32_t time_value);
+typedef sw_error_t (*adpt_sampling_time_get_func)(a_uint32_t dev_id,
+		a_uint32_t buff_index, a_uint32_t *time_value);
+typedef sw_error_t (*adpt_sampling_buff_status_get_func)(a_uint32_t dev_id,
+		a_uint32_t buff_index, a_bool_t *done_status);
+typedef sw_error_t (*adpt_sampling_buff_status_clear_func)(a_uint32_t dev_id,
+		a_uint32_t buff_index);
+typedef sw_error_t (*adpt_sampling_done_miss_counter_get_func)(
+		a_uint32_t dev_id, a_uint32_t *done_miss);
+typedef sw_error_t (*adpt_sampling_done_miss_counter_clear_func)(
+		a_uint32_t dev_id);
+typedef sw_error_t (*adpt_sampling_burst_cfg_set_func)(a_uint32_t dev_id,
+		fal_sampling_burst_cfg_t *burst_cfg);
+typedef sw_error_t (*adpt_sampling_burst_cfg_get_func)(a_uint32_t dev_id,
+		fal_sampling_burst_cfg_t *burst_cfg);
+typedef sw_error_t (*adpt_sampling_ctrl_set_func)(a_uint32_t dev_id,
+		fal_sampling_ctrl_t *ctrl_cfg);
+typedef sw_error_t (*adpt_sampling_ctrl_get_func)(a_uint32_t dev_id,
+		fal_sampling_ctrl_t *ctrl_cfg);
+typedef sw_error_t (*adpt_sampling_window_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t window_index, a_bool_t enable);
+typedef sw_error_t (*adpt_sampling_window_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t window_index, a_bool_t *enable);
+typedef sw_error_t (*adpt_sampling_counter_get_func)(a_uint32_t dev_id,
+		a_uint32_t buff_index, a_uint32_t counter_id,
+		fal_sampling_counter_entry_t *counter);
+
+/* pon */
+typedef sw_error_t (*adpt_pon_gemport_global_set_func)(a_uint32_t dev_id,
+		fal_gemport_global_cfg_t *cfg);
+typedef sw_error_t (*adpt_pon_gemport_global_get_func)(a_uint32_t dev_id,
+		fal_gemport_global_cfg_t *cfg);
+typedef sw_error_t (*adpt_pon_gemport_gen_default_set_func)(a_uint32_t dev_id,
+		fal_gemport_gen_default_t *def_property);
+typedef sw_error_t (*adpt_pon_gemport_gen_default_get_func)(a_uint32_t dev_id,
+		fal_gemport_gen_default_t *def_property);
+typedef sw_error_t (*adpt_pon_gemport_gen_entry_set_func)(a_uint32_t dev_id,
+		a_uint32_t index, fal_gemport_gen_t *gen_entry);
+typedef sw_error_t (*adpt_pon_gemport_gen_entry_get_func)(a_uint32_t dev_id,
+		a_uint32_t index, fal_gemport_gen_t *gen_entry);
+typedef sw_error_t (*adpt_pon_gemport_gen_en_set_func)(a_uint32_t dev_id,
+		a_uint32_t gemport, a_bool_t enable);
+typedef sw_error_t (*adpt_pon_gemport_gen_en_get_func)(a_uint32_t dev_id,
+		a_uint32_t gemport, a_bool_t *enable);
+typedef sw_error_t (*adpt_pon_gemport_map_en_set_func)(a_uint32_t dev_id,
+		fal_port_t port_id, a_bool_t mapping_en);
+typedef sw_error_t (*adpt_pon_gemport_map_en_get_func)(a_uint32_t dev_id,
+		fal_port_t port_id, a_bool_t *mapping_en);
+typedef sw_error_t (*adpt_pon_gemport_map_set_func)(a_uint32_t dev_id,
+		a_uint32_t gemport, fal_gemport_map_t *map_entry);
+typedef sw_error_t (*adpt_pon_gemport_map_get_func)(a_uint32_t dev_id,
+		a_uint32_t gemport, fal_gemport_map_t *map_entry);
+typedef sw_error_t (*adpt_pon_gemport_cfg_set_func)(a_uint32_t dev_id,
+		a_uint32_t gemport, fal_gemport_cfg_t *cfg);
+typedef sw_error_t (*adpt_pon_gemport_cfg_get_func)(a_uint32_t dev_id,
+		a_uint32_t gemport, fal_gemport_cfg_t *cfg);
+typedef sw_error_t (*adpt_pon_gemport_policer_set_func)(a_uint32_t dev_id,
+		a_uint32_t gemport, fal_gemport_policer_t *policer_cfg);
+typedef sw_error_t (*adpt_pon_gemport_policer_get_func)(a_uint32_t dev_id,
+		a_uint32_t gemport, fal_gemport_policer_t *policer_cfg);
+
+/* PON PM */
+typedef sw_error_t (*adpt_pon_pm_counter_entry_set_func)(a_uint32_t dev_id, a_uint32_t entry_index,
+		                fal_direction_t direction, fal_pon_pm_counter_entry_t *entry);
+typedef sw_error_t (*adpt_pon_pm_counter_entry_get_func)(a_uint32_t dev_id, a_uint32_t entry_index,
+		                fal_direction_t direction, fal_pon_pm_counter_entry_t *entry);
+typedef sw_error_t (*adpt_pon_pm_counter_get_func)(a_uint32_t dev_id, a_uint32_t counter_id,
+		                fal_direction_t direction, fal_pon_pm_counter_t *pm_counter);
+typedef sw_error_t (*adpt_pon_pm_counter_flush_func)(a_uint32_t dev_id, a_uint32_t counter_id,
+				fal_direction_t direction);
+
+/* IPMC */
+typedef sw_error_t (*adpt_ipmc_status_set_func)(a_uint32_t dev_id, a_bool_t enable);
+typedef sw_error_t (*adpt_ipmc_status_get_func)(a_uint32_t dev_id, a_bool_t *enable);
+typedef sw_error_t (*adpt_ipmc_global_cfg_set_func)(a_uint32_t dev_id, fal_ipmc_global_cfg_t *cfg);
+typedef sw_error_t (*adpt_ipmc_global_cfg_get_func)(a_uint32_t dev_id, fal_ipmc_global_cfg_t *cfg);
+typedef sw_error_t (*adpt_ipmc_entry_add_func)(a_uint32_t dev_id,
+		fal_ipmc_op_mode_t add_mode, fal_ipmc_entry_t *ipmc_entry);
+typedef sw_error_t (*adpt_ipmc_entry_del_func)(a_uint32_t dev_id,
+		fal_ipmc_op_mode_t del_mode, fal_ipmc_entry_t *ipmc_entry);
+typedef sw_error_t (*adpt_ipmc_entry_get_func)(a_uint32_t dev_id,
+		fal_ipmc_op_mode_t get_mode, fal_ipmc_entry_t *ipmc_entry);
+typedef sw_error_t (*adpt_ipmc_entry_getnext_func)(a_uint32_t dev_id,
+		fal_ipmc_next_mode_t next_mode, fal_ipmc_entry_t *ipmc_entry);
+typedef sw_error_t (*adpt_ipmc_entry_flush_func)(a_uint32_t dev_id);
+typedef sw_error_t (*adpt_ipmc_ucast_fwd_set_func)(a_uint32_t dev_id,
+		fal_ipmc_ucast_fwd_t *ucast_fwd);
+typedef sw_error_t (*adpt_ipmc_ucast_fwd_get_func)(a_uint32_t dev_id,
+		fal_ipmc_ucast_fwd_t *ucast_fwd);
+/* auto_insert_flag */
+
+/* crosschip */
+typedef sw_error_t (*adpt_crosschip_bp_mode_set_func)(a_uint32_t dev_id, fal_crosschip_bp_mode_t mode);
+typedef sw_error_t (*adpt_crosschip_bp_mode_get_func)(a_uint32_t dev_id, fal_crosschip_bp_mode_t *mode);
+typedef sw_error_t (*adpt_crosschip_bp_en_set_func)(a_uint32_t dev_id, a_uint32_t queue_id, a_bool_t enable);
+typedef sw_error_t (*adpt_crosschip_bp_en_get_func)(a_uint32_t dev_id, a_uint32_t queue_id, a_bool_t *enable);
+typedef sw_error_t (*adpt_vch_bp_config_set_func)(a_uint32_t dev_id, a_uint32_t vch_id, a_bool_t status);
+typedef sw_error_t (*adpt_vch_bp_config_get_func)(a_uint32_t dev_id, a_uint32_t vch_id, a_bool_t *status);
+typedef sw_error_t (*adpt_vch_bp_thres_set_func)(a_uint32_t dev_id, a_uint32_t vch_id,
+		a_uint16_t on_thres, a_uint16_t off_thres);
+typedef sw_error_t (*adpt_vch_bp_thres_get_func)(a_uint32_t dev_id, a_uint32_t vch_id,
+		a_uint16_t *on_thres, a_uint16_t *off_thres);
+typedef sw_error_t (*adpt_vch_bp_stats_get_func)(a_uint32_t dev_id, a_uint32_t vch_id, a_uint32_t *stats);
+typedef sw_error_t (*adpt_crosschip_mdio_master_config_func)(a_uint32_t dev_id, a_bool_t timer_en, a_uint32_t div);
+
+typedef struct
+{
+	ssdk_chip_type chip_type;
+	a_uint32_t chip_revision;
+}adpt_chip_ver_t;
+typedef struct
+{
+	adpt_fdb_first_func adpt_fdb_first;
+	adpt_fdb_next_func adpt_fdb_next;
+	adpt_fdb_add_func adpt_fdb_add;
+	adpt_fdb_age_time_set_func adpt_fdb_age_time_set;
+	adpt_fdb_extend_next_func adpt_fdb_extend_next;
+	adpt_fdb_learn_ctrl_get_func adpt_fdb_learn_ctrl_get;
+	adpt_fdb_age_time_get_func adpt_fdb_age_time_get;
+	adpt_port_fdb_learn_limit_set_func adpt_port_fdb_learn_limit_set;
+	adpt_fdb_port_add_func adpt_fdb_port_add;
+	adpt_fdb_port_learn_set_func adpt_fdb_port_learn_set;
+	adpt_fdb_port_learn_get_func adpt_fdb_port_learn_get;
+	adpt_fdb_port_newaddr_lrn_set_func adpt_fdb_port_newaddr_lrn_set;
+	adpt_fdb_port_newaddr_lrn_get_func adpt_fdb_port_newaddr_lrn_get;
+	adpt_fdb_port_stamove_set_func adpt_fdb_port_stamove_set;
+	adpt_fdb_port_stamove_get_func adpt_fdb_port_stamove_get;
+	adpt_port_fdb_learn_counter_get_func adpt_port_fdb_learn_counter_get;
+	adpt_fdb_extend_first_func adpt_fdb_extend_first;
+	adpt_fdb_transfer_func adpt_fdb_transfer;
+	adpt_fdb_port_del_func adpt_fdb_port_del;
+	adpt_fdb_find_func adpt_fdb_find;
+	adpt_fdb_learn_ctrl_set_func adpt_fdb_learn_ctrl_set;
+	adpt_port_fdb_learn_exceed_cmd_get_func adpt_port_fdb_learn_exceed_cmd_get;
+	adpt_fdb_del_by_port_func adpt_fdb_del_by_port;
+	adpt_port_fdb_learn_limit_get_func adpt_port_fdb_learn_limit_get;
+	adpt_fdb_age_ctrl_set_func adpt_fdb_age_ctrl_set;
+	adpt_fdb_del_by_mac_func adpt_fdb_del_by_mac;
+	adpt_fdb_iterate_func adpt_fdb_iterate;
+	adpt_port_fdb_learn_exceed_cmd_set_func adpt_port_fdb_learn_exceed_cmd_set;
+	adpt_fdb_del_all_func adpt_fdb_del_all;
+	adpt_fdb_age_ctrl_get_func adpt_fdb_age_ctrl_get;
+	adpt_fdb_port_maclimit_ctrl_set_func adpt_fdb_port_maclimit_ctrl_set;
+	adpt_fdb_port_maclimit_ctrl_get_func adpt_fdb_port_maclimit_ctrl_get;
+	adpt_fdb_del_by_fid_func adpt_fdb_del_by_fid;
+	/*mib*/
+	adpt_mib_cpukeep_get_func adpt_mib_cpukeep_get;
+	adpt_mib_cpukeep_set_func adpt_mib_cpukeep_set;
+	adpt_get_mib_info_func adpt_get_mib_info;
+	adpt_get_tx_mib_info_func adpt_get_tx_mib_info;
+	adpt_mib_status_set_func adpt_mib_status_set;
+	adpt_mib_port_flush_counters_func adpt_mib_port_flush_counters;
+	adpt_mib_status_get_func adpt_mib_status_get;
+	adpt_get_rx_mib_info_func adpt_get_rx_mib_info;
+	adpt_get_xgmib_info_func adpt_get_xgmib_info;
+	adpt_get_tx_xgmib_info_func adpt_get_tx_xgmib_info;
+	adpt_get_rx_xgmib_info_func adpt_get_rx_xgmib_info;
+
+	adpt_stp_port_state_get_func adpt_stp_port_state_get;
+	adpt_stp_port_state_set_func adpt_stp_port_state_set;
+
+    /*vsi*/
+	adpt_port_vlan_vsi_set_func adpt_port_vlan_vsi_set;
+	adpt_port_vlan_vsi_get_func adpt_port_vlan_vsi_get;
+	adpt_port_vsi_set_func adpt_port_vsi_set;
+	adpt_port_vsi_get_func adpt_port_vsi_get;
+	adpt_vsi_stamove_set_func adpt_vsi_stamove_set;
+	adpt_vsi_stamove_get_func adpt_vsi_stamove_get;
+	adpt_vsi_newaddr_lrn_set_func adpt_vsi_newaddr_lrn_set;
+	adpt_vsi_newaddr_lrn_get_func adpt_vsi_newaddr_lrn_get;
+	adpt_vsi_member_set_func adpt_vsi_member_set;
+	adpt_vsi_member_get_func adpt_vsi_member_get;
+	adpt_vsi_counter_get_func adpt_vsi_counter_get;
+	adpt_vsi_counter_cleanup_func adpt_vsi_counter_cleanup;
+	adpt_vsi_bridge_vsi_get_func adpt_vsi_bridge_vsi_get;
+	adpt_vsi_bridge_vsi_set_func adpt_vsi_bridge_vsi_set;
+	adpt_vsi_invalidvsi_ctrl_get_func adpt_vsi_invalidvsi_ctrl_get;
+	adpt_vsi_invalidvsi_ctrl_set_func adpt_vsi_invalidvsi_ctrl_set;
+
+	// port_ctrl
+	adpt_port_local_loopback_get_func adpt_port_local_loopback_get;
+	adpt_port_autoneg_restart_func adpt_port_autoneg_restart;
+	adpt_port_duplex_set_func adpt_port_duplex_set;
+	adpt_port_rxmac_status_get_func adpt_port_rxmac_status_get;
+	adpt_port_cdt_func adpt_port_cdt;
+	adpt_port_txmac_status_set_func adpt_port_txmac_status_set;
+	adpt_port_combo_fiber_mode_set_func adpt_port_combo_fiber_mode_set;
+	adpt_port_combo_medium_status_get_func adpt_port_combo_medium_status_get;
+	adpt_port_magic_frame_mac_set_func adpt_port_magic_frame_mac_set;
+	adpt_port_powersave_set_func adpt_port_powersave_set;
+	adpt_port_hibernate_set_func adpt_port_hibernate_set;
+	adpt_port_max_frame_size_get_func adpt_port_max_frame_size_get;
+	adpt_port_8023az_get_func adpt_port_8023az_get;
+	adpt_port_rxfc_status_get_func adpt_port_rxfc_status_get;
+	adpt_port_txfc_status_get_func adpt_port_txfc_status_get;
+	adpt_port_remote_loopback_set_func adpt_port_remote_loopback_set;
+	adpt_port_flowctrl_set_func adpt_port_flowctrl_set;
+	adpt_port_mru_set_func adpt_port_mru_set;
+	adpt_port_autoneg_status_get_func adpt_port_autoneg_status_get;
+	adpt_port_txmac_status_get_func adpt_port_txmac_status_get;
+	adpt_port_mdix_get_func adpt_port_mdix_get;
+	adpt_ports_link_status_get_func adpt_ports_link_status_get;
+	adpt_port_mac_loopback_set_func adpt_port_mac_loopback_set;
+	adpt_port_phy_id_get_func adpt_port_phy_id_get;
+	adpt_port_mru_get_func adpt_port_mru_get;
+	adpt_port_speed_set_func adpt_port_speed_set;
+	adpt_port_interface_mode_get_func adpt_port_interface_mode_get;
+	adpt_port_duplex_get_func adpt_port_duplex_get;
+	adpt_port_autoneg_adv_get_func adpt_port_autoneg_adv_get;
+	adpt_port_mdix_status_get_func adpt_port_mdix_status_get;
+	adpt_port_mtu_set_func adpt_port_mtu_set;
+	adpt_port_link_status_get_func adpt_port_link_status_get;
+	adpt_port_8023az_set_func adpt_port_8023az_set;
+	adpt_port_powersave_get_func adpt_port_powersave_get;
+	adpt_port_combo_prefer_medium_get_func adpt_port_combo_prefer_medium_get;
+	adpt_port_max_frame_size_set_func adpt_port_max_frame_size_set;
+	adpt_port_combo_prefer_medium_set_func adpt_port_combo_prefer_medium_set;
+	adpt_port_txfc_status_set_func adpt_port_txfc_status_set;
+	adpt_port_counter_set_func adpt_port_counter_set;
+	adpt_port_combo_fiber_mode_get_func adpt_port_combo_fiber_mode_get;
+	adpt_port_local_loopback_set_func adpt_port_local_loopback_set;
+	adpt_port_wol_status_set_func adpt_port_wol_status_set;
+	adpt_port_magic_frame_mac_get_func adpt_port_magic_frame_mac_get;
+	adpt_port_flowctrl_get_func adpt_port_flowctrl_get;
+	adpt_port_rxmac_status_set_func adpt_port_rxmac_status_set;
+	adpt_port_counter_get_func adpt_port_counter_get;
+	adpt_port_interface_mode_set_func adpt_port_interface_mode_set;
+	adpt_port_mac_loopback_get_func adpt_port_mac_loopback_get;
+	adpt_port_hibernate_get_func adpt_port_hibernate_get;
+	adpt_port_autoneg_adv_set_func adpt_port_autoneg_adv_set;
+	adpt_port_remote_loopback_get_func adpt_port_remote_loopback_get;
+	adpt_port_counter_show_func adpt_port_counter_show;
+	adpt_port_autoneg_enable_func adpt_port_autoneg_enable;
+	adpt_port_mtu_get_func adpt_port_mtu_get;
+	adpt_port_interface_mode_status_get_func adpt_port_interface_mode_status_get;
+	adpt_port_reset_func adpt_port_reset;
+	adpt_port_rxfc_status_set_func adpt_port_rxfc_status_set;
+	adpt_port_speed_get_func adpt_port_speed_get;
+	adpt_port_mdix_set_func adpt_port_mdix_set;
+	adpt_port_wol_status_get_func adpt_port_wol_status_get;
+	adpt_port_source_filter_set_func adpt_port_source_filter_set;
+	adpt_port_source_filter_get_func adpt_port_source_filter_get;
+	adpt_port_mux_mac_type_set_func adpt_port_mux_mac_type_set;
+	adpt_port_mac_speed_set_func adpt_port_mac_speed_set;
+	adpt_port_mac_duplex_set_func adpt_port_mac_duplex_set;
+	adpt_port_netdev_notify_func adpt_port_netdev_notify_set;
+	adpt_port_polling_sw_sync_func adpt_port_polling_sw_sync_set;
+
+	adpt_port_bridge_txmac_set_func adpt_port_bridge_txmac_set;
+
+	adpt_port_interface_mode_apply_func adpt_port_interface_mode_apply;
+	adpt_port_flowctrl_forcemode_set_func adpt_port_flowctrl_forcemode_set;
+	adpt_port_flowctrl_forcemode_get_func adpt_port_flowctrl_forcemode_get;
+	adpt_port_promisc_mode_set_func adpt_port_promisc_mode_set;
+	adpt_port_promisc_mode_get_func adpt_port_promisc_mode_get;
+	adpt_port_interface_eee_cfg_set_func adpt_port_interface_eee_cfg_set;
+	adpt_port_interface_eee_cfg_get_func adpt_port_interface_eee_cfg_get;
+	adpt_port_source_filter_config_set_func adpt_port_source_filter_config_set;
+	adpt_port_source_filter_config_get_func adpt_port_source_filter_config_get;
+	adpt_switch_port_loopback_set_func adpt_switch_port_loopback_set;
+	adpt_switch_port_loopback_get_func adpt_switch_port_loopback_get;
+	adpt_port_phy_status_get_func adpt_port_phy_status_get;
+	adpt_port_8023ah_set_func adpt_port_8023ah_set;
+	adpt_port_8023ah_get_func adpt_port_8023ah_get;
+	adpt_port_cnt_cfg_set_func adpt_port_cnt_cfg_set;
+	adpt_port_cnt_cfg_get_func adpt_port_cnt_cfg_get;
+	adpt_port_cnt_get_func adpt_port_cnt_get;
+	adpt_port_cnt_flush_func adpt_port_cnt_flush;
+	adpt_port_mtu_cfg_set_func adpt_port_mtu_cfg_set;
+	adpt_port_mtu_cfg_get_func adpt_port_mtu_cfg_get;
+	adpt_port_mru_mtu_set_func adpt_port_mru_mtu_set;
+	adpt_port_mru_mtu_get_func adpt_port_mru_mtu_get;
+	adpt_port_tx_buff_thresh_set_func adpt_port_tx_buff_thresh_set;
+	adpt_port_tx_buff_thresh_get_func adpt_port_tx_buff_thresh_get;
+	adpt_port_rx_buff_thresh_set_func adpt_port_rx_buff_thresh_set;
+	adpt_port_rx_buff_thresh_get_func adpt_port_rx_buff_thresh_get;
+	adpt_port_erp_power_mode_set_func adpt_port_erp_power_mode_set;
+	adpt_switch_loopback_port_get_func adpt_switch_loopback_port_get;
+	adpt_port_pps_ctrl_set_func adpt_port_pps_ctrl_set;
+	adpt_port_pps_ctrl_get_func adpt_port_pps_ctrl_get;
+	adpt_port_fec_set_func adpt_port_fec_set;
+	adpt_port_fec_get_func adpt_port_fec_get;
+// mirror
+	adpt_mirr_port_in_set_func adpt_mirr_port_in_set;
+	adpt_mirr_port_in_get_func adpt_mirr_port_in_get;
+	adpt_mirr_port_eg_set_func adpt_mirr_port_eg_set;
+	adpt_mirr_port_eg_get_func adpt_mirr_port_eg_get;
+	adpt_mirr_analysis_port_set_func adpt_mirr_analysis_port_set;
+	adpt_mirr_analysis_port_get_func adpt_mirr_analysis_port_get;
+	adpt_mirr_analysis_config_set_func adpt_mirr_analysis_config_set;
+	adpt_mirr_analysis_config_get_func adpt_mirr_analysis_config_get;
+//rss hash
+	adpt_rss_hash_config_set_func adpt_rss_hash_config_set;
+	adpt_rss_hash_config_get_func adpt_rss_hash_config_get;
+//trunk
+	adpt_trunk_fail_over_en_get_func adpt_trunk_fail_over_en_get;
+	adpt_trunk_hash_mode_get_func adpt_trunk_hash_mode_get;
+	adpt_trunk_group_get_func adpt_trunk_group_get;
+	adpt_trunk_group_set_func adpt_trunk_group_set;
+	adpt_trunk_fail_over_en_set_func adpt_trunk_fail_over_en_set;
+	adpt_trunk_hash_mode_set_func adpt_trunk_hash_mode_set;
+
+	/* ip */
+	adpt_ip_network_route_get_func adpt_ip_network_route_get;
+	adpt_ip_network_route_add_func adpt_ip_network_route_add;
+	adpt_ip_network_route_del_func adpt_ip_network_route_del;
+	adpt_ip_host_add_func adpt_ip_host_add;
+	adpt_ip_vsi_sg_cfg_get_func adpt_ip_vsi_sg_cfg_get;
+	adpt_ip_pub_addr_set_func adpt_ip_pub_addr_set;
+	adpt_ip_pub_addr_get_func adpt_ip_pub_addr_get;
+	adpt_ip_port_sg_cfg_set_func adpt_ip_port_sg_cfg_set;
+	adpt_ip_port_intf_get_func adpt_ip_port_intf_get;
+	adpt_ip_vsi_arp_sg_cfg_set_func adpt_ip_vsi_arp_sg_cfg_set;
+	adpt_ip_port_intf_set_func adpt_ip_port_intf_set;
+	adpt_ip_vsi_sg_cfg_set_func adpt_ip_vsi_sg_cfg_set;
+	adpt_ip_host_next_func adpt_ip_host_next;
+	adpt_ip_port_macaddr_set_func adpt_ip_port_macaddr_set;
+	adpt_ip_vsi_intf_get_func adpt_ip_vsi_intf_get;
+	adpt_ip_port_sg_cfg_get_func adpt_ip_port_sg_cfg_get;
+	adpt_ip_intf_get_func adpt_ip_intf_get;
+	adpt_ip_host_del_func adpt_ip_host_del;
+	adpt_ip_route_mismatch_get_func adpt_ip_route_mismatch_get;
+	adpt_ip_vsi_arp_sg_cfg_get_func adpt_ip_vsi_arp_sg_cfg_get;
+	adpt_ip_port_arp_sg_cfg_set_func adpt_ip_port_arp_sg_cfg_set;
+	adpt_ip_vsi_mc_mode_set_func adpt_ip_vsi_mc_mode_set;
+	adpt_ip_vsi_intf_set_func adpt_ip_vsi_intf_set;
+	adpt_ip_nexthop_get_func adpt_ip_nexthop_get;
+	adpt_ip_route_mismatch_set_func adpt_ip_route_mismatch_set;
+	adpt_ip_host_get_func adpt_ip_host_get;
+	adpt_ip_intf_set_func adpt_ip_intf_set;
+	adpt_ip_vsi_mc_mode_get_func adpt_ip_vsi_mc_mode_get;
+	adpt_ip_port_macaddr_get_func adpt_ip_port_macaddr_get;
+	adpt_ip_port_arp_sg_cfg_get_func adpt_ip_port_arp_sg_cfg_get;
+	adpt_ip_nexthop_set_func adpt_ip_nexthop_set;
+	adpt_ip_global_ctrl_get_func adpt_ip_global_ctrl_get;
+	adpt_ip_global_ctrl_set_func adpt_ip_global_ctrl_set;
+	adpt_ip_intf_mtu_mru_set_func adpt_ip_intf_mtu_mru_set;
+	adpt_ip_intf_mtu_mru_get_func adpt_ip_intf_mtu_mru_get;
+	adpt_ip6_intf_mtu_mru_set_func adpt_ip6_intf_mtu_mru_set;
+	adpt_ip6_intf_mtu_mru_get_func adpt_ip6_intf_mtu_mru_get;
+	adpt_ip_intf_macaddr_add_func adpt_ip_intf_macaddr_add;
+	adpt_ip_intf_macaddr_del_func adpt_ip_intf_macaddr_del;
+	adpt_ip_intf_macaddr_get_first_func adpt_ip_intf_macaddr_get_first;
+	adpt_ip_intf_macaddr_get_next_func adpt_ip_intf_macaddr_get_next;
+	adpt_ip_intf_dmac_check_set_func adpt_ip_intf_dmac_check_set;
+	adpt_ip_intf_dmac_check_get_func adpt_ip_intf_dmac_check_get;
+	adpt_ip_port_vlan_as_flow_key_get_func adpt_ip_port_vlan_as_flow_key_get;
+	adpt_ip_port_vlan_as_flow_key_set_func adpt_ip_port_vlan_as_flow_key_set;
+	adpt_ip_intf_vlan_as_flow_key_get_func adpt_ip_intf_vlan_as_flow_key_get;
+	adpt_ip_intf_vlan_as_flow_key_set_func adpt_ip_intf_vlan_as_flow_key_set;
+
+	/* flow */
+	adpt_flow_host_add_func adpt_flow_host_add;
+	adpt_flow_entry_get_func adpt_flow_entry_get;
+	adpt_flow_entry_del_func adpt_flow_entry_del;
+	adpt_flow_entry_next_func adpt_flow_entry_next;
+	adpt_flow_status_get_func adpt_flow_status_get;
+	adpt_flow_ctrl_set_func adpt_flow_ctrl_set;
+	adpt_flow_age_timer_get_func adpt_flow_age_timer_get;
+	adpt_flow_status_set_func adpt_flow_status_set;
+	adpt_flow_host_get_func adpt_flow_host_get;
+	adpt_flow_host_del_func adpt_flow_host_del;
+	adpt_flow_ctrl_get_func adpt_flow_ctrl_get;
+	adpt_flow_age_timer_set_func adpt_flow_age_timer_set;
+	adpt_flow_entry_add_func adpt_flow_entry_add;
+	adpt_flow_global_cfg_get_func adpt_flow_global_cfg_get;
+	adpt_flow_global_cfg_set_func adpt_flow_global_cfg_set;
+	adpt_flow_counter_get_func adpt_flow_counter_get;
+	adpt_flow_counter_cleanup_func adpt_flow_counter_cleanup;
+	adpt_flow_entry_en_set_func adpt_flow_entry_en_set;
+	adpt_flow_entry_en_get_func adpt_flow_entry_en_get;
+	adpt_flow_qos_set_func adpt_flow_qos_set;
+	adpt_flow_qos_get_func adpt_flow_qos_get;
+	adpt_flow_npt66_prefix_add_func adpt_flow_npt66_prefix_add;
+	adpt_flow_npt66_prefix_get_func adpt_flow_npt66_prefix_get;
+	adpt_flow_npt66_prefix_del_func adpt_flow_npt66_prefix_del;
+	adpt_flow_npt66_iid_cal_func adpt_flow_npt66_iid_cal;
+	adpt_flow_npt66_iid_add_func adpt_flow_npt66_iid_add;
+	adpt_flow_npt66_iid_get_func adpt_flow_npt66_iid_get;
+	adpt_flow_npt66_iid_del_func adpt_flow_npt66_iid_del;
+	adpt_flow_npt66_status_set_func adpt_flow_npt66_status_set;
+	adpt_flow_npt66_status_get_func adpt_flow_npt66_status_get;
+	adpt_flow_key_get_func	adpt_flow_key_get;
+	adpt_flow_key_set_func	adpt_flow_key_set;
+	adpt_flow_sampling_id_get_func adpt_flow_sampling_id_get;
+	adpt_flow_sampling_id_set_func adpt_flow_sampling_id_set;
+	adpt_flow_gro_en_get_func adpt_flow_gro_en_get;
+	adpt_flow_gro_en_set_func adpt_flow_gro_en_set;
+	adpt_flow_eip_lookup_mode_get_func adpt_flow_eip_lookup_mode_get;
+	adpt_flow_eip_lookup_mode_set_func adpt_flow_eip_lookup_mode_set;
+	adpt_flow_fwd_type_set_func adpt_flow_fwd_type_set;
+	adpt_flow_fwd_type_get_func adpt_flow_fwd_type_get;
+	adpt_flow_app_entry_add_func adpt_flow_app_entry_add;
+	adpt_flow_app_entry_get_func adpt_flow_app_entry_get;
+	adpt_flow_app_entry_del_func adpt_flow_app_entry_del;
+
+	/* qm */
+	adpt_ucast_hash_map_set_func adpt_ucast_hash_map_set;
+	adpt_ac_dynamic_threshold_get_func adpt_ac_dynamic_threshold_get;
+	adpt_ucast_queue_base_profile_get_func adpt_ucast_queue_base_profile_get;
+	adpt_port_mcast_priority_class_get_func adpt_port_mcast_priority_class_get;
+	adpt_ac_dynamic_threshold_set_func adpt_ac_dynamic_threshold_set;
+	adpt_ac_prealloc_buffer_set_func adpt_ac_prealloc_buffer_set;
+	adpt_ucast_default_hash_get_func adpt_ucast_default_hash_get;
+	adpt_ucast_default_hash_set_func adpt_ucast_default_hash_set;
+	adpt_ac_queue_group_get_func adpt_ac_queue_group_get;
+	adpt_ac_ctrl_get_func adpt_ac_ctrl_get;
+	adpt_ac_prealloc_buffer_get_func adpt_ac_prealloc_buffer_get;
+	adpt_port_mcast_priority_class_set_func adpt_port_mcast_priority_class_set;
+	adpt_ucast_hash_map_get_func adpt_ucast_hash_map_get;
+	adpt_ac_static_threshold_set_func adpt_ac_static_threshold_set;
+	adpt_ac_queue_group_set_func adpt_ac_queue_group_set;
+	adpt_ac_group_buffer_get_func adpt_ac_group_buffer_get;
+	adpt_mcast_cpu_code_class_get_func adpt_mcast_cpu_code_class_get;
+	adpt_ac_ctrl_set_func adpt_ac_ctrl_set;
+	adpt_ucast_priority_class_get_func adpt_ucast_priority_class_get;
+	adpt_queue_flush_func adpt_queue_flush;
+	adpt_mcast_cpu_code_class_set_func adpt_mcast_cpu_code_class_set;
+	adpt_ucast_priority_class_set_func adpt_ucast_priority_class_set;
+	adpt_ac_static_threshold_get_func adpt_ac_static_threshold_get;
+	adpt_ucast_queue_base_profile_set_func adpt_ucast_queue_base_profile_set;
+	adpt_ac_group_buffer_set_func adpt_ac_group_buffer_set;
+	adpt_queue_counter_cleanup_func adpt_queue_counter_cleanup;
+	adpt_queue_counter_get_func adpt_queue_counter_get;
+	adpt_queue_counter_ctrl_get_func adpt_queue_counter_ctrl_get;
+	adpt_queue_counter_ctrl_set_func adpt_queue_counter_ctrl_set;
+	adpt_qm_enqueue_ctrl_set_func adpt_qm_enqueue_ctrl_set;
+	adpt_qm_enqueue_ctrl_get_func adpt_qm_enqueue_ctrl_get;
+	adpt_qm_port_source_profile_set_func adpt_qm_port_source_profile_set;
+	adpt_qm_port_source_profile_get_func adpt_qm_port_source_profile_get;
+	adpt_qm_enqueue_config_get_func adpt_qm_enqueue_config_get;
+	adpt_qm_enqueue_config_set_func adpt_qm_enqueue_config_set;
+	adpt_qm_threshold_reset_func adpt_qm_threshold_reset;
+	adpt_qm_counter_monitor_en_set_func adpt_qm_counter_monitor_en_set;
+	adpt_qm_counter_monitor_en_get_func adpt_qm_counter_monitor_en_get;
+	adpt_qm_counter_monitor_stats_cleanup_func adpt_qm_counter_monitor_stats_cleanup;
+	adpt_qm_counter_monitor_status_get_func adpt_qm_counter_monitor_status_get;
+	adpt_qm_counter_monitor_map_set_func adpt_qm_counter_monitor_map_set;
+	adpt_qm_counter_monitor_map_get_func adpt_qm_counter_monitor_map_get;
+	adpt_qm_counter_monitor_ctrl_set_func adpt_qm_counter_monitor_ctrl_set;
+	adpt_qm_counter_monitor_ctrl_get_func adpt_qm_counter_monitor_ctrl_get;
+	adpt_qm_counter_monitor_stats_get_func adpt_qm_counter_monitor_stats_get;
+	adpt_qm_tcont_set_func adpt_qm_tcont_set;
+	adpt_qm_tcont_get_func adpt_qm_tcont_get;
+	adpt_qm_tcont_stat_get_func adpt_qm_tcont_stat_get;
+	adpt_qm_tcont_stat_set_func adpt_qm_tcont_stat_set;
+	adpt_qm_cpucode_enqueue_get_func adpt_qm_cpucode_enqueue_get;
+	adpt_qm_cpucode_enqueue_set_func adpt_qm_cpucode_enqueue_set;
+	adpt_ucast_queue_ddrq_en_set_func adpt_ucast_queue_ddrq_en_set;
+	adpt_ucast_queue_ddrq_en_get_func adpt_ucast_queue_ddrq_en_get;
+	adpt_qm_passthrough_source_profile_set_func adpt_qm_passthrough_source_profile_set;
+	adpt_qm_passthrough_source_profile_get_func adpt_qm_passthrough_source_profile_get;
+	adpt_qm_passthrough_direct_enqueue_set_func adpt_qm_passthrough_direct_enqueue_set;
+	adpt_qm_passthrough_direct_enqueue_get_func adpt_qm_passthrough_direct_enqueue_get;
+	adpt_qm_passthrough_cpucode_set_func adpt_qm_passthrough_cpucode_set;
+	adpt_qm_passthrough_cpucode_get_func adpt_qm_passthrough_cpucode_get;
+	adpt_qm_passthrough_cpucode_en_set_func adpt_qm_passthrough_cpucode_en_set;
+	adpt_qm_passthrough_cpucode_en_get_func adpt_qm_passthrough_cpucode_en_get;
+	adpt_qm_dequeue_drop_set_func adpt_qm_dequeue_drop_set;
+	adpt_qm_dequeue_drop_get_func adpt_qm_dequeue_drop_get;
+	adpt_qm_crosschip_bp_qmap_set_func adpt_qm_crosschip_bp_qmap_set;
+	adpt_qm_crosschip_bp_qmap_get_func adpt_qm_crosschip_bp_qmap_get;
+	adpt_qm_crosschip_bp_status_get_func adpt_qm_crosschip_bp_status_get;
+	adpt_qm_ac_drop_state_set_func adpt_qm_ac_drop_state_set;
+	adpt_qm_ac_drop_state_get_func adpt_qm_ac_drop_state_get;
+	adpt_qm_mcast_enqueue_ctrl_set_func adpt_qm_mcast_enqueue_ctrl_set;
+	adpt_qm_mcast_enqueue_ctrl_get_func adpt_qm_mcast_enqueue_ctrl_get;
+	/*portvlan module begin*/
+	adpt_global_qinq_mode_set_func adpt_global_qinq_mode_set;
+	adpt_global_qinq_mode_get_func adpt_global_qinq_mode_get;
+	adpt_tpid_set_func adpt_tpid_set;
+	adpt_tpid_get_func adpt_tpid_get;
+	adpt_egress_tpid_set_func adpt_egress_tpid_set;
+	adpt_egress_tpid_get_func adpt_egress_tpid_get;
+	adpt_port_qinq_mode_set_func adpt_port_qinq_mode_set;
+	adpt_port_qinq_mode_get_func adpt_port_qinq_mode_get;
+	adpt_port_ingress_vlan_filter_set_func adpt_port_ingress_vlan_filter_set;
+	adpt_port_ingress_vlan_filter_get_func adpt_port_ingress_vlan_filter_get;
+	adpt_port_default_vlantag_set_func adpt_port_default_vlantag_set;
+	adpt_port_default_vlantag_get_func adpt_port_default_vlantag_get;
+	adpt_port_tag_propagation_set_func adpt_port_tag_propagation_set;
+	adpt_port_tag_propagation_get_func adpt_port_tag_propagation_get;
+	adpt_port_vlantag_egmode_set_func adpt_port_vlantag_egmode_set;
+	adpt_port_vlantag_egmode_get_func adpt_port_vlantag_egmode_get;
+	adpt_port_vlan_xlt_miss_cmd_set_func adpt_port_vlan_xlt_miss_cmd_set;
+	adpt_port_vlan_xlt_miss_cmd_get_func adpt_port_vlan_xlt_miss_cmd_get;
+	adpt_port_vlan_trans_add_func adpt_port_vlan_trans_add;
+	adpt_port_vlan_trans_get_func adpt_port_vlan_trans_get;
+	adpt_port_vlan_trans_del_func adpt_port_vlan_trans_del;
+	adpt_port_vlan_trans_iterate_func adpt_port_vlan_trans_iterate;
+	adpt_port_vsi_egmode_set_func adpt_port_vsi_egmode_set;
+	adpt_port_vsi_egmode_get_func adpt_port_vsi_egmode_get;
+	adpt_port_vlantag_vsi_egmode_enable_set_func adpt_port_vlantag_vsi_egmode_enable_set;
+	adpt_port_vlantag_vsi_egmode_enable_get_func adpt_port_vlantag_vsi_egmode_enable_get;
+	adpt_qinq_mode_set_func adpt_qinq_mode_set;
+	adpt_qinq_mode_get_func adpt_qinq_mode_get;
+	adpt_port_qinq_role_set_func adpt_port_qinq_role_set;
+	adpt_port_qinq_role_get_func adpt_port_qinq_role_get;
+	adpt_port_invlan_mode_set_func adpt_port_invlan_mode_set;
+	adpt_port_invlan_mode_get_func adpt_port_invlan_mode_get;
+	adpt_port_vlan_trans_adv_add_func adpt_port_vlan_trans_adv_add;
+	adpt_port_vlan_trans_adv_del_func adpt_port_vlan_trans_adv_del;
+	adpt_port_vlan_trans_adv_get_func adpt_port_vlan_trans_adv_get;
+	adpt_port_vlan_trans_adv_set_func adpt_port_vlan_trans_adv_set;
+	adpt_port_vlan_trans_adv_getfirst_func adpt_port_vlan_trans_adv_getfirst;
+	adpt_port_vlan_trans_adv_getnext_func adpt_port_vlan_trans_adv_getnext;
+	adpt_port_vlan_counter_get_func adpt_port_vlan_counter_get;
+	adpt_port_vlan_counter_cleanup_func adpt_port_vlan_counter_cleanup;
+	adpt_portvlan_member_add_func adpt_portvlan_member_add;
+	adpt_portvlan_member_del_func adpt_portvlan_member_del;
+	adpt_portvlan_member_update_func adpt_portvlan_member_update;
+	adpt_portvlan_member_get_func adpt_portvlan_member_get;
+	adpt_port_vlan_vpgroup_set_func adpt_port_vlan_vpgroup_set;
+	adpt_port_vlan_vpgroup_get_func adpt_port_vlan_vpgroup_get;
+	adpt_port_isol_ctrl_set_func adpt_port_isol_ctrl_set;
+	adpt_port_isol_ctrl_get_func adpt_port_isol_ctrl_get;
+	adpt_port_isol_group_set_func adpt_port_isol_group_set;
+	adpt_port_isol_group_get_func adpt_port_isol_group_get;
+	adpt_port_egress_vlan_filter_set_func adpt_port_egress_vlan_filter_set;
+	adpt_port_egress_vlan_filter_get_func adpt_port_egress_vlan_filter_get;
+	adpt_vlan_trans_dscp_pcp_mapping_set_func adpt_vlan_trans_dscp_pcp_mapping_set;
+	adpt_vlan_trans_dscp_pcp_mapping_get_func adpt_vlan_trans_dscp_pcp_mapping_get;
+	adpt_port_isol_action_ctrl_set_func adpt_port_isol_action_ctrl_set;
+	adpt_port_isol_action_ctrl_get_func adpt_port_isol_action_ctrl_get;
+	adpt_port_isol_action_set_func adpt_port_isol_action_set;
+	adpt_port_isol_action_get_func adpt_port_isol_action_get;
+	adpt_private_vlan_rx_cfg_set_func adpt_private_vlan_rx_cfg_set;
+	adpt_private_vlan_rx_cfg_get_func adpt_private_vlan_rx_cfg_get;
+	adpt_private_vlan_mapping_set_func adpt_private_vlan_mapping_set;
+	adpt_private_vlan_mapping_get_func adpt_private_vlan_mapping_get;
+	adpt_private_vlan_tx_cfg_set_func adpt_private_vlan_tx_cfg_set;
+	adpt_private_vlan_tx_cfg_get_func adpt_private_vlan_tx_cfg_get;
+	/*portvlan module end*/
+
+	/*ctrlpkt module begin*/
+	adpt_mgmtctrl_ethtype_profile_set_func adpt_mgmtctrl_ethtype_profile_set;
+	adpt_mgmtctrl_ethtype_profile_get_func adpt_mgmtctrl_ethtype_profile_get;
+	adpt_mgmtctrl_rfdb_profile_set_func adpt_mgmtctrl_rfdb_profile_set;
+	adpt_mgmtctrl_rfdb_profile_get_func adpt_mgmtctrl_rfdb_profile_get;
+	adpt_mgmtctrl_ctrlpkt_profile_add_func adpt_mgmtctrl_ctrlpkt_profile_add;
+	adpt_mgmtctrl_ctrlpkt_profile_del_func adpt_mgmtctrl_ctrlpkt_profile_del;
+	adpt_mgmtctrl_ctrlpkt_profile_getfirst_func adpt_mgmtctrl_ctrlpkt_profile_getfirst;
+	adpt_mgmtctrl_ctrlpkt_profile_getnext_func adpt_mgmtctrl_ctrlpkt_profile_getnext;
+	adpt_mgmtctrl_vpgroup_set_func adpt_mgmtctrl_vpgroup_set;
+	adpt_mgmtctrl_vpgroup_get_func adpt_mgmtctrl_vpgroup_get;
+	adpt_mgmtctrl_tunnel_decap_set_func adpt_mgmtctrl_tunnel_decap_set;
+	adpt_mgmtctrl_tunnel_decap_get_func adpt_mgmtctrl_tunnel_decap_get;
+	/*ctrlpkt module end*/
+
+	/*servcode module begin*/
+	adpt_servcode_config_set_func adpt_servcode_config_set;
+	adpt_servcode_config_get_func adpt_servcode_config_get;
+	adpt_servcode_loopcheck_en_func adpt_servcode_loopcheck_en;
+	adpt_servcode_loopcheck_status_get_func adpt_servcode_loopcheck_status_get;
+	adpt_port_servcode_set_func adpt_port_servcode_set;
+	adpt_port_servcode_get_func adpt_port_servcode_get;
+	adpt_servcode_athtag_set_func adpt_servcode_athtag_set;
+	adpt_servcode_athtag_get_func adpt_servcode_athtag_get;
+	/*servcode module end*/
+
+	/* pppoe */
+	adpt_pppoe_session_table_add_func adpt_pppoe_session_table_add;
+	adpt_pppoe_session_table_del_func adpt_pppoe_session_table_del;
+	adpt_pppoe_session_table_get_func adpt_pppoe_session_table_get;
+	adpt_pppoe_en_set_func adpt_pppoe_en_set;
+	adpt_pppoe_en_get_func adpt_pppoe_en_get;
+	adpt_pppoe_l3_intf_set_func adpt_pppoe_l3_intf_set;
+	adpt_pppoe_l3_intf_get_func adpt_pppoe_l3_intf_get;
+	adpt_pppoe_global_ctrl_set_func adpt_pppoe_global_ctrl_set;
+	adpt_pppoe_global_ctrl_get_func adpt_pppoe_global_ctrl_get;
+
+	/*sec */
+	adpt_sec_l3_excep_parser_ctrl_set_func adpt_sec_l3_excep_parser_ctrl_set;
+	adpt_sec_l3_excep_ctrl_get_func adpt_sec_l3_excep_ctrl_get;
+	adpt_sec_l3_excep_parser_ctrl_get_func adpt_sec_l3_excep_parser_ctrl_get;
+	adpt_sec_l4_excep_parser_ctrl_set_func adpt_sec_l4_excep_parser_ctrl_set;
+	adpt_sec_l3_excep_ctrl_set_func adpt_sec_l3_excep_ctrl_set;
+	adpt_sec_l4_excep_parser_ctrl_get_func adpt_sec_l4_excep_parser_ctrl_get;
+	adpt_sec_l2_excep_ctrl_set_func adpt_sec_l2_excep_ctrl_set;
+	adpt_sec_l2_excep_ctrl_get_func adpt_sec_l2_excep_ctrl_get;
+	adpt_sec_tunnel_excep_ctrl_set_func adpt_sec_tunnel_excep_ctrl_set;
+	adpt_sec_tunnel_excep_ctrl_get_func adpt_sec_tunnel_excep_ctrl_get;
+	adpt_sec_tunnel_l3_excep_parser_ctrl_set_func adpt_sec_tunnel_l3_excep_parser_ctrl_set;
+	adpt_sec_tunnel_l3_excep_parser_ctrl_get_func adpt_sec_tunnel_l3_excep_parser_ctrl_get;
+	adpt_sec_tunnel_l4_excep_parser_ctrl_set_func adpt_sec_tunnel_l4_excep_parser_ctrl_set;
+	adpt_sec_tunnel_l4_excep_parser_ctrl_get_func adpt_sec_tunnel_l4_excep_parser_ctrl_get;
+	adpt_sec_tunnel_flags_excep_parser_ctrl_set_func adpt_sec_tunnel_flags_excep_parser_ctrl_set;
+	adpt_sec_tunnel_flags_excep_parser_ctrl_get_func adpt_sec_tunnel_flags_excep_parser_ctrl_get;
+
+	/*acl*/
+	adpt_acl_list_bind_func adpt_acl_list_bind;
+	adpt_acl_list_dump_func adpt_acl_list_dump;
+	adpt_acl_udf_profile_set_func adpt_acl_udf_profile_set;
+	adpt_acl_rule_query_func adpt_acl_rule_query;
+	adpt_acl_list_unbind_func adpt_acl_list_unbind;
+	adpt_acl_rule_add_func adpt_acl_rule_add;
+	adpt_acl_rule_delete_func adpt_acl_rule_delete;
+	adpt_acl_rule_dump_func adpt_acl_rule_dump;
+	adpt_acl_udf_profile_get_func adpt_acl_udf_profile_get;
+	adpt_acl_list_creat_func adpt_acl_list_creat;
+	adpt_acl_list_destroy_func adpt_acl_list_destroy;
+	adpt_acl_udf_profile_entry_add_func adpt_acl_udf_profile_entry_add;
+	adpt_acl_udf_profile_entry_del_func adpt_acl_udf_profile_entry_del;
+	adpt_acl_udf_profile_entry_getfirst_func adpt_acl_udf_profile_entry_getfirst;
+	adpt_acl_udf_profile_entry_getnext_func adpt_acl_udf_profile_entry_getnext;
+	adpt_acl_udf_profile_cfg_set_func adpt_acl_udf_profile_cfg_set;
+	adpt_acl_udf_profile_cfg_get_func adpt_acl_udf_profile_cfg_get;
+	adpt_acl_vpgroup_set_func adpt_acl_vpgroup_set;
+	adpt_acl_vpgroup_get_func adpt_acl_vpgroup_get;
+	adpt_acl_counter_get_func adpt_acl_counter_get;
+	adpt_acl_rule_priority_set_func adpt_acl_rule_priority_set;
+	adpt_acl_rule_priority_get_func adpt_acl_rule_priority_get;
+	adpt_acl_dscp_pcp_mapping_set_func adpt_acl_dscp_pcp_mapping_set;
+	adpt_acl_dscp_pcp_mapping_get_func adpt_acl_dscp_pcp_mapping_get;
+
+	/* qos */
+	adpt_qos_port_pri_set_func adpt_qos_port_pri_set;
+	adpt_qos_port_pri_get_func adpt_qos_port_pri_get;
+	adpt_qos_cosmap_pcp_get_func adpt_qos_cosmap_pcp_get;
+	adpt_queue_scheduler_set_func adpt_queue_scheduler_set;
+	adpt_queue_scheduler_get_func adpt_queue_scheduler_get;
+	adpt_port_queues_get_func adpt_port_queues_get;
+	adpt_qos_cosmap_pcp_set_func adpt_qos_cosmap_pcp_set;
+	adpt_qos_cosmap_dscp_get_func adpt_qos_cosmap_dscp_get;
+	adpt_qos_cosmap_flow_set_func adpt_qos_cosmap_flow_set;
+	adpt_qos_port_group_set_func adpt_qos_port_group_set;
+	adpt_ring_queue_map_set_func adpt_ring_queue_map_set;
+	adpt_qos_cosmap_dscp_set_func adpt_qos_cosmap_dscp_set;
+	adpt_qos_cosmap_flow_get_func adpt_qos_cosmap_flow_get;
+	adpt_qos_port_group_get_func adpt_qos_port_group_get;
+	adpt_ring_queue_map_get_func adpt_ring_queue_map_get;
+	adpt_tdm_tick_num_set_func adpt_tdm_tick_num_set;
+	adpt_tdm_tick_num_get_func adpt_tdm_tick_num_get;
+	adpt_port_scheduler_cfg_set_func adpt_port_scheduler_cfg_set;
+	adpt_port_scheduler_cfg_get_func adpt_port_scheduler_cfg_get;
+	adpt_scheduler_dequeue_ctrl_get_func adpt_scheduler_dequeue_ctrl_get;
+	adpt_scheduler_dequeue_ctrl_set_func adpt_scheduler_dequeue_ctrl_set;
+	adpt_port_scheduler_cfg_reset_func adpt_port_scheduler_cfg_reset;
+	adpt_port_scheduler_resource_get_func adpt_port_scheduler_resource_get;
+	adpt_reservedpool_scheduler_resource_get_func adpt_reservedpool_scheduler_resource_get;
+	adpt_qos_port_pcp_cfg_set_func adpt_qos_port_pcp_cfg_set;
+	adpt_qos_port_pcp_cfg_get_func adpt_qos_port_pcp_cfg_get;
+
+	/* bm */
+	adpt_port_bufgroup_map_get_func adpt_port_bufgroup_map_get;
+	adpt_bm_port_reserved_buffer_get_func adpt_bm_port_reserved_buffer_get;
+	adpt_bm_bufgroup_buffer_get_func adpt_bm_bufgroup_buffer_get;
+	adpt_bm_port_dynamic_thresh_get_func adpt_bm_port_dynamic_thresh_get;
+	adpt_port_bm_ctrl_get_func adpt_port_bm_ctrl_get;
+	adpt_bm_bufgroup_buffer_set_func adpt_bm_bufgroup_buffer_set;
+	adpt_port_bufgroup_map_set_func adpt_port_bufgroup_map_set;
+	adpt_bm_port_static_thresh_get_func adpt_bm_port_static_thresh_get;
+	adpt_bm_port_reserved_buffer_set_func adpt_bm_port_reserved_buffer_set;
+	adpt_bm_port_static_thresh_set_func adpt_bm_port_static_thresh_set;
+	adpt_bm_port_dynamic_thresh_set_func adpt_bm_port_dynamic_thresh_set;
+	adpt_port_bm_ctrl_set_func adpt_port_bm_ctrl_set;
+	adpt_port_tdm_ctrl_set_func adpt_port_tdm_ctrl_set;
+	adpt_port_tdm_tick_cfg_set_func adpt_port_tdm_tick_cfg_set;
+	adpt_bm_port_counter_get_func adpt_bm_port_counter_get;
+
+	//shaper
+	adpt_flow_shaper_set_func adpt_flow_shaper_set;
+	adpt_queue_shaper_get_func adpt_queue_shaper_get;
+	adpt_queue_shaper_token_number_set_func adpt_queue_shaper_token_number_set;
+	adpt_port_shaper_get_func adpt_port_shaper_get;
+	adpt_flow_shaper_time_slot_get_func adpt_flow_shaper_time_slot_get;
+	adpt_port_shaper_time_slot_get_func adpt_port_shaper_time_slot_get;
+	adpt_flow_shaper_time_slot_set_func adpt_flow_shaper_time_slot_set;
+	adpt_shaper_ipg_preamble_length_set_func adpt_shaper_ipg_preamble_length_set;
+	adpt_port_shaper_token_number_set_func adpt_port_shaper_token_number_set;
+	adpt_queue_shaper_token_number_get_func adpt_queue_shaper_token_number_get;
+	adpt_queue_shaper_time_slot_get_func adpt_queue_shaper_time_slot_get;
+	adpt_port_shaper_token_number_get_func adpt_port_shaper_token_number_get;
+	adpt_flow_shaper_token_number_set_func adpt_flow_shaper_token_number_set;
+	adpt_flow_shaper_token_number_get_func adpt_flow_shaper_token_number_get;
+	adpt_shaper_ipg_preamble_length_get_func adpt_shaper_ipg_preamble_length_get;
+	adpt_port_shaper_set_func adpt_port_shaper_set;
+	adpt_port_shaper_time_slot_set_func adpt_port_shaper_time_slot_set;
+	adpt_flow_shaper_get_func adpt_flow_shaper_get;
+	adpt_queue_shaper_set_func adpt_queue_shaper_set;
+	adpt_queue_shaper_time_slot_set_func adpt_queue_shaper_time_slot_set;
+	adpt_queue_shaper_ctrl_set_func adpt_queue_shaper_ctrl_set;
+	adpt_queue_shaper_ctrl_get_func adpt_queue_shaper_ctrl_get;
+	adpt_flow_shaper_ctrl_set_func adpt_flow_shaper_ctrl_set;
+	adpt_flow_shaper_ctrl_get_func adpt_flow_shaper_ctrl_get;
+//policer
+	adpt_acl_policer_counter_get_func adpt_acl_policer_counter_get;
+	adpt_port_policer_counter_get_func adpt_port_policer_counter_get;
+	adpt_port_compensation_byte_get_func adpt_port_compensation_byte_get;
+	adpt_port_policer_entry_get_func adpt_port_policer_entry_get;
+	adpt_port_policer_entry_set_func adpt_port_policer_entry_set;
+	adpt_acl_policer_entry_get_func adpt_acl_policer_entry_get;
+	adpt_acl_policer_entry_set_func adpt_acl_policer_entry_set;
+	adpt_policer_time_slot_get_func adpt_policer_time_slot_get;
+	adpt_port_compensation_byte_set_func adpt_port_compensation_byte_set;
+	adpt_policer_time_slot_set_func adpt_policer_time_slot_set;
+	adpt_policer_global_counter_get_func adpt_policer_global_counter_get;
+	adpt_policer_bypass_en_set_func adpt_policer_bypass_en_set;
+	adpt_policer_bypass_en_get_func adpt_policer_bypass_en_get;
+	adpt_policer_priority_remap_set_func adpt_policer_priority_remap_set;
+	adpt_policer_priority_remap_get_func adpt_policer_priority_remap_get;
+	adpt_policer_ctrl_set_func adpt_policer_ctrl_set;
+	adpt_policer_ctrl_get_func adpt_policer_ctrl_get;
+
+	/* misc */
+	adpt_debug_counter_set_func adpt_debug_counter_set;
+	adpt_debug_counter_get_func adpt_debug_counter_get;
+	adpt_intr_port_link_mask_set_func adpt_intr_port_link_mask_set;
+	adpt_intr_port_link_mask_get_func adpt_intr_port_link_mask_get;
+	adpt_intr_port_link_status_get_func adpt_intr_port_link_status_get;
+
+	/* uniphy */
+	adpt_uniphy_mode_set_func adpt_uniphy_mode_set;
+
+	/* sfp */
+	adpt_sfp_eeprom_data_get_func adpt_sfp_eeprom_data_get;
+	adpt_sfp_eeprom_data_set_func adpt_sfp_eeprom_data_set;
+	adpt_sfp_diag_ctrl_status_get_func adpt_sfp_diag_ctrl_status_get;
+	adpt_sfp_diag_extenal_calibration_const_get_func
+		adpt_sfp_diag_extenal_calibration_const_get;
+	adpt_sfp_link_length_get_func adpt_sfp_link_length_get;
+	adpt_sfp_diag_internal_threshold_get_func adpt_sfp_diag_internal_threshold_get;
+	adpt_sfp_diag_realtime_get_func adpt_sfp_diag_realtime_get;
+	adpt_sfp_laser_wavelength_get_func adpt_sfp_laser_wavelength_get;
+	adpt_sfp_option_get_func adpt_sfp_option_get;
+	adpt_sfp_checkcode_get_func adpt_sfp_checkcode_get;
+	adpt_sfp_diag_alarm_warning_flag_get_func adpt_sfp_diag_alarm_warning_flag_get;
+	adpt_sfp_device_type_get_func adpt_sfp_device_type_get;
+	adpt_sfp_vendor_info_get_func adpt_sfp_vendor_info_get;
+	adpt_sfp_transceiver_code_get_func adpt_sfp_transceiver_code_get;
+	adpt_sfp_ctrl_rate_get_func adpt_sfp_ctrl_rate_get;
+	adpt_sfp_enhanced_cfg_get_func adpt_sfp_enhanced_cfg_get;
+	adpt_sfp_rate_encode_get_func adpt_sfp_rate_encode_get;
+	/*led*/
+	adpt_led_ctrl_pattern_set_func adpt_led_ctrl_pattern_set;
+	adpt_led_ctrl_pattern_get_func adpt_led_ctrl_pattern_get;
+	adpt_led_ctrl_source_set_func adpt_led_ctrl_source_set;
+
+	/* vport */
+	adpt_vport_physical_port_id_set_func adpt_vport_physical_port_id_set;
+	adpt_vport_physical_port_id_get_func adpt_vport_physical_port_id_get;
+	adpt_vport_state_check_set_func adpt_vport_state_check_set;
+	adpt_vport_state_check_get_func adpt_vport_state_check_get;
+
+	/* tunnel */
+	adpt_tunnel_decap_entry_add_func adpt_tunnel_decap_entry_add;
+	adpt_tunnel_decap_entry_del_func adpt_tunnel_decap_entry_del;
+	adpt_tunnel_decap_entry_get_func adpt_tunnel_decap_entry_get;
+	adpt_tunnel_decap_entry_getnext_func adpt_tunnel_decap_entry_getnext;
+	adpt_tunnel_decap_entry_flush_func adpt_tunnel_decap_entry_flush;
+	adpt_tunnel_decap_ecn_mode_get_func adpt_tunnel_decap_ecn_mode_get;
+	adpt_tunnel_decap_ecn_mode_set_func adpt_tunnel_decap_ecn_mode_set;
+	adpt_tunnel_encap_ecn_mode_get_func adpt_tunnel_encap_ecn_mode_get;
+	adpt_tunnel_encap_ecn_mode_set_func adpt_tunnel_encap_ecn_mode_set;
+	adpt_tunnel_encap_header_ctrl_set_func adpt_tunnel_encap_header_ctrl_set;
+	adpt_tunnel_encap_header_ctrl_get_func adpt_tunnel_encap_header_ctrl_get;
+	adpt_tunnel_global_cfg_get_func adpt_tunnel_global_cfg_get;
+	adpt_tunnel_global_cfg_set_func adpt_tunnel_global_cfg_set;
+	adpt_tunnel_port_intf_set_func adpt_tunnel_port_intf_set;
+	adpt_tunnel_port_intf_get_func adpt_tunnel_port_intf_get;
+	adpt_tunnel_vlan_intf_add_func adpt_tunnel_vlan_intf_add;
+	adpt_tunnel_vlan_intf_getfirst_func adpt_tunnel_vlan_intf_getfirst;
+	adpt_tunnel_vlan_intf_getnext_func adpt_tunnel_vlan_intf_getnext;
+	adpt_tunnel_vlan_intf_del_func adpt_tunnel_vlan_intf_del;
+	adpt_tunnel_intf_set_func adpt_tunnel_intf_set;
+	adpt_tunnel_intf_get_func adpt_tunnel_intf_get;
+	adpt_tunnel_encap_port_tunnelid_set_func adpt_tunnel_encap_port_tunnelid_set;
+	adpt_tunnel_encap_port_tunnelid_get_func adpt_tunnel_encap_port_tunnelid_get;
+	adpt_tunnel_encap_intf_tunnelid_set_func adpt_tunnel_encap_intf_tunnelid_set;
+	adpt_tunnel_encap_intf_tunnelid_get_func adpt_tunnel_encap_intf_tunnelid_get;
+	adpt_tunnel_encap_entry_add_func adpt_tunnel_encap_entry_add;
+	adpt_tunnel_encap_entry_del_func adpt_tunnel_encap_entry_del;
+	adpt_tunnel_encap_entry_get_func adpt_tunnel_encap_entry_get;
+	adpt_tunnel_encap_entry_getnext_func adpt_tunnel_encap_entry_getnext;
+	adpt_tunnel_encap_rule_entry_set_func adpt_tunnel_encap_rule_entry_set;
+	adpt_tunnel_encap_rule_entry_get_func adpt_tunnel_encap_rule_entry_get;
+	adpt_tunnel_encap_rule_entry_del_func adpt_tunnel_encap_rule_entry_del;
+	adpt_tunnel_udf_profile_entry_add_func adpt_tunnel_udf_profile_entry_add;
+	adpt_tunnel_udf_profile_entry_del_func adpt_tunnel_udf_profile_entry_del;
+	adpt_tunnel_udf_profile_entry_getfirst_func adpt_tunnel_udf_profile_entry_getfirst;
+	adpt_tunnel_udf_profile_entry_getnext_func adpt_tunnel_udf_profile_entry_getnext;
+	adpt_tunnel_udf_profile_cfg_set_func adpt_tunnel_udf_profile_cfg_set;
+	adpt_tunnel_udf_profile_cfg_get_func adpt_tunnel_udf_profile_cfg_get;
+	adpt_tunnel_exp_decap_set_func adpt_tunnel_exp_decap_set;
+	adpt_tunnel_exp_decap_get_func adpt_tunnel_exp_decap_get;
+	adpt_tunnel_decap_key_set_func adpt_tunnel_decap_key_set;
+	adpt_tunnel_decap_key_get_func adpt_tunnel_decap_key_get;
+	adpt_tunnel_decap_en_set_func adpt_tunnel_decap_en_set;
+	adpt_tunnel_decap_en_get_func adpt_tunnel_decap_en_get;
+	adpt_tunnel_decap_action_update_func adpt_tunnel_decap_action_update;
+	adpt_tunnel_decap_counter_get_func adpt_tunnel_decap_counter_get;
+	adpt_tunnel_tuple_entry_add_func adpt_tunnel_tuple_entry_add;
+	adpt_tunnel_tuple_entry_del_func adpt_tunnel_tuple_entry_del;
+	adpt_tunnel_tuple_entry_getfirst_func adpt_tunnel_tuple_entry_getfirst;
+	adpt_tunnel_tuple_entry_getnext_func adpt_tunnel_tuple_entry_getnext;
+	adpt_tunnel_decap_miss_action_set_func adpt_tunnel_decap_miss_action_set;
+	adpt_tunnel_decap_miss_action_get_func adpt_tunnel_decap_miss_action_get;
+
+	/*vxlan*/
+	adpt_vxlan_entry_add_func adpt_vxlan_entry_add;
+	adpt_vxlan_entry_del_func adpt_vxlan_entry_del;
+	adpt_vxlan_entry_getfirst_func adpt_vxlan_entry_getfirst;
+	adpt_vxlan_entry_getnext_func adpt_vxlan_entry_getnext;
+	adpt_vxlan_gpe_proto_cfg_set_func adpt_vxlan_gpe_proto_cfg_set;
+	adpt_vxlan_gpe_proto_cfg_get_func adpt_vxlan_gpe_proto_cfg_get;
+	/*geneve*/
+	adpt_geneve_entry_add_func adpt_geneve_entry_add;
+	adpt_geneve_entry_del_func adpt_geneve_entry_del;
+	adpt_geneve_entry_getfirst_func adpt_geneve_entry_getfirst;
+	adpt_geneve_entry_getnext_func adpt_geneve_entry_getnext;
+	/*tunnel program*/
+	adpt_tunnel_program_entry_add_func adpt_tunnel_program_entry_add;
+	adpt_tunnel_program_entry_del_func adpt_tunnel_program_entry_del;
+	adpt_tunnel_program_entry_getfirst_func adpt_tunnel_program_entry_getfirst;
+	adpt_tunnel_program_entry_getnext_func adpt_tunnel_program_entry_getnext;
+	adpt_tunnel_program_cfg_set_func adpt_tunnel_program_cfg_set;
+	adpt_tunnel_program_cfg_get_func adpt_tunnel_program_cfg_get;
+	adpt_tunnel_program_udf_add_func adpt_tunnel_program_udf_add;
+	adpt_tunnel_program_udf_del_func adpt_tunnel_program_udf_del;
+	adpt_tunnel_program_udf_getfirst_func adpt_tunnel_program_udf_getfirst;
+	adpt_tunnel_program_udf_getnext_func adpt_tunnel_program_udf_getnext;
+	/*mapt*/
+	adpt_mapt_decap_ctrl_set_func adpt_mapt_decap_ctrl_set;
+	adpt_mapt_decap_ctrl_get_func adpt_mapt_decap_ctrl_get;
+	adpt_mapt_decap_rule_entry_set_func adpt_mapt_decap_rule_entry_set;
+	adpt_mapt_decap_rule_entry_get_func adpt_mapt_decap_rule_entry_get;
+	adpt_mapt_decap_rule_entry_del_func adpt_mapt_decap_rule_entry_del;
+	adpt_mapt_decap_entry_add_func adpt_mapt_decap_entry_add;
+	adpt_mapt_decap_entry_del_func adpt_mapt_decap_entry_del;
+	adpt_mapt_decap_entry_getfirst_func adpt_mapt_decap_entry_getfirst;
+	adpt_mapt_decap_entry_getnext_func adpt_mapt_decap_entry_getnext;
+	adpt_mapt_decap_en_set_func adpt_mapt_decap_en_set;
+	adpt_mapt_decap_en_get_func adpt_mapt_decap_en_get;
+	/*athtag*/
+	adpt_athtag_pri_mapping_set_func adpt_athtag_pri_mapping_set;
+	adpt_athtag_pri_mapping_get_func adpt_athtag_pri_mapping_get;
+	adpt_athtag_port_mapping_set_func adpt_athtag_port_mapping_set;
+	adpt_athtag_port_mapping_get_func adpt_athtag_port_mapping_get;
+	adpt_port_athtag_rx_set_func adpt_port_athtag_rx_set;
+	adpt_port_athtag_rx_get_func adpt_port_athtag_rx_get;
+	adpt_port_athtag_tx_set_func adpt_port_athtag_tx_set;
+	adpt_port_athtag_tx_get_func adpt_port_athtag_tx_get;
+	adpt_athtag_rx_src_port_mapping_set_func adpt_athtag_rx_src_port_mapping_set;
+	adpt_athtag_rx_src_port_mapping_get_func adpt_athtag_rx_src_port_mapping_get;
+	adpt_athtag_rx_dest_port_mapping_set_func adpt_athtag_rx_dest_port_mapping_set;
+	adpt_athtag_rx_dest_port_mapping_get_func adpt_athtag_rx_dest_port_mapping_get;
+	adpt_athtag_rx_servcode_mapping_set_func adpt_athtag_rx_servcode_mapping_set;
+	adpt_athtag_rx_servcode_mapping_get_func adpt_athtag_rx_servcode_mapping_get;
+	adpt_athtag_tx_src_port_mapping_set_func adpt_athtag_tx_src_port_mapping_set;
+	adpt_athtag_tx_src_port_mapping_get_func adpt_athtag_tx_src_port_mapping_get;
+
+	/* toeplitz hash */
+	adpt_toeplitz_hash_secret_key_set_func adpt_toeplitz_hash_secret_key_set;
+	adpt_toeplitz_hash_secret_key_get_func adpt_toeplitz_hash_secret_key_get;
+	adpt_rsshash_algm_set_func adpt_rsshash_algm_set;
+	adpt_rsshash_algm_get_func adpt_rsshash_algm_get;
+	adpt_toeplitz_hash_config_add_func adpt_toeplitz_hash_config_add;
+	adpt_toeplitz_hash_config_del_func adpt_toeplitz_hash_config_del;
+	adpt_toeplitz_hash_config_getfirst_func adpt_toeplitz_hash_config_getfirst;
+	adpt_toeplitz_hash_config_getnext_func adpt_toeplitz_hash_config_getnext;
+	/* pktedit */
+	adpt_pktedit_padding_set_func adpt_pktedit_padding_set;
+	adpt_pktedit_padding_get_func adpt_pktedit_padding_get;
+	adpt_pktedit_en_set_func adpt_pktedit_en_set;
+	adpt_pktedit_en_get_func adpt_pktedit_en_get;
+	adpt_rxdesc_cpucode_en_set_func adpt_rxdesc_cpucode_en_set;
+	adpt_rxdesc_cpucode_en_get_func adpt_rxdesc_cpucode_en_get;
+	/* sampling */
+	adpt_sampling_time_set_func adpt_sampling_time_set;
+	adpt_sampling_time_get_func adpt_sampling_time_get;
+	adpt_sampling_buff_status_get_func adpt_sampling_buff_status_get;
+	adpt_sampling_buff_status_clear_func adpt_sampling_buff_status_clear;
+	adpt_sampling_done_miss_counter_get_func
+		adpt_sampling_done_miss_counter_get;
+	adpt_sampling_done_miss_counter_clear_func
+		adpt_sampling_done_miss_counter_clear;
+	adpt_sampling_burst_cfg_set_func adpt_sampling_burst_cfg_set;
+	adpt_sampling_burst_cfg_get_func adpt_sampling_burst_cfg_get;
+	adpt_sampling_ctrl_set_func adpt_sampling_ctrl_set;
+	adpt_sampling_ctrl_get_func adpt_sampling_ctrl_get;
+	adpt_sampling_window_en_set_func adpt_sampling_window_en_set;
+	adpt_sampling_window_en_get_func adpt_sampling_window_en_get;
+	adpt_sampling_counter_get_func adpt_sampling_counter_get;
+	/* pon */
+	adpt_pon_gemport_global_set_func adpt_pon_gemport_global_set;
+	adpt_pon_gemport_global_get_func adpt_pon_gemport_global_get;
+	adpt_pon_gemport_gen_default_set_func adpt_pon_gemport_gen_default_set;
+	adpt_pon_gemport_gen_default_get_func adpt_pon_gemport_gen_default_get;
+	adpt_pon_gemport_gen_entry_set_func adpt_pon_gemport_gen_entry_set;
+	adpt_pon_gemport_gen_entry_get_func adpt_pon_gemport_gen_entry_get;
+	adpt_pon_gemport_gen_en_set_func adpt_pon_gemport_gen_en_set;
+	adpt_pon_gemport_gen_en_get_func adpt_pon_gemport_gen_en_get;
+	adpt_pon_gemport_map_en_set_func adpt_pon_gemport_map_en_set;
+	adpt_pon_gemport_map_en_get_func adpt_pon_gemport_map_en_get;
+	adpt_pon_gemport_map_set_func adpt_pon_gemport_map_set;
+	adpt_pon_gemport_map_get_func adpt_pon_gemport_map_get;
+	adpt_pon_gemport_cfg_set_func adpt_pon_gemport_cfg_set;
+	adpt_pon_gemport_cfg_get_func adpt_pon_gemport_cfg_get;
+	adpt_pon_gemport_policer_set_func adpt_pon_gemport_policer_set;
+	adpt_pon_gemport_policer_get_func adpt_pon_gemport_policer_get;
+	/* PON PM */
+	adpt_pon_pm_counter_entry_set_func adpt_pon_pm_counter_entry_set;
+	adpt_pon_pm_counter_entry_get_func adpt_pon_pm_counter_entry_get;
+	adpt_pon_pm_counter_get_func adpt_pon_pm_counter_get;
+	adpt_pon_pm_counter_flush_func adpt_pon_pm_counter_flush;
+	/* IPMC */
+	adpt_ipmc_status_set_func adpt_ipmc_status_set;
+	adpt_ipmc_status_get_func adpt_ipmc_status_get;
+	adpt_ipmc_global_cfg_set_func adpt_ipmc_global_cfg_set;
+	adpt_ipmc_global_cfg_get_func adpt_ipmc_global_cfg_get;
+	adpt_ipmc_entry_add_func adpt_ipmc_entry_add;
+	adpt_ipmc_entry_del_func adpt_ipmc_entry_del;
+	adpt_ipmc_entry_get_func adpt_ipmc_entry_get;
+	adpt_ipmc_entry_getnext_func adpt_ipmc_entry_getnext;
+	adpt_ipmc_entry_flush_func adpt_ipmc_entry_flush;
+	adpt_ipmc_ucast_fwd_set_func adpt_ipmc_ucast_fwd_set;
+	adpt_ipmc_ucast_fwd_get_func adpt_ipmc_ucast_fwd_get;
+
+	/* CROSSCHIP */
+	adpt_crosschip_bp_mode_set_func adpt_crosschip_bp_mode_set;
+	adpt_crosschip_bp_mode_get_func adpt_crosschip_bp_mode_get;
+	adpt_crosschip_bp_en_set_func adpt_crosschip_bp_en_set;
+	adpt_crosschip_bp_en_get_func adpt_crosschip_bp_en_get;
+	adpt_vch_bp_config_set_func adpt_vch_bp_config_set;
+	adpt_vch_bp_config_get_func adpt_vch_bp_config_get;
+	adpt_vch_bp_thres_set_func adpt_vch_bp_thres_set;
+	adpt_vch_bp_thres_get_func adpt_vch_bp_thres_get;
+	adpt_vch_bp_stats_get_func adpt_vch_bp_stats_get;
+	adpt_crosschip_mdio_master_config_func adpt_crosschip_mdio_master_config;
+
+/* auto_insert_flag_1 */
+}adpt_api_t;
+
+typedef enum {
+	HPPE_TYPE,
+	CPPE_TYPE,
+	APPE_TYPE,
+	MPPE_TYPE,
+	MRPPE_TYPE,
+	JHPPE_TYPE,
+	HMSPPE_TYPE,
+	HTTPPE_TYPE,
+	MAX_PPE_TYPE,
+} adpt_ppe_type_t;
+
+adpt_ppe_type_t adpt_ppe_type_get(a_uint32_t dev_id);
+
+#define ADPT_IS_PPORT(port_id) (((FAL_PORT_ID_TYPE(port_id))==FAL_PORT_TYPE_PPORT && \
+			FAL_PORT_ID_VALUE(port_id) < SSDK_MAX_PORT_NUM)?1:0)
+#define ADPT_IS_TRUNK(port_id) (((FAL_PORT_ID_TYPE(port_id))==FAL_PORT_TYPE_TRUNK && \
+			FAL_PORT_ID_VALUE(port_id) >= SSDK_MIN_TRUNK_PORT_ID && \
+			FAL_PORT_ID_VALUE(port_id) < SSDK_MIN_VIRTUAL_PORT_ID)?1:0)
+#define ADPT_IS_VPORT(port_id) (((FAL_PORT_ID_TYPE(port_id))==FAL_PORT_TYPE_VPORT && \
+			FAL_PORT_ID_VALUE(port_id) >= SSDK_MIN_VIRTUAL_PORT_ID && \
+			FAL_PORT_ID_VALUE(port_id) <= SSDK_MAX_VIRTUAL_PORT_ID)?1:0)
+#define ADPT_IS_VP_GROUP(port_id) (((FAL_PORT_ID_TYPE(port_id))==FAL_PORT_TYPE_VP_GROUP && \
+			FAL_PORT_ID_VALUE(port_id) <= SSDK_MAX_VP_GROUP_ID)?1:0)
+
+#define DROP_CODE_L2_EXP_MTU_FAIL 80
+#define ADPT_GET_DROP_CODE_IDX(port_id, code_cats) ((port_id) + ((code_cats) * 8) + 256)
+
+static inline a_uint32_t adpt_dest_type_convert(a_bool_t to_hsl, a_uint32_t dest_type) {
+	a_uint32_t ret_type = 0;
+
+	if (to_hsl == A_TRUE) {
+		switch (dest_type) {
+			case FAL_DEST_INFO_PORT_ID:
+				ret_type = 2;
+				break;
+			case FAL_DEST_INFO_PORT_BMP:
+				ret_type = 3;
+				break;
+			default:
+				ret_type = 0xf;
+				break;
+		}
+	} else {
+		switch (dest_type) {
+			case 2:
+				ret_type = FAL_DEST_INFO_PORT_ID;
+				break;
+			case 3:
+				ret_type = FAL_DEST_INFO_PORT_BMP;
+				break;
+			default:
+				ret_type = 0xf;
+				break;
+		}
+	}
+
+	return ret_type;
+}
+
+#define ADPT_DEST_INFO(type, value) (((type) << 12) | (value))
+#define ADPT_DEST_TYPE(dest) (((dest) >> 12) & 0x3)
+#define ADPT_DEST_VAL(dest) (dest & 0xfff)
+
+static inline a_uint32_t adpt_port_type_convert(a_bool_t to_hsl, a_uint32_t port_type) {
+	a_uint32_t ptype = 0;
+
+	if (to_hsl == A_TRUE) {
+		switch (port_type) {
+			case FAL_PORT_TYPE_PPORT:
+				ptype = 0;
+				break;
+			case FAL_PORT_TYPE_VPORT:
+				ptype = 1;
+				break;
+			case FAL_PORT_TYPE_VP_GROUP:
+				ptype = 2;
+				break;
+			case FAL_PORT_TYPE_GEM_PORT:
+				ptype = 3;
+				break;
+			default:
+				ptype = 0;
+				break;
+		}
+	} else {
+		switch (port_type) {
+			case 0:
+				ptype = FAL_PORT_TYPE_PPORT;
+				break;
+			case 1:
+				ptype = FAL_PORT_TYPE_VPORT;
+				break;
+			case 2:
+				ptype = FAL_PORT_TYPE_VP_GROUP;
+				break;
+			case 3:
+				ptype = FAL_PORT_TYPE_GEM_PORT;
+				break;
+			default:
+				ptype = FAL_PORT_TYPE_PPORT;
+				break;
+		}
+	}
+	return ptype;
+}
+
+#define ADPT_PORT_ID_EQUAL    0
+#define ADPT_PORT_ID_INCLD    1
+#define ADPT_PORT_ID_EXCLD    2
+#define ADPT_PORT_ID_NOEQUAL  3
+
+static inline a_uint32_t adpt_port_id_compare(fal_pbmp_t port_bmap, fal_port_t port_id) {
+	a_uint32_t result = ADPT_PORT_ID_NOEQUAL;
+
+	if (FAL_PORT_ID_TYPE(port_bmap) != FAL_PORT_ID_TYPE(port_id)) {
+		return ADPT_PORT_ID_NOEQUAL;
+	}
+	switch (FAL_PORT_ID_TYPE(port_id)) {
+		case FAL_PORT_TYPE_PPORT:
+			if (port_bmap == BIT(port_id)) {
+				result = ADPT_PORT_ID_EQUAL;
+			} else if (SW_IS_PBMP_MEMBER(port_bmap, port_id)) {
+				result = ADPT_PORT_ID_INCLD;
+			} else {
+				result = ADPT_PORT_ID_EXCLD;
+			}
+			break;
+		case FAL_PORT_TYPE_VPORT:
+		case FAL_PORT_TYPE_VP_GROUP:
+		case FAL_PORT_TYPE_GEM_PORT:
+			if (port_bmap == port_id) {
+				result = ADPT_PORT_ID_EQUAL;
+			}
+			break;
+		default:
+			result = ADPT_PORT_ID_NOEQUAL;
+			SSDK_ERROR("Unsupported port type to compare\n");
+	}
+	return result;
+}
+
+static inline sw_error_t
+adpt_forward_action_convert(fal_fwd_cmd_t *fwd_cmd, a_uint32_t *value, a_bool_t to_hsl)
+{
+	sw_error_t rv = SW_OK;
+	if (to_hsl) {
+		switch (*fwd_cmd) {
+			case FAL_MAC_FRWRD:
+				*value = 0;
+				break;
+			case FAL_MAC_DROP:
+				*value = 1;
+				break;
+			case FAL_MAC_CPY_TO_CPU:
+				*value = 2;
+				break;
+			case FAL_MAC_RDT_TO_CPU:
+				*value = 3;
+				break;
+			default:
+				SSDK_ERROR("Unsupported fal fwd_type to convert\n");
+				rv = SW_FAIL;
+				break;
+		}
+	} else {
+		switch (*value) {
+			case 0:
+				*fwd_cmd = FAL_MAC_FRWRD;
+				break;
+			case 1:
+				*fwd_cmd = FAL_MAC_DROP;
+				break;
+			case 2:
+				*fwd_cmd = FAL_MAC_CPY_TO_CPU;
+				break;
+			case 3:
+				*fwd_cmd = FAL_MAC_RDT_TO_CPU;
+				break;
+			default:
+				SSDK_ERROR("Unsupported hsl fwd_type to convert\n");
+				rv = SW_FAIL;
+				break;
+		}
+	}
+	return rv;
+}
+
+#define ADPT_MPPE_FREQUENCY      200  /*MHZ*/
+#define ADPT_APPE_FREQUENCY      353  /*MHZ*/
+#define ADPT_HPPE_FREQUENCY      300  /*MHZ*/
+#define ADPT_MRPPE_FREQUENCY     375  /*MHZ*/
+#define ADPT_JHPPE_FREQUENCY     462  /*MHZ*/
+#define ADPT_HMSPPE_FREQUENCY    429  /*MHZ*/
+#define ADPT_HTTPPE_FREQUENCY    250  /*MHZ*/
+/* Maximum valid physical port ID (inclusive) per chip type */
+#define JHPPE_PORT_ID_MAX   8   /* ports 0..8, 9 ports  (25G)    */
+#define MPPE_PORT_ID_MAX    6   /* ports 0..6, 7 ports  (Miami)  */
+#define HTTPPE_PORT_ID_MAX  5   /* ports 0..5, 6 ports  (HTTPPE) */
+#define HPPE_PORT_ID_MAX    7   /* ports 0..7, 8 ports  (default: HPPE/APPE/MRPPE/HMSPPE) */
+
+adpt_api_t *adpt_api_ptr_get(a_uint32_t dev_id);
+sw_error_t adpt_init(a_uint32_t dev_id, ssdk_init_cfg *cfg);
+sw_error_t adpt_deinit(a_uint32_t dev_id);
+a_uint32_t adpt_chip_type_get(a_uint32_t dev_id);
+a_uint32_t adpt_chip_revision_get(a_uint32_t dev_id);
+a_uint32_t adpt_ppe_port_id_max_get(a_uint32_t dev_id);
+a_uint32_t adpt_chip_freq_get(a_uint32_t dev_id);
+sw_error_t adpt_ppe_capacity_get(a_uint32_t dev_id, fal_ppe_tbl_caps_t *ppe_capacity);
+a_uint32_t adpt_ppe_mac_type_get(a_uint32_t dev_id, a_uint32_t port_id);
+a_uint32_t ppe_port_to_gmac_id(a_uint32_t dev_id, fal_port_t port_id);
+a_uint32_t ppe_port_to_xgmac_id(a_uint32_t dev_id, fal_port_t port_id);
+a_uint32_t ppe_xgmac_id_to_port(a_uint32_t dev_id, a_uint32_t xgmac_id);
+void adpt_ppe_mac_num_get(a_uint32_t dev_id, a_uint32_t *gmac_num, a_uint32_t *xgmac_num);
+#ifdef SCOMPHY
+a_uint32_t adapt_scomphy_revision_get(a_uint32_t dev_id);
+#endif
+a_uint32_t
+adpt_ppe_uniphy_number_get(a_uint32_t dev_id);
+a_bool_t
+adpt_ppe_loopback_port_validate(a_uint32_t dev_id, fal_port_t port_id);
+
+/*Common Macro*/
+#define DEFINE_FAL_FUNC_ADPT(func, dev_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			adpt_api_t *p_adpt_api = adpt_api_ptr_get(dev_id); \
+			FAL_API_LOCK; \
+			if (p_adpt_api && p_adpt_api->adpt_##func) { \
+				rv = p_adpt_api->adpt_##func(dev_id, ##__VA_ARGS__); \
+			} \
+			FAL_API_UNLOCK; \
+			return rv; \
+		}
+
+#define DEFINE_FAL_FUNC_HSL(func, dev_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			hsl_api_t *p_api = hsl_api_ptr_get(dev_id); \
+			FAL_API_LOCK; \
+			if (p_api && p_api->func) { \
+				rv = p_api->func(dev_id, ##__VA_ARGS__); \
+			} \
+			FAL_API_UNLOCK; \
+			return rv; \
+		}
+
+#define DEFINE_FAL_FUNC_ADPT_HSL(func, hsl_func, dev_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			adpt_api_t *p_adpt_api = adpt_api_ptr_get(dev_id); \
+			hsl_api_t *p_api = hsl_api_ptr_get(dev_id); \
+			FAL_API_LOCK; \
+			if (p_adpt_api && p_adpt_api->adpt_##func) { \
+				rv = p_adpt_api->adpt_##func(dev_id, ##__VA_ARGS__); \
+			} else if (p_api && p_api->hsl_func) { \
+				rv = p_api->hsl_func(dev_id, ##__VA_ARGS__); \
+			} \
+			FAL_API_UNLOCK; \
+			return rv; \
+		}
+
+#define DEFINE_FAL_FUNC(func, dev_id, ...) \
+		DEFINE_FAL_FUNC_ADPT_HSL(func, func, dev_id, ##__VA_ARGS__)
+
+#define DEFINE_FAL_FUNC_ADPT_EXPORT(func, dev_id, ...)  { \
+			DEFINE_FAL_FUNC_ADPT(func, dev_id, ##__VA_ARGS__) \
+		} \
+		EXPORT_SYMBOL(fal_##func);
+
+#define DEFINE_FAL_FUNC_HSL_EXPORT(func, dev_id, ...)  { \
+			DEFINE_FAL_FUNC_HSL(func, dev_id, ##__VA_ARGS__) \
+		} \
+		EXPORT_SYMBOL(fal_##func);
+
+#define DEFINE_FAL_FUNC_ADPT_HSL_EXPORT(func, hsl_func, dev_id, ...)  { \
+			DEFINE_FAL_FUNC_ADPT_HSL(func, hsl_func, dev_id, ##__VA_ARGS__) \
+		} \
+		EXPORT_SYMBOL(fal_##func);
+
+#define DEFINE_FAL_FUNC_EXPORT(func, dev_id, ...)  { \
+			DEFINE_FAL_FUNC(func, dev_id, ##__VA_ARGS__) \
+		} \
+		EXPORT_SYMBOL(fal_##func);
+
+
+/*Special Macro*/
+#define DEFINE_FAL_FUNC_HSL_DIRECT(func, dev_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			FAL_API_LOCK; \
+			rv = hsl_##func(dev_id, ##__VA_ARGS__); \
+			FAL_API_UNLOCK; \
+			return rv; \
+		}
+
+#define DEFINE_FAL_PORT_PHY_FUNC(func, dev_id, port_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			FAL_API_LOCK; \
+			HSL_PORT_PHY_API_RUN(func, dev_id, port_id, ##__VA_ARGS__); \
+			FAL_API_UNLOCK; \
+			return rv; \
+		}
+
+#define DEFINE_FAL_PORT_PHY_NSS_WITH_AQR_FUNC(func, dev_id, port_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			FAL_API_LOCK; \
+			HSL_PORT_PHY_EXT_NSS_WITH_AQR_API_RUN(func, dev_id, port_id, ##__VA_ARGS__); \
+			FAL_API_UNLOCK; \
+			return rv; \
+		}
+
+#define DEFINE_FAL_PORT_PHY_PTP_FUNC(func, dev_id, port_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			FAL_API_LOCK; \
+			HSL_PORT_PHY_PTP_API_RUN(func, dev_id, port_id, ##__VA_ARGS__); \
+			FAL_API_UNLOCK; \
+			return rv; \
+		}
+
+#define DEFINE_FAL_PORT_ADPT_HSL_PHY_FUNC(func, dev_id, port_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			adpt_api_t *p_adpt_api = adpt_api_ptr_get(dev_id); \
+			hsl_api_t *p_api = hsl_api_ptr_get(dev_id); \
+			FAL_API_LOCK; \
+			if (p_adpt_api && p_adpt_api->adpt_port_##func) { \
+				rv = p_adpt_api->adpt_port_##func(dev_id, port_id, ##__VA_ARGS__); \
+			} else if (p_api && p_api->port_##func) { \
+				rv = p_api->port_##func(dev_id, port_id, ##__VA_ARGS__); \
+			} else {\
+				HSL_PORT_PHY_API_RUN(func, dev_id, port_id, ##__VA_ARGS__); \
+			} \
+			FAL_API_UNLOCK; \
+			return rv; \
+		}
+#define DEFINE_FAL_FUNC_ADPT_HSL_ENDFUNC(func, hsl_func, end_func, dev_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			adpt_api_t *p_adpt_api = adpt_api_ptr_get(dev_id); \
+			hsl_api_t *p_api = hsl_api_ptr_get(dev_id); \
+			FAL_API_LOCK; \
+			if (p_adpt_api && p_adpt_api->adpt_##func) { \
+				rv = p_adpt_api->adpt_##func(dev_id, ##__VA_ARGS__); \
+			} else if (p_api && p_api->hsl_func) { \
+				rv = p_api->hsl_func(dev_id, ##__VA_ARGS__); \
+			} \
+			FAL_API_UNLOCK; \
+			SW_RTN_ON_ERROR(rv);\
+			return end_func(dev_id); \
+		}
+
+#define DEFINE_FAL_FUNC_HSL_ENDFUNC(func, end_func, dev_id, ...) \
+		{ \
+			sw_error_t rv = SW_NOT_SUPPORTED; \
+			hsl_api_t *p_api = hsl_api_ptr_get(dev_id); \
+			FAL_API_LOCK; \
+			if (p_api && p_api->func) { \
+				rv = p_api->func(dev_id, ##__VA_ARGS__); \
+			} \
+			FAL_API_UNLOCK; \
+			SW_RTN_ON_ERROR(rv);\
+			return end_func(dev_id); \
+		}
+
+#ifdef __cplusplus
+}
+#endif                          /* __cplusplus */
+#endif

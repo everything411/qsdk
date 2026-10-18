@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+&tmel_qmp {
+	compatible = "qcom,tmel-qmp-mbox-secure";
+	interrupts = <GIC_SPI 122 IRQ_TYPE_EDGE_RISING>;
+	status = "okay";
+};
+
+&qupv3 {
+	clocks = <&gcc GCC_QUPV3_2X_CORE_CLK>,
+		 <&gcc GCC_QUPV3_AHB_MST_CLK>,
+		 <&gcc GCC_QUPV3_AHB_SLV_CLK>,
+		 <&gcc GCC_QUPV3_CORE_CLK>,
+		 <&gcc GCC_QUPV3_SLEEP_CLK>;
+	clock-names = "2x-core", "m-ahb", "s-ahb", "core", "sleep";
+	assigned-clocks = <&gcc GCC_QUPV3_2X_CORE_CLK>;
+	assigned-clock-rates = <200000000>;
+};
+
+&tlmm {
+	i2c1 {
+		bootph-all;
+
+		i2c1_scl {
+			bootph-all;
+			pins = "gpio16";
+			function = "i2c1_scl";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
+		i2c1_sda {
+			bootph-all;
+			pins = "gpio17";
+			function = "i2c1_sda";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+};
+
+&sdhc {
+	reg = <0 0x07804000 0 0x1000>,
+	      <0 0x07805000 0 0x1000>;
+	reg-names = "hc", "cqhci";
+
+	clocks = <&gcc GCC_SDCC1_AHB_CLK>,
+		 <&gcc GCC_SDCC1_APPS_CLK>;
+	clock-names = "iface", "core";
+};
+
+&nand {
+	max_clk_frequency = <400000000>;
+	resets = <&gcc GCC_QPIC_BCR>;
+	reset-names = "bcr_rst";
+	/delete-property/ serial_training;
+};

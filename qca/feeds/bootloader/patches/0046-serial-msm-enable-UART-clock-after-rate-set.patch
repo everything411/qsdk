@@ -1,0 +1,40 @@
+From fdd3453ea5acdf15802934fbfbd50bcc6e5491e5 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Wed, 25 Jun 2025 16:42:22 +0530
+Subject: [PATCH] serial: msm: enable UART clock after rate set
+
+Ensure clk_enable() is called after clk_set_rate() to
+properly initialize the UART clock during driver setup.
+
+This guarantees the clock is active with the correct
+frequency before use.
+
+Change-Id: I3e5ad21432551d1fd6571860fa6274a2849ea8c2
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/serial/serial_msm.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/serial/serial_msm.c b/drivers/serial/serial_msm.c
+index 757e5eaf974..46d92b92394 100644
+--- a/drivers/serial/serial_msm.c
++++ b/drivers/serial/serial_msm.c
+@@ -180,6 +180,15 @@ static long msm_uart_clk_init(struct udevice *dev)
+ 
+ 	rate = clk_set_rate(&clk, priv->clk_rate);
+ 
++	clk_enable(&clk);
++
++	ret = clk_get_by_name(dev, "iface", &clk);
++	if (ret < 0) {
++		pr_warn("%s: Failed to get clock: %d\n", __func__, ret);
++	} else {
++		clk_enable(&clk);
++	}
++
+ 	return rate;
+ }
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,340 @@
+From ef64d01ab9ac12fb64337534565ce29fb4396559 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Wed, 4 Sep 2024 15:18:35 +0530
+Subject: [PATCH] sigma_dut: Enable mixed mode security support
+
+For mixed mode, the security related values needs to be updated
+differently for each link and for other cases the security values
+needs to be updated commonly for all the links in a mld.
+
+Add support to update security specific parameters in case of
+mixed mode.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 188 ++++++++++++++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 155 insertions(+), 33 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -3210,6 +3210,145 @@ static const char * get_sae_pk_key(const
+ 	return NULL;
+ }
+ 
++static int ap_set_security_mixed_mode(struct sigma_dut *dut,
++				      struct sigma_conn *conn,
++				      struct sigma_cmd *cmd)
++{
++	const char *val;
++	unsigned int link_id = dut->security_links - 1;
++
++	val = get_param(cmd, "PSK");
++	if (!val)
++		val = get_param(cmd, "passphrase");
++	if (val) {
++		if (dut->ap_key_mgmt != AP_WPA2_SAE &&
++		    (dut->mld[link_id].ap_akm_link &
++		     (AKM_WPA_PSK | AKM_SAE)) !=
++		    AKM_SAE && strlen(val) > 64) {
++			sigma_dut_print(dut, DUT_MSG_ERROR,
++					"Too long PSK/passphtase");
++			return -1;
++		}
++		if (strlen(val) > sizeof(dut->ap_passphrase) - 1)
++			return -1;
++		snprintf(dut->ap_passphrase, sizeof(dut->ap_passphrase),
++			 "%s", val);
++	}
++
++	val = get_param(cmd, "AKMSuiteType");
++	if (val) {
++		const char *in_pos = val;
++		int akm_values = 0;
++
++		while (*in_pos) {
++			int akm = atoi(in_pos);
++
++			if (akm < 0 || akm >= 32) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Unsupported AKMSuiteType value");
++				return STATUS_SENT;
++			}
++
++			akm_values |= 1 << akm;
++
++			in_pos = strchr(in_pos, ';');
++			if (!in_pos)
++				break;
++			while (*in_pos == ';')
++				in_pos++;
++		}
++		dut->ap_akm = 1;
++		if (akm_values & (1 << 14))
++			dut->ap_add_sha384 = 1;
++		if (akm_values & (1 << 15))
++			dut->ap_add_sha384 = 1;
++
++		dut->mld[link_id].ap_akm_link = akm_values;
++	}
++
++	val = get_param(cmd, "PairwiseCipher");
++	if (val) {
++		if (strcasecmp(val, "AES-GCMP-256") == 0)
++			dut->mld[link_id].ap_cipher_link = AP_GCMP_256;
++		else if (strcasecmp(val, "AES-CCMP-256") == 0)
++			dut->mld[link_id].ap_cipher_link = AP_CCMP_256;
++		else if (strcasecmp(val, "AES-GCMP-128") == 0)
++			dut->mld[link_id].ap_cipher_link = AP_GCMP_128;
++		else if (strcasecmp(val, "AES-CCMP-128") == 0)
++			dut->mld[link_id].ap_cipher_link = AP_CCMP;
++		else if (strcasecmp(val, "AES-CCMP-128 AES-GCMP-256") == 0 ||
++			   strcasecmp(val, "AES-GCMP-256 AES-CCMP-128") == 0)
++			dut->mld[link_id].ap_cipher_link = AP_CCMP_128_GCMP_256;
++		else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported PairwiseCipher");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "GroupCipher");
++	if (val) {
++		if (strcasecmp(val, "AES-GCMP-256") == 0)
++			dut->mld[link_id].ap_group_cipher_link = AP_GCMP_256;
++		else if (strcasecmp(val, "AES-CCMP-256") == 0)
++			dut->mld[link_id].ap_group_cipher_link = AP_CCMP_256;
++		else if (strcasecmp(val, "AES-GCMP-128") == 0)
++			dut->mld[link_id].ap_group_cipher_link = AP_GCMP_128;
++		else if (strcasecmp(val, "AES-CCMP-128") == 0)
++			dut->mld[link_id].ap_group_cipher_link = AP_CCMP;
++		else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported GroupCipher");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "GroupMgntCipher");
++	if (val) {
++		if (strcasecmp(val, "BIP-GMAC-256") == 0)
++			dut->mld[link_id].ap_group_mgmt_cipher_link = AP_BIP_GMAC_256;
++		else if (strcasecmp(val, "BIP-CMAC-256") == 0)
++			dut->mld[link_id].ap_group_mgmt_cipher_link = AP_BIP_CMAC_256;
++		else if (strcasecmp(val, "BIP-GMAC-128") == 0)
++			dut->mld[link_id].ap_group_mgmt_cipher_link = AP_BIP_GMAC_128;
++		else if (strcasecmp(val, "BIP-CMAC-128") == 0)
++			dut->mld[link_id].ap_group_mgmt_cipher_link = AP_BIP_CMAC_128;
++		else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported GroupMgntCipher");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "PMF");
++	if (val) {
++		if (strcasecmp(val, "Disabled") == 0)
++			dut->mld[link_id].ap_pmf_link = AP_PMF_DISABLED;
++		else if (strcasecmp(val, "Optional") == 0)
++			dut->mld[link_id].ap_pmf_link = AP_PMF_OPTIONAL;
++		else if (strcasecmp(val, "Required") == 0)
++			dut->mld[link_id].ap_pmf_link = AP_PMF_REQUIRED;
++		else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorCode,Unsupported PMF");
++			return 0;
++		}
++	}
++
++	val = get_param(cmd, "BeaconProtection");
++	if (val)
++		dut->mld[link_id].ap_beacon_prot_link = atoi(val);
++
++	val = get_param(cmd, "ECGroupID");
++	if (val) {
++		free(dut->mld[link_id].ap_sae_groups_link);
++		dut->mld[link_id].ap_sae_groups_link = strdup(val);
++	}
++
++	dut->security_links++;
++	return 1;
++}
++
+ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 						 struct sigma_conn *conn,
+ 						 struct sigma_cmd *cmd)
+@@ -3219,8 +3358,6 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	unsigned int wlan_tag = 1;
+ 	const char *security;
+ 	bool pmf_set = false;
+-	int akm_values = 0;
+-	int link_specific = 0;
+ 
+ 	val = get_param(cmd, "WLAN_TAG");
+ 	if (val) {
+@@ -3233,13 +3370,15 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	}
+ 
+ 	val = get_param(cmd, "Interface");
++	if (val && (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3))
++		dut->link_specific_security = 1;
++
++	val = get_param(cmd, "MLD_ID");
+ 	if (val)
+-		link_specific = 1;
++		dut->multi_mld = 1;
+ 
+-	if (link_specific)
+-		akm_values = dut->ap_akm_link_values[dut->num_links - 1];
+-	else
+-		akm_values = dut->ap_akm_values;
++	if (dut->link_specific_security && !dut->multi_mld)
++		return ap_set_security_mixed_mode(dut, conn, cmd);
+ 
+ 	security = get_param(cmd, "Security");
+ 
+@@ -3317,7 +3456,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				val = get_param(cmd, "KeyMgmtType");
+ 			if (val) {
+ 				if (strcasecmp(val, "SAE") == 0) {
+-					if (dut->ap_mode == AP_11be)
++					if (dut->mld[0].ap_mode == AP_11be)
+ 						dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].key_mgmt = AP_WPA3_SAE_EXT;
+ 					else
+ 						dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].key_mgmt = AP_WPA2_SAE;
+@@ -3369,7 +3508,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			val = get_param(cmd,"KeyMgmtType");
+ 		if (val) {
+ 			if (strcasecmp(val, "SAE") == 0) {
+-				if (dut->ap_mode == AP_11be)
++				if (dut->mld[0].ap_mode == AP_11be)
+ 					dut->mbss.conf[non_tx_bss_idx - 1].key_mgmt = AP_WPA3_SAE_EXT;
+ 				else
+ 					dut->mbss.conf[non_tx_bss_idx - 1].key_mgmt = AP_WPA2_SAE;
+@@ -3424,7 +3563,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			val = get_param(cmd, "KeyMgmtType");
+ 		if (val) {
+ 			if (strcasecmp(val, "SAE") == 0) {
+-				if (dut->ap_mode == AP_11be) {
++				if (dut->mld[0].ap_mode == AP_11be) {
+ 					dut->cohosted[dut->cohost_iface].conf
+ 						[cohosted_bss_index - 1].key_mgmt = AP_WPA3_SAE_EXT;
+ 				} else {
+@@ -3458,14 +3597,14 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		if (strcasecmp(val, "WPA2-PSK") == 0 ||
+ 		    (security && strcasecmp(security, "PSK") == 0 &&
+ 		     strcasecmp(val, "WPA2") == 0)) {
+-			if (ap_ft_enabled_link(dut, akm_values))
++			if (ap_ft_enabled(dut))
+ 				dut->ap_key_mgmt = AP_WPA2_FT_PSK;
+ 			else
+ 				dut->ap_key_mgmt = AP_WPA2_PSK;
+ 			dut->ap_cipher = AP_CCMP;
+ 		} else if (strcasecmp(val, "WPA2-EAP") == 0 ||
+ 			   strcasecmp(val, "WPA2-Ent") == 0) {
+-			if (ap_ft_enabled_link(dut, akm_values))
++			if (ap_ft_enabled(dut))
+ 				dut->ap_key_mgmt = AP_WPA2_ENT_FT_EAP;
+ 			else
+ 				dut->ap_key_mgmt = AP_WPA2_EAP;
+@@ -3490,7 +3629,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		} else if (strcasecmp(val, "WPA2-SAE") == 0 ||
+ 			   strcasecmp(val, "SAE") == 0) {
+ 			dut->ap_key_mgmt = AP_WPA2_SAE;
+-			if (dut->ap_mode == AP_11be) {
++			if (dut->mld[0].ap_mode == AP_11be) {
+ 				dut->ap_cipher = AP_GCMP_256;
+ 				dut->ap_key_mgmt = AP_WPA3_SAE_EXT;
+ 			}
+@@ -3751,7 +3890,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		val = get_param(cmd, "passphrase");
+ 	if (val) {
+ 		if (dut->ap_key_mgmt != AP_WPA2_SAE &&
+-		    (akm_values & (AKM_WPA_PSK | AKM_SAE)) !=
++		    (dut->ap_akm_values & (AKM_WPA_PSK | AKM_SAE)) !=
+ 		    AKM_SAE &&
+ 		    strlen(val) > 64) {
+ 			sigma_dut_print(dut, DUT_MSG_ERROR,
+@@ -3779,15 +3918,9 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		if (strcasecmp(val, "Disabled") == 0) {
+ 			dut->ap_pmf = AP_PMF_DISABLED;
+ 		} else if (strcasecmp(val, "Optional") == 0) {
+-			if (link_specific)
+-				dut->ap_pmf_link[dut->num_links - 1] = AP_PMF_OPTIONAL;
+-			else
+-				dut->ap_pmf = AP_PMF_OPTIONAL;
++			dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		} else if (strcasecmp(val, "Required") == 0) {
+-			if (link_specific)
+-				dut->ap_pmf_link[dut->num_links - 1] = AP_PMF_REQUIRED;
+-			else
+-				dut->ap_pmf = AP_PMF_REQUIRED;
++			dut->ap_pmf = AP_PMF_REQUIRED;
+ 		} else {
+ 			send_resp(dut, conn, SIGMA_INVALID,
+ 				  "errorCode,Unsupported PMF");
+@@ -3827,7 +3960,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	val = get_param(cmd, "AKMSuiteType");
+ 	if (val) {
+ 		const char *in_pos = val;
+-		int akm_values = 0;
++		dut->ap_akm_values = 0;
++
+ 		while (*in_pos) {
+ 			int akm = atoi(in_pos);
+ 
+@@ -3837,7 +3971,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				return STATUS_SENT;
+ 			}
+ 
+-			akm_values |= 1 << akm;
++			dut->ap_akm_values |= 1 << akm;
+ 
+ 			in_pos = strchr(in_pos, ';');
+ 			if (!in_pos)
+@@ -3846,23 +3980,13 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				in_pos++;
+ 		}
+ 		dut->ap_akm = 1;
+-		if (akm_values & (1 << 14))
++		if (dut->ap_akm_values & (1 << 14))
+ 			dut->ap_add_sha384 = 1;
+-		if (akm_values & (1 << 15))
++		if (dut->ap_akm_values & (1 << 15))
+ 			dut->ap_add_sha384 = 1;
+-
+-		if (link_specific)
+-			dut->ap_akm_link_values[dut->num_links - 1] = akm_values;
+-		else
+-			dut->ap_akm_values = akm_values;
+ 	}
+ 
+-	if (link_specific)
+-		akm_values = dut->ap_akm_link_values[dut->num_links - 1];
+-	else
+-		akm_values = dut->ap_akm_values;
+-
+-	if (dut->ap_key_mgmt == AP_OPEN && !akm_values) {
++	if (dut->ap_key_mgmt == AP_OPEN && !dut->ap_akm_values) {
+ 		dut->ap_hs2 = 0;
+ 		dut->ap_pmf = AP_PMF_DISABLED;
+ 	}
+@@ -12638,6 +12762,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_mode_1 = AP_inval;
+ 	dut->ap_is_mld = 0;
+ 	dut->num_links = 1;
++	dut->security_links = 1;
+ 	for(i = 0; i < 3; i++)
+ 		dut->band_to_link[i] = -1;
+ 	dut->ap_channel_1 = 0;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1404,6 +1404,7 @@ struct sigma_dut {
+ 	struct mld_ap mld[NUM_OF_LINKS];
+ 	int link_specific_security;
+ 	int multi_mld;
++	unsigned int security_links;
+ };
+ 
+ #ifdef NL80211_SUPPORT

@@ -1,0 +1,489 @@
+if ARCH_IPQSOC
+
+config ARCH_32BIT_SUPPORT
+	bool "IPQSOC 32-bit support"
+	select CPU_V7A
+	select SYS_ARCH_TIMER
+	select SYS_THUMB_BUILD
+	default n
+
+config ARCH_64BIT_SUPPORT
+	bool "IPQSOC 64-bit support"
+	select ARM64
+	default n
+
+config IPQ_SECURE
+	bool "IPQSOC secure call support"
+	default n
+
+config VERSION_ROLLBACK_PARTITION_INFO
+	bool "IPSOC Anti roll-back support"
+	default n
+
+config SYS_SOC
+	default "ipqsoc"
+
+config SMEM_VERSION_C
+	bool "IPQSOC Shared memory version"
+	default n
+
+config SMEM_BASE_ADDR
+	hex "Define memory for shared memory"
+
+config SYSUPGRADE_HELPER
+	bool "Enable sysupgrade tool for user space"
+	default n
+	help
+	  This is not specific to u-boot subsystem
+	  u-boot code is leveraged for user space application
+
+config NUM_ALT_PARTITION
+	int
+	default 16
+
+config RAM_NUM_PART_ENTRIES
+	int "Number of RAM partition entries which are usable by APPS"
+	default 32
+
+config SCM
+	bool "add scm call support"
+
+config RAM_PART_NAME_LENGTH
+	int "Max length of ram partition name"
+	default 16
+
+config SKIP_RESET
+	bool "skip reset"
+	default n
+
+config TEXT_SIZE
+	hex "Define Size of u-boot text size in DDR region"
+	default 0x1C0000
+
+config IPQ_ELF_AUTH
+	bool "IPQSOC elf image authentication"
+	default n
+
+config SOC_HW_VERSION_REG
+	hex "Define SoC HW version register"
+	default 0x194D000
+
+config DPR_VER_1_0
+	bool "DPR Version 1.0 support"
+	default n
+
+config DPR_VER_2_0
+	bool "DPR Version 2.0 support"
+	default n
+
+config DPR_VER_3_0
+	bool "DPR Version 3.0 support"
+	default n
+
+config DPR_VERSION
+	int "Current DPR version"
+	default 1 if DPR_VER_1_0
+	default 2 if DPR_VER_2_0
+	default 3 if DPR_VER_3_0
+
+config CAPIN_CAPOUT_SUPPORT
+	bool "Update RFA register based on Caldata"
+	default n
+
+config EARLY_CLOCK_ENABLE
+	bool "Enables the clock at earlier stage"
+	default n
+
+config MMC_FLASH_PARTITION_WRITE_PROTECT
+	bool "This enable wrtie protect in EMMC flash type"
+	depends on IPQ_MMC
+	default y
+
+config SECONDARY_UART_INDEX
+	int "Access secondary UART via cli"
+	default 2
+
+config NOR_BLK_SIZE
+	int "Block size for SPI Nor BLK device"
+	depends on NOR_BLK
+	default 4096
+
+config SCM_V1
+	bool "U-boot SCM framework version 1"
+	default n
+
+config SCM_V2
+	bool "U-boot SCM framework version 2"
+	default n
+
+config SECURE_AUTH_V1
+	bool "Secure authentication command"
+	default n
+
+config SECURE_AUTH_V2
+	bool "Secure authentication command"
+	default n
+
+config FUSE_IPQ
+	bool "Enable fuseipq command support"
+	default n
+
+config FUSEIPQ_V1
+	bool "Enable fuseipq command support with version 1"
+	default n
+
+config FUSEIPQ_V2
+	bool "Enable fuseipq command support with version 1"
+	default n
+
+config LIST_FUSE
+	bool "Enable list_fuse command"
+	default n
+
+config LIST_FUSE_V1
+	bool "Enable list_fuse command with version 1"
+	default n
+
+config LIST_FUSE_V2
+	bool "Enable list_fuse command with version 2"
+	default n
+
+config IPQ_TINY
+	bool "IPQ Tiny bootloader config"
+	imply ETH_LOW_MEM
+	default n
+
+config FAILSAFE
+	bool "Enable failsafe support"
+	default n
+
+config BOOTCONFIG_V2
+	bool "Version 2 bootconfig structure"
+	imply FAILSAFE
+	default n
+
+config BOOTCONFIG_V3
+	bool "Version 3 bootconfig structure"
+	imply FAILSAFE
+	default n
+
+config CRC32_BE
+	bool "crc32 big endian support"
+	default n
+
+config IPQ_EARLY_WDT
+	bool "Enable non-secure watchdog during low level init"
+	depends on WDT_QTI
+	default y
+
+config IPQ_DEFAULTS
+	bool "Enable default configs & tool support for IPQ SOC"
+	select OF_BOARD_SETUP
+	select PINCTRL_QTI
+	select CLK_QTI
+	select BOARD_LATE_INIT
+	select SYS_DEVICE_NULLDEV
+	select ENV_IS_NOWHERE
+	select IPQ_CRASHDUMP
+	imply IPQ_MINIDUMP
+	imply IPQ_MINIDUMP_VERSION_2
+	imply IPQ_COMPRESSED_CRASHDUMP
+	imply IPQ_CRASHDUMP_TO_USB
+	imply IPQ_CRASHDUMP_TO_MEMORY
+	imply IPQ_CRASHDUMP_TO_NVMEMORY
+	imply IPQ_CRASHDUMP_TO_FLASH
+	imply IPQ_CRASHDUMP_TO_EMMC
+	select IPQ_FLUTILS
+	select IPQ_FDT_FIXUP
+	select CMD_XIMG
+	imply CMD_MEMTEST
+	select CMD_CACHE
+	imply DMA
+	imply DMA_CHANNELS
+	select BAM_DMA if DMA
+	select BOARD_TYPES
+	imply IPQ_SECURE
+	imply VERSION_ROLLBACK_PARTITION_INFO
+	select LZMA
+	imply IPQ_SMP_CMD_SUPPORT
+	imply IPQ_SMP64_CMD_SUPPORT
+	imply CMD_AES_256
+	imply FUSE_IPQ
+	imply LIST_FUSE
+	imply WDT
+	imply WDT_QTI
+	imply CMD_WDT
+
+config IPQ_I2C
+	bool "Enable I2C support in IPQ SOC"
+	select I2C
+	select DM_I2C
+	select SYS_I2C_QUP if TARGET_IPQ9574 || TARGET_IPQ5332
+	select MSM_GENI_I2C if TARGET_IPQ5424
+	select CMD_I2C
+
+config IPQ_MMC
+	bool "Enable eMMC support in IPQ SOC"
+	select MMC_SDHCI
+	select MMC_SDHCI_MSM
+	select MMC_SDHCI_ADMA
+	select EFI_PARTITION
+	select CMD_GPT
+	select CMD_MMC
+
+config IPQ_NAND
+	bool "Enable NAND flash support in IPQ SOC"
+	select QTI_BAM
+	select NAND_QTI
+	select DM_MTD
+	select MTD_RAW_NAND
+	select MTD_UBI
+	select UBI_WRITE
+	select CMD_MTD
+	select CMD_NAND
+	select CMD_UBI
+
+config IPQ_SPI_NOR
+	bool "Enable SPI NOR flash support in IPQ SOC"
+	select SPI
+	select SPI_QUP if TARGET_IPQ9574 || TARGET_IPQ5332
+	select MSM_GENI_SPI if TARGET_IPQ5424
+	select DM_SPI
+	select DM_SPI_FLASH
+	select SPI_FLASH_STMICRO
+	select SPI_FLASH_GIGADEVICE
+	select SPI_FLASH_MACRONIX
+	select SPI_FLASH_WINBOND
+	select SPI_FLASH_SPANSION
+	select SPI_FLASH_MTD if ENV_IS_IN_SPI_FLASH
+
+config IPQ_FLASH_PART_FIXUP
+	bool "Enable Flash partition fixup support in IPQ SOC"
+	select MTD
+	select CMD_MTDPARTS
+	select FDT_FIXUP_PARTITIONS
+
+config IPQ_USB
+	bool "Enable USB support in IPQ SOC"
+	select USB
+	select MISC
+        select USB_HOST
+	select USB_DWC3
+	select USB_DWC3_GENERIC
+        select USB_STORAGE
+        select USB_XHCI_HCD
+        select DM_USB
+        select CMD_USB
+	select CMD_FAT
+	select FAT_WRITE
+
+config IPQ_NET
+	bool "Enable default Network Configurations for IPQ SOC"
+	select ETH
+	select DM_MDIO
+	select MDIO_IPQ4019
+	imply MDIO_QCOM_I2C if IPQ_I2C
+	select PHYLIB
+	select PHY_QTI
+	select CMD_NET
+	select CMD_MDIO
+	select CMD_MII
+	select CMD_PING
+	select CMD_TFTPPUT
+	select CMD_DHCP
+	select TFTP_PORT
+	imply ETH_SKIP_INIT_R
+
+config ETH_MAX_MAC
+	hex "Define Maximum MAC support in SoC"
+	default 2
+
+config ETH_MAX_UNIPHY
+	int "Maximum number of uniphy available"
+	default 2
+
+config IPQ_PCIE
+	bool "Enable PCIE support in IPQ SOC"
+	select PCI
+	select PCIE_DW_QTI
+	select CMD_PCI
+
+config IPQ_QCN9224_FUSING
+	depends on IPQ_PCIE
+	bool "Enable QCN9224 Fusing"
+
+config IPQ_MAX_PCIE
+	int "Max PCIE supported in IPQSOC"
+	depends on PCI
+	default 3 if TARGET_IPQ5332
+	default 4 if TARGET_IPQ9574
+	default 4 if TARGET_IPQ5424
+
+config IPQ_SMP_CMD_SUPPORT
+	bool "IPQ SMP command support"
+	depends on ARCH_32BIT_SUPPORT
+	default n
+
+config BASE_CPU_64BIT_BOOTUP
+	bool "Base CPU 64-bit boot up"
+	default n
+
+config IPQ_SMP64_CMD_SUPPORT
+	bool "IPQ SMP64 command support"
+	depends on ARCH_64BIT_SUPPORT
+	default n
+
+config CMD_AES_256
+	bool "AES 256 command support"
+	default n
+
+config AES_256_DERIVE_KEY
+	bool "AES 256 derive key support"
+	depends on CMD_AES_256
+	default n
+
+config GPT_UPDATE_PARAMS
+	bool "Update GPT parameters"
+	depends on IPQ_MMC || NOR_BLK
+	default n
+
+config GPIO_CONFIG
+	bool "NOP driver for pincntrl configuration"
+	default n
+
+config SDX_ATTACH_SUPPORT
+	bool "enable SDX support"
+	imply GPIO_CONFIG
+	default n
+
+config CB_CALIB
+	bool "Enable cold boot calibration"
+	depends on IPQ_PCIE
+	default n
+
+choice
+	prompt "IPQ board select"
+
+config TARGET_IPQ5332
+	bool "QTI IPQ5332 SOC"
+	select SMEM_VERSION_C
+	select SCM
+	select IPQ_DEFAULTS
+	imply IPQ_I2C
+	select IPQ_NET
+	select QTI_NSS_SWITCH
+	imply PHY_QTI_8X8X
+	imply PHY_QTI_8081
+	imply PHY_QCA_81XX
+	imply PHY_AQUANTIA
+	imply IPQ_PCIE
+	select PHY if IPQ_USB
+        select PHY_QTI_USB_HS_M31 if IPQ_USB
+        select PHY_QTI_UNI_SSPHY if IPQ_USB
+        imply IPQ_QCN9224_FUSING
+	imply IPQ_ELF_AUTH
+	imply DPR_VER_2_0
+	select CAPIN_CAPOUT_SUPPORT
+	imply AES_256_DERIVE_KEY
+	select SCM_V1
+	select SECURE_AUTH_V1 if IPQ_SECURE && SCM_V1
+	imply FUSEIPQ_V1 if IPQ_SECURE && SCM_V1
+	imply LIST_FUSE_V2 if IPQ_SECURE && SCM_V1
+	select BOOTCONFIG_V2
+	imply CB_CALIB
+	help
+	  Support for the IPQ53XX SoC.
+	  - Board Open Platform Specifications.
+	  - Quad Cores A53, Nom@1.2G ,Turbo@1.5G, L1@32KB L2@512KB
+	  - DDR3L/DDR4
+	  - QSPI NAND / NOR / eMMC
+	  - USB 3.0/I2C/UART/PCIe Gen3 2Lane
+	  - 1G/2.5G/10G Ethernet Ports
+
+config TARGET_IPQ9574
+	bool "QTI IPQ9574 SOC"
+	select SMEM_VERSION_C
+	select SCM
+	select IPQ_DEFAULTS
+	imply IPQ_I2C
+	select IPQ_NET
+	select QTI_NSS_SWITCH
+	imply PHY_QTI_8075
+	imply PHY_QTI_8X8X
+	imply PHY_QTI_8081
+	imply PHY_QCA_81XX
+	imply PHY_AQUANTIA
+	imply IPQ_PCIE
+	select PHY if IPQ_PCIE || IPQ_USB
+	select PHY_QTI_QMP_PCIE
+        select PHY_QTI_QUSB2 if IPQ_USB
+        select PHY_QTI_QMP_USB3 if IPQ_USB
+        imply IPQ_QCN9224_FUSING
+	imply IPQ_ELF_AUTH
+	imply DPR_VER_1_0
+	imply AES_256_DERIVE_KEY
+	select QSPI_LAYOUT_SWITCH if IPQ_NAND
+	select SCM_V1
+	select SECURE_AUTH_V1 if IPQ_SECURE && SCM_V1
+	imply FUSEIPQ_V1 if IPQ_SECURE && SCM_V1
+	imply LIST_FUSE_V1 if IPQ_SECURE && SCM_V1
+	select BOOTCONFIG_V2
+	imply SDX_ATTACH_SUPPORT
+	imply CB_CALIB
+	help
+	  Support for IPQ95xx SoC.
+	  - Board Open Platform Specifications.
+	  - Quad Cores A73, max@2.2G, L1@32KB L2@512KB
+	  - DDR3L/DDR4
+	  - QSPI NAND / NOR / eMMC
+	  - USB 3.0/I2C/UART/PCIe Gen3 2Lane
+	  - 1G/2.5G/10G Ethernet Ports
+
+config TARGET_IPQ5424
+	bool "QTI IPQ5424"
+	select SMEM_VERSION_C
+	select SCM
+	select IPQ_DEFAULTS
+	imply IPQ_I2C
+	select IPQ_NET
+	select QTI_NSS_SWITCH
+	imply PHY_QTI_8X8X
+	imply PHY_QCA_81XX
+	imply PHY_AQUANTIA
+	imply IPQ_USB
+	imply IPQ_PCIE
+	select PHY if IPQ_PCIE || IPQ_USB
+	select PHY_QTI_QMP_PCIE if IPQ_PCIE
+	select PHY_QTI_QUSB2 if IPQ_USB
+	select PHY_QTI_QMP_USB3 if IPQ_USB
+	select QCOM_GENI_SE_FW_LOAD
+	imply NOR_BLK
+	imply GPT_UPDATE_PARAMS
+	imply IPQ_ELF_AUTH
+	imply DPR_VER_3_0
+	select SCM_V2
+	select BASE_CPU_64BIT_BOOTUP
+	select HASH
+	select SHA384
+	select SECURE_AUTH_V2 if IPQ_SECURE && SCM_V2
+	select EARLY_CLOCK_ENABLE
+	imply FUSEIPQ_V2 if IPQ_SECURE && SCM_V2
+	imply LIST_FUSE_V2 if IPQ_SECURE && SCM_V2
+	imply BOARD_EARLY_INIT_R
+        imply IPQ_QCN9224_FUSING
+	imply AES_256_DERIVE_KEY
+	select BOOTCONFIG_V3
+        imply CRC32_BE
+	imply CB_CALIB
+	imply SDX_ATTACH_SUPPORT
+	help
+	  Support for IPQ5424 SoC.
+
+endchoice
+
+source "board/qti/common/Kconfig"
+source "board/qti/ipq5332/Kconfig"
+source "board/qti/ipq9574/Kconfig"
+source "board/qti/ipq5424/Kconfig"
+
+endif

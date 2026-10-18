@@ -1,0 +1,42 @@
+From 7d836ee29e71779e522397b06e9be9061597d2a8 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Thu, 25 Sep 2025 12:42:48 +0530
+Subject: [PATCH] serial: msm: Add TX status in pending operations
+
+During soft reboot, last few characters from serial port
+not reached the console. Console framework already has
+support to wait till all TX transactions gets over.
+
+So, add support in serial pending ops to get the status
+serial subsystem TX FIFO status.
+
+Change-Id: Iff952a9b59a4f077278f032ad45c97e7f8b78885
+Signed-off-by: Ram Kumar D <quic_ramd@quicinc.com>
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/serial/serial_msm.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/serial/serial_msm.c b/drivers/serial/serial_msm.c
+index 46d92b92394..72f777d4e27 100644
+--- a/drivers/serial/serial_msm.c
++++ b/drivers/serial/serial_msm.c
+@@ -151,9 +151,15 @@ static int msm_serial_putc(struct udevice *dev, const char ch)
+ 
+ static int msm_serial_pending(struct udevice *dev, bool input)
+ {
++	struct msm_serial_data *priv = dev_get_priv(dev);
++
+ 	if (input) {
+ 		if (msm_serial_fetch(dev))
+ 			return 1;
++	} else {
++		/* check if tx fifo is not empty */
++		if (!(readl(priv->base + UARTDM_SR) & UARTDM_SR_TX_EMPTY))
++			return 1;
+ 	}
+ 
+ 	return 0;
+-- 
+2.34.1
+

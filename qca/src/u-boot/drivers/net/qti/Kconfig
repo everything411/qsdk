@@ -1,0 +1,27 @@
+config ETH_IPQ5332
+	depends on DM && QTI_NSS_SWITCH && TARGET_IPQ5332
+	default y
+	bool "Ethernet driver for QTI IPQ5332"
+	help
+	  Enable this to support the ethernet in IPQ5332 SoCs.
+
+config ETH_IPQ9574
+	depends on DM && QTI_NSS_SWITCH && TARGET_IPQ9574
+	default y
+	bool "Ethernet driver for QTI IPQ9574"
+	help
+	  Enable this to support the ethernet in QTI IPQ9574 Soc.
+
+config ETH_IPQ5424
+	depends on DM && QTI_NSS_SWITCH && TARGET_IPQ5424
+	default y
+	bool "Ethernet driver for QTI IPQ5424"
+	help
+	  Enable this to support the ethernet in QTI IPQ5424 Soc.
+
+config ETH_LOW_MEM
+	depends on DM && QTI_NSS_SWITCH
+	default n
+	bool "Enable low memory configuration on IPQ ethernet driver"
+	help
+	  Enable low memory configuration on IPQ SoC ethernet driver

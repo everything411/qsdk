@@ -1,0 +1,84 @@
+From 18bfd89683a24d3b8f501d8b9091341ca912359a Mon Sep 17 00:00:00 2001
+From: Thomas Wu <quic_wthomas@quicinc.com>
+Date: Tue, 2 Apr 2024 14:55:56 -0700
+Subject: [PATCH] sigma_dut: Store Non TX MAC Address
+
+When executing cmd_ap_get_mac_address(), returned
+mac address does not match link mac address.
+
+Properly store the non-tx bss address from
+cmd_ap_config_commit() and allow
+cmd_ap_get_mac_address() to retrieve the non-tx
+bss address.
+
+Signed-off-by: Thomas Wu <quic_wthomas@quicinc.com>
+---
+ ap.c        | 32 +++++++++++++++++++++-----------
+ sigma_dut.h |  1 +
+ 2 files changed, 22 insertions(+), 11 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index fb4a59a..d8feabc 100644
+--- a/ap.c
++++ b/ap.c
+@@ -10801,6 +10801,8 @@ skip_vht_parameters_set:
+ 				bssid[0], bssid[1], bssid[2], bssid[3],
+ 				bssid[4], bssid[5]);
+ 
++			memcpy(dut->mbss.conf[i].non_tx_bssid, bssid, 6);
++
+ 			if (dut->mbss.conf[i].key_mgmt == AP_WPA2_SAE) {
+ 				fprintf(f, "wpa=2\n");
+ 				fprintf(f, "wpa_key_mgmt=SAE\n");
+@@ -13999,17 +14001,25 @@ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 	memcpy(addr, ifr.ifr_hwaddr.sa_data, 6);
+ 
+ 	if (get_driver_type(dut) == DRIVER_MAC80211 &&
+-	   dut->program == PROGRAM_EHT && (mld_id == 2 || non_tx_bss_idx) && link_id > 0) {
+-		addr[0] = addr[0] - 2;
+-		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
+-			 addr[0], addr[1], addr[2], addr[3], addr[4]-1,
+-			 addr[5]);
+-	} else if (get_driver_type(dut) == DRIVER_MAC80211 &&
+-	    (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) &&
+-		link_id > 0) {
+-		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
+-			 addr[0], addr[1], addr[2], addr[3], addr[4] - 1,
+-			 addr[5] - 1);
++	    (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) && link_id > 0) {
++		if (mld_id == 2) {
++			addr[0] = addr[0] - 2;
++			snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
++				 addr[0], addr[1], addr[2], addr[3], addr[4]-1,
++				 addr[5]);
++		} else if (non_tx_bss_idx) {
++			snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
++				 dut->mbss.conf[non_tx_bss_idx - 1].non_tx_bssid[0],
++				 dut->mbss.conf[non_tx_bss_idx - 1].non_tx_bssid[1],
++				 dut->mbss.conf[non_tx_bss_idx - 1].non_tx_bssid[2],
++				 dut->mbss.conf[non_tx_bss_idx - 1].non_tx_bssid[3],
++				 dut->mbss.conf[non_tx_bss_idx - 1].non_tx_bssid[4],
++				 dut->mbss.conf[non_tx_bss_idx - 1].non_tx_bssid[5]);
++		} else {
++			snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
++				 addr[0], addr[1], addr[2], addr[3], addr[4] - 1,
++				 addr[5] - 1);
++		}
+ 	} else
+ 		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
+ 			 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+diff --git a/sigma_dut.h b/sigma_dut.h
+index ca732c6..72875df 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -556,6 +556,7 @@ struct mbss_config {
+ 	char ssid[MAX_SSID_LEN];
+ 	enum ap_key_mgmt key_mgmt;
+ 	char psk[MAX_PSK_LEN];
++	unsigned char non_tx_bssid[6];
+ };
+ 
+ struct mbss_support {
+-- 
+2.25.1
+

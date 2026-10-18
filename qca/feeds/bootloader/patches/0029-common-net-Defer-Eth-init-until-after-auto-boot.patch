@@ -1,0 +1,87 @@
+From 831ea9f2785b271c19c7ed7a2c11a804464ec36c Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Tue, 27 May 2025 11:11:15 +0530
+Subject: [PATCH] common: net: Defer Eth init until after auto-boot
+
+This patch skips Ethernet initialization before
+auto-boot to avoid unnecessary boot delays
+when Ethernet is not required.
+
+Change-Id: I6b7b59b856a31ef3101148d58c7de09e18d1c863
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ common/Kconfig    | 9 +++++++++
+ common/autoboot.c | 7 +++++++
+ common/board_r.c  | 4 ++--
+ 3 files changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/common/Kconfig b/common/Kconfig
+index 7685914fa6f..9307e3a9b15 100644
+--- a/common/Kconfig
++++ b/common/Kconfig
+@@ -831,6 +831,15 @@ config RESET_PHY_R
+ 	  Implement reset_phy() in board code if required to reset the ethernet
+ 	  PHY.
+ 
++config ETH_SKIP_INIT_R
++	bool "Skip Ethernet initialization after relocation"
++	depends on ETH
++	default n
++	help
++	   If enabled, U-Boot will skip calling eth_initialize() after relocation.
++	   This is useful when Ethernet is not required in the default boot flow.
++	   Disabled by default.
++
+ endmenu
+ 
+ endmenu		# Init options
+diff --git a/common/autoboot.c b/common/autoboot.c
+index 898a57bc92b..c77c67272ae 100644
+--- a/common/autoboot.c
++++ b/common/autoboot.c
+@@ -58,6 +58,9 @@ static int menukey;
+ #define AUTOBOOT_MENUKEY 0
+ #endif
+ 
++#if defined(CONFIG_CMD_NET) && defined(CONFIG_ETH_SKIP_INIT_R)
++extern int initr_net(void);
++#endif
+ /**
+  * passwd_abort_crypt() - check for a crypt-style hashed key sequence to abort booting
+  *
+@@ -410,6 +413,10 @@ static int abortboot_single_key(int bootdelay)
+ 
+ 	putc('\n');
+ 
++#if defined(CONFIG_CMD_NET) && defined(CONFIG_ETH_SKIP_INIT_R)
++	initr_net();
++#endif
++
+ 	return abort;
+ }
+ 
+diff --git a/common/board_r.c b/common/board_r.c
+index 179259b00de..160ea1dcfd0 100644
+--- a/common/board_r.c
++++ b/common/board_r.c
+@@ -489,7 +489,7 @@ static int initr_boot_led_on(void)
+ }
+ 
+ #if defined(CONFIG_CMD_NET)
+-static int initr_net(void)
++__weak int initr_net(void)
+ {
+ 	puts("Net:   ");
+ 	eth_initialize();
+@@ -755,7 +755,7 @@ static init_fnc_t init_sequence_r[] = {
+ #ifdef CONFIG_PCI_ENDPOINT
+ 	pci_ep_init,
+ #endif
+-#if defined(CONFIG_CMD_NET)
++#if defined(CONFIG_CMD_NET) && !defined(CONFIG_ETH_SKIP_INIT_R)
+ 	INIT_FUNC_WATCHDOG_RESET
+ 	initr_net,
+ #endif
+-- 
+2.34.1
+

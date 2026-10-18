@@ -1,0 +1,45 @@
+From e3f28f17a231b33ffa063bd482176d5e9517ea17 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Thu, 17 Jul 2025 11:52:50 +0530
+Subject: [PATCH] drivers: pci: Handle optional PHY gracefully
+
+Update PCIe PHY retrieval logic to treat -ENOENT
+as a non-fatal error, allowing platforms without
+a PHY to proceed without failure.
+
+This ensures compatibility with systems where the
+PCIe PHY is optional or not present, while still
+logging and returning other unexpected errors.
+
+Change-Id: I6d974a841834092d17ab8e05aec5aa4915b0a07d
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/pci/pcie_dw_qcom.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/pci/pcie_dw_qcom.c b/drivers/pci/pcie_dw_qcom.c
+index c38c811b696..2bc59df5af3 100644
+--- a/drivers/pci/pcie_dw_qcom.c
++++ b/drivers/pci/pcie_dw_qcom.c
+@@ -553,10 +553,16 @@ static int qcom_pcie_parse_dt(struct udevice *dev)
+ 		return ret;
+ 	}
+ 
++	/* If PHY retrieval fails for reasons other than
++	 * it being absent (ENOENT), log the error and
++	 * return the failure code.
++	 */
+ 	ret = generic_phy_get_by_index(dev, 0, &priv->phy);
+ 	if (ret) {
+-		dev_err(dev, "failed to get pcie phy (%d)\n", ret);
+-		return ret;
++		if (ret != -ENOENT) {
++			dev_err(dev, "failed to get pcie phy (%d)\n", ret);
++			return ret;
++		}
+ 	}
+ 
+ 	for (vreg = 0; vreg < NUM_SUPPLIES; ++vreg) {
+-- 
+2.34.1
+

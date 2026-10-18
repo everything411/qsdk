@@ -1,0 +1,28 @@
+From 85e621d2e84c1d82bbf45c4e36b80e857b44d3d7 Mon Sep 17 00:00:00 2001
+From: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+Date: Tue, 11 Aug 2026 19:40:58 +0530
+Subject: [PATCH] arm: dts: ipq96xx: Enable build for RDP525
+
+Enable build support for the following RDP525
+
+Change-Id: Iacfbf1ea33def8c2e86add73c838f1bd30960dcd
+Signed-off-by: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 5667478306e..a4ab9e8c176 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -34,6 +34,7 @@ dtb-$(CONFIG_TARGET_IPQ9650) += ipq9650-emulation.dtb \
+ 				ipq9650-rdp490.dtb \
+ 				ipq9650-rdp491.dtb \
+ 				ipq9650-rdp507.dtb \
++				ipq9650-rdp525.dtb \
+ 				ipq9650-rdp529.dtb \
+ 				ipq9650-rdp530.dtb \
+ 				ipq9650-rdp532.dtb \
+-- 
+2.34.1
+

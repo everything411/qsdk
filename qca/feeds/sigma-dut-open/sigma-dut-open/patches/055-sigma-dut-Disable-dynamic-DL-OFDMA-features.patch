@@ -1,0 +1,53 @@
+From 0369b3b91a312191e0f3f7aceb31e2711d1b565c Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Tue, 28 Jun 2022 18:18:13 +0530
+Subject: [PATCH] sigma-dut: Disable dynamic DL-OFDMA features
+
+Following features have been introduced in FW to decide DL-OFDMA
+dynamically,
+
+1. Disable DL-OFDMA if channel access latency between subsequent
+DL OFDMA transmissions is below a certain threshold, where
+OFDMA does not provide a clear benefit. 
+2. Disable DL-OFDMA if the DL OFDMA PHY rate is significantly lower
+than the SU PHY rate.
+3.Modify the grouping behavior such that only similar MCS users are
+grouped in DL OFDMA transmissions.
+
+Add changes to disable above fetaures and force DL-OFDMA for
+WFA testing.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ ap.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 028c51d..398049d 100644
+--- a/ap.c
++++ b/ap.c
+@@ -8013,6 +8013,21 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname)
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 8 0", ifname);
+ 		/* Enable MU 11ax support in sch algo */
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 29 0", ifname);
++		/* Command to disable FW feature where DL OFDMA will be dynamically
++		 * disabled, if the DL OFDMA PHY rate is much lower than the
++		 * DL SU PHY rate.
++		 */
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 418 0", ifname);
++		/* Command to disable FW feature where grouping of similar OFDMA MCS
++		 * users together, and drop low MCS users from being grouped with high
++		 * MCS users and vice versa.
++		 */
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 422 0", ifname);
++		/* Command to disable FW feature where DL OFDMA is disabled, if the
++		 * average channel access latency between subsequent DL OFDMA
++		 * transmissions is below a certain threshold.
++		 */
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 427 0", ifname);
+ 		/* Enable to sort RU allocation */
+ 		fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 2 1", ifname);
+ 	}
+-- 
+2.7.4
+

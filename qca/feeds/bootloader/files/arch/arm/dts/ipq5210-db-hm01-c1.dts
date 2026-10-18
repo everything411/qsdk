@@ -1,0 +1,373 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include "ipq5210-u-boot.dtsi"
+#include <asm/arch/dt-bindings/clock/qcom,qce2204-nsscc.h>
+#include <asm/arch/dt-bindings/reset/qcom,qce2204-nsscc.h>
+
+/ {
+	model = "Qualcomm Technologies, Inc. IPQ5210 DB-HM01-C1";
+	compatible = "qcom,ipq5210-db-hm01-c1", "qcom,ipq5210";
+
+	aliases {
+		serial0 = &uart1;
+	};
+
+	soc@0 {
+		qmp_ssphy_0: ssphy@7D000 {
+			status = "okay";
+		};
+
+		qusb2_phy_0: qusb2_0@7B000 {
+			status = "okay";
+		};
+
+		usb3_0: usb3_0@8af8800 {
+			status = "okay";
+		};
+
+		pcie0_phy: phy@84000 {
+			status = "okay";
+		};
+
+		pcie0: pcie@70000000 {
+			pinctrl-0 = <&pcie0_default_state>;
+			pinctrl-names = "default";
+			perst-gpios = <&tlmm 32 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		pcie1_phy: phy@f4000 {
+			status = "okay";
+		};
+
+		pcie1: pcie@50000000 {
+			pinctrl-0 = <&pcie1_default_state>;
+			pinctrl-names = "default";
+			perst-gpios = <&tlmm 29 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		mdio_ahb: mdio-ahb@1400000 {
+			phy3: phy@29 {
+				reg = <29 0>;
+				phy_addr = <29>;
+				phy_type = <INTERNAL_PHY_TYPE>;
+				id = <4>;
+				uniphy_id = <0XFF>;
+				uniphy_type = <1>;
+
+				clocks = <&nsscc NSS_CC_EPHY_RX_CLK>,
+					 <&nsscc NSS_CC_EPHY_TX_CLK>,
+					 <&gcc GCC_GEPHY_SYS_CLK>;
+				clock-names = "ephy_rx_clk",
+					      "ephy_tx_clk",
+					      "sys_clk";
+
+				resets = <&nsscc NSS_CC_EPHY_RX_CLK_ARES>,
+					 <&nsscc NSS_CC_EPHY_TX_CLK_ARES>,
+					 <&gcc GCC_GEPHY_SYS_CLK_ARES>;
+				reset-names = "ephy_rx_reset",
+					      "ephy_tx_reset",
+					      "sys_clk_reset";
+
+				qcom,ldo-bias-reg = <0x1961000>;
+				qcom,pll-src-sel-reg = <0x9B42c>;
+				qcom,ephy-rx-mux-reg = <0x39B00610 0x0>;
+				qcom,ephy-tx-mux-reg = <0x39B00614 0x0>;
+			};
+		};
+
+		mdio: mdio@90000 {
+			status = "okay";
+
+			qce2204_cc: clock-controller@6 {
+				compatible = "qcom,qce2204-nsscc";
+				reg = <6 0>;
+				#clock-cells = <1>;
+				#reset-cells = <1>;
+			};
+
+			phy0: phy@0 {
+				phy-reset-gpio = <&tlmm 24 0>;
+				reg = <0 0>;
+				phy_addr = <0>;
+				phy_type = <QCE1204_PHY_TYPE>;
+				id = <1>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+				qcom,package-mode = "qusgmii";
+				base_addr = <0>;
+
+				/* Per-PHY clocks */
+				clocks = <&qce2204_cc QCE2204_NSSCC_SRDS1_SYS_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC1_GEPHY0_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC1_GEPHY0_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_GEPHY0_SYS_CLK>,
+					/* Shared clocks for package */
+					<&qce2204_cc QCE2204_NSSCC_MAC1_SRDS1_CH0_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC1_SRDS1_CH0_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC0_1_SRDS1_CH0_XGMII_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC0_1_SRDS1_CH0_XGMII_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_SRDS1_CH1_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_SRDS1_CH1_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_SRDS1_CH1_XGMII_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_SRDS1_CH1_XGMII_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_SRDS1_CH2_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_SRDS1_CH2_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_SRDS1_CH2_XGMII_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_SRDS1_CH2_XGMII_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_SRDS1_CH3_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_SRDS1_CH3_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_SRDS1_CH3_XGMII_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_SRDS1_CH3_XGMII_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_AHB_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_SRDS1_RX_MUX_SEL>,
+					<&qce2204_cc QCE2204_NSSCC_SRDS1_TX_MUX_SEL>,
+					<&qce2204_cc QCE2204_NSSCC_SRDS1_XGMII_RX_MUX_SEL>,
+					<&qce2204_cc QCE2204_NSSCC_SRDS1_XGMII_TX_MUX_SEL>;
+				clock-names = "pcs_sys_clk", "tx_clk", "rx_clk", "sys_clk",
+					"ch0_gmii_tx_clk",
+					"ch0_gmii_rx_clk",
+					"ch0_xgmii_tx_clk",
+					"ch0_xgmii_rx_clk",
+					"ch1_gmii_tx_clk",
+					"ch1_gmii_rx_clk",
+					"ch1_xgmii_tx_clk",
+					"ch1_xgmii_rx_clk",
+					"ch2_gmii_tx_clk",
+					"ch2_gmii_rx_clk",
+					"ch2_xgmii_tx_clk",
+					"ch2_xgmii_rx_clk",
+					"ch3_gmii_tx_clk",
+					"ch3_gmii_rx_clk",
+					"ch3_xgmii_tx_clk",
+					"ch3_xgmii_rx_clk",
+					"ahb_clk",
+					"srds1_rx_mux",
+					"srds1_tx_mux",
+					"srds1_xgmii_rx_mux",
+					"srds1_xgmii_tx_mux";
+
+				/* Per-PHY resets */
+				resets = <&qce2204_cc QCE2204_NSSCC_SRDS1_SYS_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC1_GEPHY0_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC1_GEPHY0_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_GEPHY0_SYS_ARES>,
+					/* Shared resets for package */
+					<&qce2204_cc QCE2204_NSSCC_MAC1_SRDS1_CH0_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC1_SRDS1_CH0_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC0_1_SRDS1_CH0_XGMII_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC0_1_SRDS1_CH0_XGMII_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_SRDS1_CH1_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_SRDS1_CH1_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_SRDS1_CH1_XGMII_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_SRDS1_CH1_XGMII_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_SRDS1_CH2_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_SRDS1_CH2_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_SRDS1_CH2_XGMII_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_SRDS1_CH2_XGMII_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_SRDS1_CH3_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_SRDS1_CH3_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_SRDS1_CH3_XGMII_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_SRDS1_CH3_XGMII_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SRDS1_XPCS_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_BTQ_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_CFG_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_CORE_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_IPE_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_MAC0_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_MAC1_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_MAC2_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_MAC3_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_MAC4_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_SWITCH_MAC5_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_XGMAC0_PTP_REF_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_XGMAC1_PTP_REF_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC0_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC0_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC1_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC1_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC4_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC5_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC5_RX_ARES>;
+				reset-names = "pcs_sys_reset", "tx_reset", "rx_reset", "sys_reset",
+					"ch0_gmii_tx_reset",
+					"ch0_gmii_rx_reset",
+					"ch0_xgmii_tx_reset",
+					"ch0_xgmii_rx_reset",
+					"ch1_gmii_tx_reset",
+					"ch1_gmii_rx_reset",
+					"ch1_xgmii_tx_reset",
+					"ch1_xgmii_rx_reset",
+					"ch2_gmii_tx_reset",
+					"ch2_gmii_rx_reset",
+					"ch2_xgmii_tx_reset",
+					"ch2_xgmii_rx_reset",
+					"ch3_gmii_tx_reset",
+					"ch3_gmii_rx_reset",
+					"ch3_xgmii_tx_reset",
+					"ch3_xgmii_rx_reset",
+					"xpcs",
+					"switch_btq_reset",
+					"switch_cfg_reset",
+					"switch_core_reset",
+					"switch_ipe_reset",
+					"switch_mac0_reset",
+					"switch_mac1_reset",
+					"switch_mac2_reset",
+					"switch_mac3_reset",
+					"switch_mac4_reset",
+					"switch_mac5_reset",
+					"xgmac0_ptp_ref_reset",
+					"xgmac1_ptp_ref_reset",
+					"mac0_tx_reset",
+					"mac0_rx_reset",
+					"mac1_tx_reset",
+					"mac1_rx_reset",
+					"mac2_tx_reset",
+					"mac2_rx_reset",
+					"mac3_tx_reset",
+					"mac3_rx_reset",
+					"mac4_tx_reset",
+					"mac4_rx_reset",
+					"mac5_tx_reset",
+					"mac5_rx_reset";
+			};
+
+			phy1: phy@1 {
+				reg = <1 0>;
+				phy_addr = <1>;
+				phy_type = <QCE1204_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+				qcom,package-mode = "qusgmii";
+
+				clocks = <&qce2204_cc QCE2204_NSSCC_MAC2_GEPHY1_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_GEPHY1_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_GEPHY1_SYS_CLK>;
+				clock-names = "tx_clk", "rx_clk", "sys_clk";
+
+				resets = <&qce2204_cc QCE2204_NSSCC_MAC2_GEPHY1_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC2_GEPHY1_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_GEPHY1_SYS_ARES>;
+				reset-names = "tx_reset", "rx_reset", "sys_reset";
+			};
+
+			phy2: phy@2 {
+				reg = <2 0>;
+				phy_addr = <2>;
+				phy_type = <QCE1204_PHY_TYPE>;
+				id = <3>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+				qcom,package-mode = "qusgmii";
+
+				clocks = <&qce2204_cc QCE2204_NSSCC_MAC3_GEPHY2_TX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_GEPHY2_RX_CLK>,
+					<&qce2204_cc QCE2204_NSSCC_GEPHY2_SYS_CLK>;
+				clock-names = "tx_clk", "rx_clk", "sys_clk";
+
+				resets = <&qce2204_cc QCE2204_NSSCC_MAC3_GEPHY2_TX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_MAC3_GEPHY2_RX_ARES>,
+					<&qce2204_cc QCE2204_NSSCC_GEPHY2_SYS_ARES>;
+				reset-names = "tx_reset", "rx_reset", "sys_reset";
+			};
+
+			phy4: phy@8 {
+				phy-reset-gpio = <&tlmm 45 0>;
+				phy_addr = <8>;
+				phy_type = <QCA81xx_PHY_TYPE>;
+				id = <5>;
+				uniphy_id = <1>;
+				uniphy_type = <1>;
+				xgmac;
+			};
+		};
+
+		ess_instance: ess-instance {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			phy-handle2 = <&phy2>;
+			phy-handle3 = <&phy3>;
+			phy-handle4 = <&phy4>;
+			status = "okay";
+		};
+	};
+};
+
+&tlmm {
+	pcie0_default_state: pcie0-default-state {
+		perst-n-pins {
+			pins = "gpio32";
+			function = "gpio";
+			drive-strength = <6>;
+			bias-pull-down;
+			output-low;
+		};
+	};
+
+	pcie1_default_state: pcie1-default-state {
+		perst-n-pins {
+			pins = "gpio29";
+			function = "gpio";
+			drive-strength = <6>;
+			bias-pull-down;
+			output-low;
+		};
+	};
+
+	phy_rst_pinmux: phy_rst {
+		qti_laguna0_rst {
+			pins = "gpio45";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-up;
+			output-high;
+		};
+	};
+
+	i2c0_pinmux: i2c0 {
+		i2c0_scl {
+			pins = "gpio20";
+			function = "qup_se2_l1";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		i2c0_sda {
+			pins = "gpio21";
+			function = "qup_se2_l0";
+			drive-strength = <8>;
+			bias-disable;
+		};
+	};
+};
+
+&qupv3 {
+	i2c0: i2c@1a88000 {
+		pinctrl-0 = <&i2c0_pinmux>;
+		pinctrl-names = "default";
+		status = "okay";
+	};
+};
+
+&tmel_qmp {
+	status = "okay";
+};
+
+&tmelcom {
+	status = "okay";
+};

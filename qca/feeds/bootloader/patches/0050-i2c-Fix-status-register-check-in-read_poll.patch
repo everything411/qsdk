@@ -1,0 +1,55 @@
+From 04792d307cb8ea78e78cd47bd1662f69ab553c38 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Fri, 25 Jul 2025 11:43:47 +0530
+Subject: [PATCH] i2c: Fix status register check in read_poll()
+
+The condition used in read_poll() to evaluate the I2C status register
+was incorrect, which could result in missed status flags or premature
+timeouts during polling.
+
+Change-Id: I7d3cb228ec6904541739d57878f1cbf0fcea1ad0
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/i2c/qup_i2c.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/i2c/qup_i2c.c b/drivers/i2c/qup_i2c.c
+index 0e4f8813158..8163610f419 100644
+--- a/drivers/i2c/qup_i2c.c
++++ b/drivers/i2c/qup_i2c.c
+@@ -213,8 +213,8 @@ static int check_write_done(struct qup_i2c_priv *qup)
+ 	u32 val;
+ 	int ret = 0;
+ 
+-	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL ,
+-				       val, val & BIT(4),
++	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL,
++				       val, !(val & BIT(4)),
+ 				       10, TOUT_CNT * 10);
+ 	return ret;
+ }
+@@ -615,8 +615,8 @@ static int qup_i2c_probe_chip(struct udevice *dev, uint chip_addr,
+ 	if (ret)
+ 		goto out;
+ 
+-	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL ,
+-				       val, !(val & QUP_OUT_SVC_FLAG),
++	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL,
++				       val, val & QUP_OUT_SVC_FLAG,
+ 				       10, 1000);
+ 
+ 	if (ret)
+@@ -631,8 +631,8 @@ static int qup_i2c_probe_chip(struct udevice *dev, uint chip_addr,
+ 		goto out;
+ 	}
+ 
+-	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL ,
+-				       val, !(val & QUP_IN_SVC_FLAG),
++	ret = readl_poll_sleep_timeout(qup->base + QUP_OPERATIONAL,
++				       val, val & QUP_IN_SVC_FLAG,
+ 				       10, 1000);
+ 
+ 	if (ret)
+-- 
+2.34.1
+

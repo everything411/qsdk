@@ -1,0 +1,15 @@
+if TARGET_IPQ5332
+
+config SYS_BOARD
+	default "ipq5332"
+
+config SYS_VENDOR
+	default "qti"
+
+config SYS_SOC
+	default "ipq5332"
+
+config SYS_CONFIG_NAME
+	default "ipq5332"
+
+endif

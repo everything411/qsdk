@@ -1,0 +1,153 @@
+From ea467efb21362009c86eb837b208ef55ffad3e71 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Mon, 23 Jun 2025 15:43:06 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Adding support for WiFi 7 R2
+ sounding feature
+
+Adding support for WiFi 7 R2 APUT Trigger Based Single User sounding
+tests. CAPI parameters added to support the feature are
+TriggeredSUBFeedback, NumUsersOFDMA, Trigger_TxBF, FullBW_TBSUSounding
+and PartialBW_TBSUSounding
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c        | 98 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ sigma_dut.h |  2 ++
+ 2 files changed, 100 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -3014,6 +3014,36 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	/* This API extends the current implementation to parse the CAPI for SUB Feedback */
++	val = get_param(cmd, "TriggeredSUBFeedback");
++	if (val) {
++		int triggeredsubfb = -1;
++		triggeredsubfb = atoi(val);
++		if (triggeredsubfb == 1) {
++			dut->ap_trigsubfb = VALUE_ENABLED;
++		} else if (triggeredsubfb == 0) {
++			dut->ap_trigsubfb = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported TriggeredSUBFeedback");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
++	val = get_param(cmd, "NumUsersOFDMA");
++	if (val) {
++		dut->num_users_ofdma = atoi(val);
++	}
++
++	val = get_param(cmd, "Trigger_TxBF");
++	if (val) {
++		if (strcasecmp(val, "disable") == 0) {
++			dut->ap_trigsubfb = VALUE_DISABLED;
++		} else if (strcasecmp(val, "enable") == 0) {
++			dut->ap_trigsubfb = VALUE_ENABLED;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -9425,6 +9455,24 @@ static int write_hostapd_conf_password(s
+ 	return 0;
+ }
+ 
++static void mac80211_enable_tbsu_sounding(struct sigma_dut *dut,
++					  const char *ifname,
++					  int link_id)
++{
++	/* disable partial sounding sequence */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 112 0", ifname, link_id);
++	/* OFDMA partial sounding disable */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 292 0", ifname, link_id);
++	/* disable ofdma sounding requests mu feedback. SU will be preffered */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 279 0", ifname, link_id);
++	if (dut->device_type == AP_testbed) {
++		/* Force codebook in NDPA frame to '1'*/
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 684 3", ifname, link_id);
++	} else {
++		/* enable STA capability based choice of codebook in NDPA frame */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 684 1", ifname, link_id);
++	}
++}
+ 
+ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int link_id)
+ {
+@@ -9808,6 +9856,9 @@ static void fwtest_set_eht_params(struct
+ 		 */
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 926 1", ifname, link_id);
+ 	}
++
++	if (dut->ap_trigsubfb == VALUE_ENABLED)
++		mac80211_enable_tbsu_sounding(dut, ifname, link_id);
+ }
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))
+@@ -13642,6 +13693,8 @@ static enum sigma_cmd_result cmd_ap_rese
+ 
+ 	dut->hostapd_running = 0;
+ 	dut->ap_scs = VALUE_NOT_SET;
++	dut->ap_trigsubfb = VALUE_NOT_SET;
++	dut->num_users_ofdma = 0;
+ 
+ 	if (get_openwrt_driver_type() == OPENWRT_DRIVER_ATHEROS)
+ 		return 1;
+@@ -19679,7 +19732,6 @@ static void mac80211_set_ackpolicy_4(str
+ 	fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 99 1", ifname);
+ }
+ 
+-
+ static enum sigma_cmd_result mac80211_ap_set_rfeature(struct sigma_dut *dut,
+ 						      struct sigma_conn *conn,
+ 						      struct sigma_cmd *cmd)
+@@ -20355,6 +20407,33 @@ static enum sigma_cmd_result mac80211_ap
+ 		}
+ 	}
+ 
++	/* This API implementats  the CAPI for Full and partial BW TBSU sounding */
++	val = get_param(cmd, "FullBW_TBSUSounding");
++	if (val && strcasecmp(val, "Enable") == 0)
++		mac80211_enable_tbsu_sounding(dut, ifname, link_id);
++
++	val = get_param(cmd, "PartialBW_TBSUSounding");
++	if (val && strcasecmp(val, "Enable") == 0) {
++		mac80211_enable_tbsu_sounding(dut, ifname, link_id);
++		/* Enable to sort RU allocation */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 2 1", ifname, link_id);
++		/* Configure based on number of users in each OFDMA transmission */
++		if (dut->num_users_ofdma == 2) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 640 1 2 1 31", ifname, link_id);
++			if (dut->ap_interface_6g)
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 996 1 996", ifname,
++							  link_id);
++			if (dut->ap_interface_5g)
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 484 1 484", ifname,
++							  link_id);
++		} else if (dut->num_users_ofdma == 4) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 640 1 4 1 31", ifname, link_id);
++			if (dut->ap_interface_5g)
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 242 1 242 2 242 3 242",
++							  ifname, link_id);
++		}
++	}
++
+ 	if (++dut->intf_defined < dut->num_links)
+ 		mac80211_ap_set_rfeature(dut, conn, cmd);
+ 
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1488,6 +1488,8 @@ struct sigma_dut {
+ 	int multi_mld;
+ 	int intf_defined;
+ 	unsigned int security_links;
++	int num_users_ofdma;
++	enum value_not_set_enabled_disabled ap_trigsubfb;
+ };
+ 
+ #ifdef NL80211_SUPPORT

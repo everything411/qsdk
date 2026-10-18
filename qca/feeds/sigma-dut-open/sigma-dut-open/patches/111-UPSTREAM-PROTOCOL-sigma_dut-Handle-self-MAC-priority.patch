@@ -1,0 +1,105 @@
+From c2dd94b93c2dddcdf1b3432579b4185f8dd4275d Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Tue, 4 Nov 2025 11:24:23 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Fixes for ML link
+reconfiguration AP testcases
+
+The neighbor preference value for self mac address is set to 0 in bss
+tm request for existing testcases. But the AP ML link reconfig
+testcases expect the neighbor preference values to be the same as the
+values configured through the ap_set_rfeature command. Hence, Add a
+condition check to prevent the neighbor preference from being
+overwritten to 0 for ML link reconfig test cases to fix the issue.
+
+Additionally, some WFA testcases requires updates as part of Wifi7 R2
+final regression Plugfest testing because when the bss tm request is
+sent from AP without partner_link_set parameter, the STA rejects the
+BTM with response code 0. Hence to fix this issue, removing the only
+case where bss tm request is sent without partner_link_set parameter,
+Now it will enter one of the remaining cases and will have the
+partner_link_set parameter set.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c        | 30 ++++++++++++++++++------------
+ sigma_dut.h |  1 +
+ 2 files changed, 19 insertions(+), 12 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 5d005e0..821ffa0 100644
+--- a/ap.c
++++ b/ap.c
+@@ -3106,6 +3106,19 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "Link_Reconfig");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0) {
++			dut->ap_linkreconfig = VALUE_ENABLED;
++		} else if (strcasecmp(val, "disable") == 0) {
++			dut->ap_linkreconfig = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported LinkReconfig");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -13693,8 +13706,10 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 		dut->ap_ttlm = VALUE_NOT_SET;
+ 	}
+ 
+-	if (dut->ap_mode == AP_11be)
++	if (dut->ap_mode == AP_11be) {
+ 		dut->ap_beacon_prot = 1;
++		dut->ap_linkreconfig = VALUE_NOT_SET;
++	}
+ 
+ 	dut->dpp_conf_id = -1;
+ 	free(dut->ap_dpp_conf_addr);
+@@ -15236,15 +15251,7 @@ static int mac80211_ap_send_frame_btm_req(struct sigma_dut *dut,
+ 		for (i = 0; i < count; i++)
+ 			strlcat(nr_cmd_buf, nr[i], sizeof(nr_cmd_buf));
+ 
+-		if (!(dut->ap_interface_5g && dut->ap_interface_6g && dut->ap_interface_2g)) {
+-			snprintf(buf, sizeof(buf),
+-				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s %s mbo=0:%d:1",
+-				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+-				mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+-				dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+-				bss_term ? bss_term_str : " ",
+-				cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
+-		} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
++		if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
+ 			snprintf(buf, sizeof(buf),
+ 				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d,%d",
+ 				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+@@ -19213,8 +19220,7 @@ static int mac80211_set_nebor(struct sigma_dut *dut, const char *ifname,
+ 			if ((dut->program == PROGRAM_EHT) &&
+ 			    (memcmp(dut->btm[neighbor_cnt].nebor_bssid[bssid_cnt],
+ 				    self_mac, ETH_ALEN) == 0) &&
+-			    (!(dut->ap_interface_5g && dut->ap_interface_6g &&
+-			       dut->ap_interface_2g)))
++			    (dut->ap_linkreconfig != VALUE_ENABLED))
+ 				dut->btm[neighbor_cnt].ap_ne_pref = 0;
+ 			bssid_cnt++;
+ 		}
+diff --git a/sigma_dut.h b/sigma_dut.h
+index 0e8f149..a7a5950 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1496,6 +1496,7 @@ struct sigma_dut {
+ 	enum value_not_set_enabled_disabled ap_dscp_cap;
+ 	enum value_not_set_enabled_disabled ap_epcs;
+ 	enum value_not_set_enabled_disabled ap_ttlm;
++	enum value_not_set_enabled_disabled ap_linkreconfig;
+ };
+ 
+ #ifdef NL80211_SUPPORT
+-- 
+2.34.1
+

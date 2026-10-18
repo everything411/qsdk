@@ -1,0 +1,49 @@
+From 14c5afa066a525afd793236ad54e139c7df9580b Mon Sep 17 00:00:00 2001
+From: Ram Kumar D <quic_ramd@quicinc.com>
+Date: Thu, 30 Jan 2025 14:37:48 +0530
+Subject: [PATCH] common: Move dyn memory init before fdtdec_setup
+
+The fdtdec_setup function requires the dynamic memory
+to be initialized before decompressing,
+especially when a compressed DTB blob is used.
+
+Therefore, the invocation of initf_malloc is
+moved before fdtdec_setup.
+
+Change-Id: Ia854e16811a68e41f60878ef21eefff88c21e4a0
+Signed-off-by: Ram Kumar D <quic_ramd@quicinc.com>
+---
+ common/board_f.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/common/board_f.c b/common/board_f.c
+index 939697d13d8..b48e4116247 100644
+--- a/common/board_f.c
++++ b/common/board_f.c
+@@ -7,6 +7,8 @@
+  * (C) Copyright 2002
+  * Sysgo Real-Time Solutions, GmbH <www.elinos.com>
+  * Marius Groeger <mgroeger@sysgo.de>
++ *
++ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+  */
+ 
+ #include <config.h>
+@@ -879,13 +881,13 @@ static int initf_upl(void)
+ 
+ static const init_fnc_t init_sequence_f[] = {
+ 	setup_mon_len,
++	initf_malloc,
+ #ifdef CONFIG_OF_CONTROL
+ 	fdtdec_setup,
+ #endif
+ #ifdef CONFIG_TRACE_EARLY
+ 	trace_early_init,
+ #endif
+-	initf_malloc,
+ 	initf_upl,
+ 	log_init,
+ 	initf_bootstage,	/* uses its own timer, so does not need DM */
+-- 
+2.34.1
+

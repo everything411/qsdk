@@ -1,0 +1,31 @@
+From 34edd0a7376ac27ff943c88209c634b66324ba04 Mon Sep 17 00:00:00 2001
+From: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+Date: Tue, 8 Jul 2025 11:55:14 +0530
+Subject: [PATCH] Makefile: Add build support for the SPL SMEM
+
+Extend the build system to include support for SMEM (Shared Memory)
+initialization during the SPL (Secondary Program Loader) phase.
+This ensures proper compilation and linkage of SPL-specific SMEM
+components required for early boot on IPQ platforms.
+
+Change-Id: I219d13ec4c4f2cfe1e477923d008b18f25a34061
+Signed-off-by: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+---
+ scripts/Makefile.xpl | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/scripts/Makefile.xpl b/scripts/Makefile.xpl
+index abc49fbe6c9..181cfddf173 100644
+--- a/scripts/Makefile.xpl
++++ b/scripts/Makefile.xpl
+@@ -127,6 +127,7 @@ libs-y += drivers/
+ libs-$(CONFIG_SPL_MEMORY) += drivers/memory/
+ libs-$(CONFIG_SPL_USB_GADGET) += drivers/usb/dwc3/
+ libs-$(CONFIG_SPL_USB_GADGET) += drivers/usb/cdns3/
++libs-$(CONFIG_SPL_SMEM) += drivers/smem/
+ libs-y += dts/
+ libs-y += fs/
+ libs-$(CONFIG_SPL_POST_MEM_SUPPORT) += post/drivers/
+-- 
+2.34.1
+

@@ -1,0 +1,43 @@
+From 884ee0bfec2e96ae5160473c7866bee2c5c32511 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Fri, 30 May 2025 11:48:48 +0530
+Subject: [PATCH] usb: xhci: Avoid double alloc for ep ring buffer
+
+Some USB 3.0 devices, like Transcend drives, have
+multiple endpoint descriptors pointing to the same
+endpoint index. This leads to the endpoint ring buffer
+being allocated more than once, causing a memory leak.
+
+To prevent this, allocate the ring buffer for non-zero
+endpoint indexes only if the buffer pointer is NULL.
+
+Change-Id: I4441ec4f5397d090b25a3afde20678c091690115
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Signed-off-by: Ram Kumar D <quic_ramd@quicinc.com>
+---
+ drivers/usb/host/xhci.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/usb/host/xhci.c b/drivers/usb/host/xhci.c
+index d30725d3fca..fa484e6f021 100644
+--- a/drivers/usb/host/xhci.c
++++ b/drivers/usb/host/xhci.c
+@@ -531,9 +531,12 @@ static int xhci_init_ep_contexts_if(struct usb_device *udev,
+ 						   ep_index);
+ 
+ 		/* Allocate the ep rings */
+-		virt_dev->eps[ep_index].ring = xhci_ring_alloc(ctrl, 1, true);
+-		if (!virt_dev->eps[ep_index].ring)
+-			return -ENOMEM;
++		if (!virt_dev->eps[ep_index].ring) {
++			virt_dev->eps[ep_index].ring = xhci_ring_alloc(ctrl,
++					1, true);
++			if (!virt_dev->eps[ep_index].ring)
++				return -ENOMEM;
++		}
+ 
+ 		/*NOTE: ep_desc[0] actually represents EP1 and so on */
+ 		dir = (((endpt_desc->bEndpointAddress) & (0x80)) >> 7);
+-- 
+2.34.1
+

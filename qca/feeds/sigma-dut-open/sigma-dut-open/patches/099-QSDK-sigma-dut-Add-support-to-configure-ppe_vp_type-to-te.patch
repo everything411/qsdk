@@ -1,0 +1,101 @@
+From 887e86e97a4969b36fb4d95e9e0f238321fad856 Mon Sep 17 00:00:00 2001
+From: Balamurugan Mahalingam <quic_bmahalin@quicinc.com>
+Date: Thu, 4 Jul 2024 01:12:53 -0700
+Subject: [PATCH] QSDK: sigma-dut: Add support to configure ppe_vp_type to test
+ different datapath
+
+Setup the different datapath options using the new command line option -X.
+Valid values for the command line option 'X' are passive, active and ds.
+Default option would be ds if no option is specified.
+
+Option passive takes the data traffic through SFE (Shortcut Forwarding Engine).
+Option active takes the data traffic through PPE_VP (HW assisted datapath).
+Option ds takes the data traffic through DS (Direct Switching).
+
+Patch-dependency: None
+Patch-work: None
+
+Signed-off-by: Balamurugan Mahalingam <quic_bmahalin@quicinc.com>
+---
+ ap.c        |    4 ++++
+ sigma_dut.c |   16 +++++++++++++++-
+ sigma_dut.h |    2 +-
+ 3 files changed, 20 insertions(+), 2 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -10404,6 +10404,8 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 		else if (!(dut->multi_mbssid && !link_id))
+ 			fprintf(f, "ctrl_interface=/var/run/hostapd\n");
+ 
++		fprintf(f, "ppe_vp=%d\n", dut->ppe_vp_type);
++
+ 		if ((dut->ap_ssid[0] && link_id == 0) ||
+ 		    (dut->ap_ssid[0] && dut->ap_is_mld))
+ 			fprintf(f, "ssid=%s\n", dut->ap_ssid);
+@@ -11608,6 +11610,7 @@ skip_vht_parameters_set:
+ 				else
+ 					fprintf(f, "ctrl_interface=/var/run/hostapd\n");
+ 				fprintf(f, "ssid=%s\n", dut->mbss.conf[i].ssid);
++				fprintf(f, "ppe_vp=%d\n", dut->ppe_vp_type);
+ 				if (dut->bridge)
+ 					fprintf(f, "bridge=%s\n", dut->bridge);
+ 
+@@ -11713,6 +11716,7 @@ skip_vht_parameters_set:
+ 					fprintf(f, "ctrl_interface=/var/run/hostapd\n");
+ 				fprintf(f, "ssid=%s\n",
+ 					dut->cohosted[dut->cohost_iface].conf[i].ssid);
++				fprintf(f, "ppe_vp=%d\n", dut->ppe_vp_type);
+ 				if (dut->bridge)
+ 					fprintf(f, "bridge=%s\n", dut->bridge);
+ 
+--- a/sigma_dut.c
++++ b/sigma_dut.c
+@@ -1059,6 +1059,7 @@ static void usage(void)
+ 	       "       [-N <device_get_info vendor>] \\\n"
+ 	       "       [-o <device_get_info model>] \\\n"
+ 	       "       [-O <device_get_info version>] \\\n"
++	       "       [-X <configure datapath mode. passive, active, ds> ] \\\n"
+ #ifdef MIRACAST
+ 	       "       [-x <sink|source>] \\\n"
+ 	       "       [-y <Miracast library path>] \\\n"
+@@ -1091,7 +1092,7 @@ int main(int argc, char *argv[])
+ 
+ 	for (;;) {
+ 		c = getopt(argc, argv,
+-			   "aAb:Bc:C:dDE:e:fF:gGhH:j:J:i:Ik:K:l:L:m:M:nN:o:O:p:P:qQr:R:s:S:tT:uU:v:VWw:x:y:z:Z:2345:6:7");
++			   "aAb:Bc:C:dDE:e:fF:gGhH:j:J:i:Ik:K:l:L:m:M:nN:o:O:p:P:qQr:R:s:S:tT:uU:v:VWw:xX:y:z:Z:2345:6:7");
+ 		if (c < 0)
+ 			break;
+ 		switch (c) {
+@@ -1270,6 +1271,19 @@ int main(int argc, char *argv[])
+ 		case 'A':
+ 			sigma_dut.sim_no_username = 1;
+ 			break;
++		case 'X':
++			if (strcmp(optarg, "passive") == 0) {
++				sigma_dut.ppe_vp_type = 1;
++			} else if (strcmp(optarg, "active") == 0) {
++				sigma_dut.ppe_vp_type = 2;
++			} else if (strcmp(optarg, "ds") == 0) {
++				sigma_dut.ppe_vp_type = 3;
++			} else {
++				sigma_dut.ppe_vp_type = 3;
++				sigma_dut_print(&sigma_dut, DUT_MSG_INFO,
++						"Override ppe_vp type to DS");
++			}
++			break;
+ #ifdef MIRACAST
+ 		case 'x':
+ 			if (strcmp(optarg, "sink") == 0) {
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1388,7 +1388,7 @@ struct sigma_dut {
+ #define MAX_MLD_SUPPORTED 2
+ 	/*Use ap_akm_link_values for interfcae specific cases*/
+ 	int ap_akm_link_values[MAX_MLD_SUPPORTED];
+-
++	int ppe_vp_type;
+ 	/*Use ap_pmf_link for interface specific cases*/
+ 	enum ap_pmf ap_pmf_link[MAX_MLD_SUPPORTED];
+ 	enum value_not_set_enabled_disabled ap_scs;

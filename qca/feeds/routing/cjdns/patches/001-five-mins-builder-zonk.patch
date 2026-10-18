@@ -1,0 +1,13 @@
+--- a/node_build/builder.js
++++ b/node_build/builder.js
+@@ -277,8 +277,8 @@ const execJs = function (js, ctx, file,
+     js = '"use strict";' + qs.join("'");
+ 
+     const to = setTimeout(function () {
+-        throw new Error("Inline JS did not return after 120 seconds [" + js + "]");
+-    }, 120000);
++        throw new Error("Inline JS did not return after 5 minutes [" + js + "]");
++    }, 300000);
+ 
+     nThen(function (waitFor) {
+ 

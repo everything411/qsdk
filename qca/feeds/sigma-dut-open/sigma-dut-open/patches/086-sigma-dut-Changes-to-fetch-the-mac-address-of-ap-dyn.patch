@@ -1,0 +1,301 @@
+From b1682db836fa6f40fb787f3b3de7467dc7c9aa6f Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Thu, 25 Jul 2024 10:46:23 +0530
+Subject: [PATCH] sigma-dut: Changes to fetch the mac address of ap dynamically
+
+In the existing implementation of the ap_get_mac_address we fetch the
+mac address of the first interface and then perform arithmetic
+operations to get the link mac addresses. Since we do the arithmetic
+operation to arrive at the link mac address, there are testplans where
+the link mac address obtained does not match with the actual link mac
+address. Also when new testcases are introduced with additional
+interfaces the existing algorithms to calculate the link mac address
+may not work, and may need more complex algorithms.
+
+So this change is made to fetch the mac address based on NL80211 command
+using the interface's name and its band, so that wrong mac address won't
+be returned as no arithmetic operations and assumptions are made to
+return the mac address.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c        | 178 +++++++++++++++++++++++++++++++++++++++++++++++++++-
+ sigma_dut.h |  14 +++++
+ 2 files changed, 189 insertions(+), 3 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index d35faff..11492f2 100644
+--- a/ap.c
++++ b/ap.c
+@@ -14066,6 +14066,90 @@ enum sigma_cmd_result cmd_ap_send_frame(struct sigma_dut *dut,
+ 	return 1;
+ }
+ 
++#ifdef NL80211_SUPPORT
++enum if_band get_band (uint32_t freq)
++{
++	if (freq  >= 5925 && freq <= 7125)
++		return BAND_6G;
++	else if (freq >= 5170 && freq <= 5835)
++		return BAND_5G;
++	else if (freq >= 2400 && freq <= 2500)
++		return BAND_2G;
++
++	return BAND_UNKNOWN;
++}
++
++static int get_interface_handler(struct nl_msg *msg, void *arg)
++{
++	struct get_mac_addr_info *info = arg;
++	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
++	struct nlattr *tb_msg[NL80211_ATTR_MAX + 1];
++	struct nlattr *attrs, *link[NL80211_ATTR_MAX + 1];
++	uint32_t freq;
++	int ret = 0;
++
++	nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
++		  genlmsg_attrlen(gnlh, 0), NULL);
++
++	if (!(tb_msg[NL80211_ATTR_IFNAME] &&
++	    ((strcmp(nla_get_string(tb_msg[NL80211_ATTR_IFNAME]),
++		     info->ifname) == 0))))
++		return 0;
++
++	if (!(tb_msg[NL80211_ATTR_MLO_LINKS] && info->band != BAND_UNKNOWN)) {
++		memcpy(info->addr, nla_data(tb_msg[NL80211_ATTR_MAC]), ETH_ALEN);
++		return 0;
++	}
++
++	nla_for_each_nested(attrs, tb_msg[NL80211_ATTR_MLO_LINKS], ret) {
++		nla_parse_nested(link, NL80211_ATTR_MAX, attrs, NULL);
++		if (link[NL80211_ATTR_MLO_LINK_ID]) {
++			freq = nla_get_u32(link[NL80211_ATTR_WIPHY_FREQ]);
++			if ((get_band(freq) == info->band) &&
++			    link[NL80211_ATTR_MAC]) {
++				memcpy(info->addr,
++				       nla_data(link[NL80211_ATTR_MAC]),
++				       ETH_ALEN);
++				return 0;
++			}
++		}
++	}
++
++	return -1;
++}
++
++static int fetch_ap_mac_address_nl(struct sigma_dut *dut,
++				   struct sigma_conn *conn, const char *ifname,
++				   const enum if_band band, unsigned char *addr,
++				   char *resp, const size_t resp_len)
++{
++	int flags = NLM_F_DUMP;
++	struct nl_msg *msg;
++	struct get_mac_addr_info arg;
++
++	arg.ifname = (char *)ifname;
++	arg.band = band;
++	arg.addr = addr;
++
++	if (!(msg = nl80211_drv_msg(dut, dut->nl_ctx, if_nametoindex(ifname), flags,
++				    NL80211_CMD_GET_INTERFACE))) {
++		snprintf(resp, resp_len,
++			 "errorCode,Could not find interface %s", ifname);
++		send_resp(dut, conn, SIGMA_ERROR, resp);
++		return -1;
++	}
++
++	if (send_and_recv_msgs(dut, dut->nl_ctx, msg, get_interface_handler, &arg)) {
++		snprintf(resp, resp_len, "get mac address failed");
++		send_resp(dut, conn, SIGMA_ERROR, resp);
++		nlmsg_free(msg);
++		return -1;
++	}
++
++	return 0;
++}
++
++#else
+ 
+ static int fetch_ap_mac_address(struct sigma_dut *dut, struct sigma_conn *conn,
+ 				char *ifname, unsigned char *addr,
+@@ -14092,6 +14176,7 @@ static int fetch_ap_mac_address(struct sigma_dut *dut, struct sigma_conn *conn,
+ 	return 0;
+ }
+ 
++#endif /* NL80211_SUPPORT */
+ 
+ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 						    struct sigma_conn *conn,
+@@ -14101,11 +14186,10 @@ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 	/* const char *name = get_param(cmd, "NAME"); */
+ 	/* const char *ifname = get_param(cmd, "INTERFACE"); */
+ 	char resp[100];
+-	unsigned char addr[6];
++	unsigned char addr[6] = {0};
+ 	char ifname[50];
+ 	int wlan_tag = 1;
+ 	const char *val;
+-	int link_id = -1;
+ 	int mld_id = 0;
+ 	int non_tx_bss_idx = 0;
+ 
+@@ -14124,6 +14208,27 @@ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 	}
+ 
+ 	val = get_param(cmd, "Interface");
++#ifdef NL80211_SUPPORT
++	/*
++	 * Since the CAPI parameter "Interface" in ap_get_mac_address directly
++	 * denotes the band and in the response of NL80211 command containing
++	 * the frequency of the interface/link, which can be used to
++	 * determine the interface/link's band. Hence, directly using band
++	 * information instead of link_id.
++	 */
++	enum if_band band = BAND_UNKNOWN;
++
++	if (val) {
++		if (strcasecmp(val, "6G") == 0)
++			band = BAND_6G;
++		else if (strcasecmp(val, "5G") == 0)
++			band = BAND_5G;
++		else if (strcasecmp(val, "24G") == 0)
++			band = BAND_2G;
++	}
++#else
++	int link_id = -1;
++
+ 	if (val) {
+ 		if (strcasecmp(val, "6G") == 0)
+ 			link_id = dut->band_to_link[2];
+@@ -14134,6 +14239,7 @@ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 		else
+ 			link_id = dut->band_to_link[0];
+ 	}
++#endif /* NL80211_SUPPORT */
+ 
+ 	get_if_name(dut, ifname, sizeof(ifname), wlan_tag);
+ 
+@@ -14190,6 +14296,20 @@ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++#ifdef NL80211_SUPPORT
++	if (fetch_ap_mac_address_nl(dut, conn, ifname, band, addr, resp, sizeof(resp)) < 0)
++		return -1;
++
++	if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 &&
++	    addr[3] == 0 && addr[4] == 0 && addr[5] == 0) {
++		send_resp(dut, conn, SIGMA_ERROR,
++			  "errorCode,Could not find interface");
++		return STATUS_SENT_ERROR;
++	} else {
++		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
++		 	 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
++	}
++#else
+ 	if (fetch_ap_mac_address(dut, conn, ifname, addr, resp, sizeof(resp)) < 0)
+ 		return -1;
+ 
+@@ -14216,6 +14336,7 @@ static enum sigma_cmd_result cmd_ap_get_mac_address(struct sigma_dut *dut,
+ 	} else
+ 		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
+ 			 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
++#endif /* NL80211_SUPPORT */
+ 
+ 	send_resp(dut, conn, SIGMA_COMPLETE, resp);
+ 	return 0;
+@@ -14282,6 +14403,57 @@ enum sigma_cmd_result cmd_dev_ap_get_parameter(struct sigma_dut *dut,
+ 
+ 	val = get_param(cmd, "parameter");
+ 	if (val && (strcasecmp(val, "FT_BSS_LIST") == 0)) {
++#ifdef NL80211_SUPPORT
++		unsigned char addr_2[ETH_ALEN];
++
++		if (get_driver_type(dut) == DRIVER_MAC80211 &&
++		    (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) &&
++		    dut->ap_is_dual) {
++			if ((dut->ap_interface_2g) && (dut->ap_interface_5g)) {
++				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_2G, addr,
++							    resp, sizeof(resp)) < 0)
++					return -1;
++				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_5G, addr_2,
++							    resp, sizeof(resp)) < 0)
++					return -1;
++			} else if ((dut->ap_interface_2g) && (dut->ap_interface_6g)) {
++				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_2G, addr,
++							    resp, sizeof(resp)) < 0)
++					return -1;
++				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_6G, addr_2,
++							    resp, sizeof(resp)) < 0)
++					return -1;
++			} else if ((dut->ap_interface_5g) && (dut->ap_interface_6g)) {
++				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_5G, addr,
++							    resp, sizeof(resp)) < 0)
++					return -1;
++				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_6G, addr_2,
++							    resp, sizeof(resp)) < 0)
++					return -1;
++			}
++
++			snprintf(resp, sizeof(resp),
++				 "FT_BSS_LIST,%02x:%02x:%02x:%02x:%02x:%02x %02x:%02x:%02x:%02x:%02x:%02x",
++				 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5],
++				 addr_2[0], addr_2[1], addr_2[2], addr_2[3], addr_2[4], addr_2[5]);
++		} else {
++			if ((dut->ap_interface_2g) &&
++			    (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_2G, addr,
++						     resp, sizeof(resp)) < 0))
++				return -1;
++			else if ((dut->ap_interface_5g) &&
++			         (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_5G, addr,
++							  resp, sizeof(resp)) < 0))
++				return -1;
++			else if ((dut->ap_interface_6g) &&
++				 (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_6G, addr,
++							  resp, sizeof(resp)) < 0))
++				return -1;
++
++			snprintf(resp, sizeof(resp), "FT_BSS_LIST,%02x:%02x:%02x:%02x:%02x:%02x",
++				 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
++		}
++#else
+ 		if (fetch_ap_mac_address(dut, conn, ifname, addr, resp, sizeof(resp)) < 0)
+ 			return -1;
+ 
+@@ -14303,7 +14475,7 @@ enum sigma_cmd_result cmd_dev_ap_get_parameter(struct sigma_dut *dut,
+ 		} else
+ 			snprintf(resp, sizeof(resp), "FT_BSS_LIST,%02x:%02x:%02x:%02x:%02x:%02x",
+ 				 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+-
++#endif /* NL80211_SUPPORT */
+ 		send_resp(dut, conn, SIGMA_COMPLETE, resp);
+ 		return 0;
+ 	}
+diff --git a/sigma_dut.h b/sigma_dut.h
+index f852de3..a30bb60 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1277,6 +1277,20 @@ struct sigma_dut {
+ 	enum ap_pmf ap_pmf_link[MAX_MLD_SUPPORTED];
+ };
+ 
++#ifdef NL80211_SUPPORT
++/*
++ * struct get_mac_addr_info - to pass as argument to the callback function
++ *                            of GET_INTERFACE nl message
++ * ifname: interface name for which mac address needs to be fetched.
++ * band:   band of the AP which is needed to identify the link for MLD.
++ * addr:   Out param - The mac address which is requested
++ */
++struct get_mac_addr_info {
++	char *ifname;
++	enum if_band band;
++	unsigned char *addr;
++};
++#endif /* NL80211_SUPPORT */
+ 
+ enum sigma_dut_print_level {
+ 	DUT_MSG_DEBUG, DUT_MSG_INFO, DUT_MSG_ERROR
+-- 
+2.34.1
+

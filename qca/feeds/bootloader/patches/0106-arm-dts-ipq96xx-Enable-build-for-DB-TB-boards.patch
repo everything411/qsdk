@@ -1,0 +1,33 @@
+From 9a9e57b2f76f7286974baf570bb670e6f1ecc8fa Mon Sep 17 00:00:00 2001
+From: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+Date: Sun, 12 Jul 2026 23:17:10 +0530
+Subject: [PATCH] arm: dts: ipq96xx: Enable build for DB & TB boards
+
+Enable build support for the following IPQ96xx platforms:
+- TB-JU01.1
+- DB-JU01-C2
+
+Change-Id: Id6f9dc2471ce4963692be35e6bba509236017e16
+Signed-off-by: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index ad31ea64fca..5667478306e 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -39,7 +39,9 @@ dtb-$(CONFIG_TARGET_IPQ9650) += ipq9650-emulation.dtb \
+ 				ipq9650-rdp532.dtb \
+ 				ipq9650-db-ju01.dtb \
+ 				ipq9650-db-ju01-c1.dtb \
+-				ipq9650-db-ju02.dtb
++				ipq9650-db-ju01-c2.dtb \
++				ipq9650-db-ju02.dtb \
++				ipq9650-tb-ju01.1.dtb
+ 
+ dtb-$(CONFIG_TARGET_SMARTWEB) += at91sam9260-smartweb.dtb
+ dtb-$(CONFIG_TARGET_TAURUS) += at91sam9g20-taurus.dtb
+-- 
+2.34.1
+

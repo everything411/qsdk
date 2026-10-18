@@ -1,0 +1,44 @@
+From 6adb51026ecac1e949a7ea04e7e0bc07bffd15d1 Mon Sep 17 00:00:00 2001
+From: Gokul Sriram Palanisamy <gokulsri@qti.qualcomm.com>
+Date: Mon, 23 Feb 2026 12:13:07 +0530
+Subject: [PATCH] clks: qcom: makefile: enable all clocks
+
+Change-Id: Ic6be5d1e5c30002dff1a517ada53096b1248c896
+Signed-off-by: Gokul Sriram Palanisamy <gokulsri@qti.qualcomm.com>
+---
+ drivers/clk/qcom/Kconfig  | 6 ++++++
+ drivers/clk/qcom/Makefile | 1 +
+ 2 files changed, 7 insertions(+)
+
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index d0edada87a7..3686b4f9a12 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -11,6 +11,12 @@ config CLK_QCOM_PLL
+ 	help
+ 	  Enable a generic PLL clock framework for IPQ platforms.
+ 
++config CLK_QCOM_ALL
++       bool "Qualcomm generic ALL clock support"
++       depends on CLK && DM
++       help
++         Enable a generic ALL clock framework for IPQ platforms.
++
+ menu "Qualcomm clock drivers"
+ 
+ config CLK_QCOM_APQ8016
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index dcccc1d1cde..a20d99b3ca5 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -3,6 +3,7 @@
+ # (C) Copyright 2023 Linaro
+ 
+ obj-y += clock-qcom.o
++obj-$(CONFIG_CLK_QCOM_ALL) += ipq-enable-all-clks.o
+ obj-$(CONFIG_CLK_QCOM_PLL) += clk-alpha-pll.o
+ obj-$(CONFIG_CLK_QCOM_SDM845) += clock-sdm845.o
+ obj-$(CONFIG_CLK_QCOM_APQ8016) += clock-apq8016.o
+-- 
+2.34.1
+

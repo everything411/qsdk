@@ -1,0 +1,39 @@
+From e485be07613251ee7e123b9ea174f459c4796864 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Tue, 20 May 2025 23:43:28 +0530
+Subject: [PATCH] phy: Add uniphy pcie driver support
+
+Change-Id: Ib466e4f80a6bdffa9eab91299443bd00042156a6
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/phy/qcom/Kconfig  | 7 +++++++
+ drivers/phy/qcom/Makefile | 1 +
+ 2 files changed, 8 insertions(+)
+
+diff --git a/drivers/phy/qcom/Kconfig b/drivers/phy/qcom/Kconfig
+index 60799f6dc26..d1b89e0166f 100644
+--- a/drivers/phy/qcom/Kconfig
++++ b/drivers/phy/qcom/Kconfig
+@@ -62,3 +62,10 @@ config PHY_QCOM_USB_SS
+ 	help
+ 	  Enable this to support the Super-Speed USB transceiver on various
+ 	  Qualcomm chipsets.
++
++config PHY_QCOM_UNIPHY_PCIE
++	bool "Qualcomm UNIPHY PCIe PHY driver"
++	depends on PHY && ARCH_IPQ
++	help
++	 This driver uses the generic PHY framework and will interact with
++	 the DWC3 controller.
+diff --git a/drivers/phy/qcom/Makefile b/drivers/phy/qcom/Makefile
+index 1c4e7d8d391..340b79399d3 100644
+--- a/drivers/phy/qcom/Makefile
++++ b/drivers/phy/qcom/Makefile
+@@ -7,3 +7,4 @@ obj-$(CONFIG_PHY_QCOM_USB_SNPS_FEMTO_V2) += phy-qcom-snps-femto-v2.o
+ obj-$(CONFIG_PHY_QCOM_SNPS_EUSB2) += phy-qcom-snps-eusb2.o
+ obj-$(CONFIG_PHY_QCOM_USB_HS_28NM) += phy-qcom-usb-hs-28nm.o
+ obj-$(CONFIG_PHY_QCOM_USB_SS) += phy-qcom-usb-ss.o
++obj-$(CONFIG_PHY_QCOM_UNIPHY_PCIE) += phy-qca-pcie-uniphy.o
+-- 
+2.34.1
+

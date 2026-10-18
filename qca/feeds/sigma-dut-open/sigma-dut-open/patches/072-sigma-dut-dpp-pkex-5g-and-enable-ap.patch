@@ -1,0 +1,199 @@
+From 08b9955581b06dcc8457d02715a4647f52745eb9 Mon Sep 17 00:00:00 2001
+From: Arunpandi Kannan <quic_arunpand@quicinc.com>
+Date: Mon, 11 Dec 2023 10:51:20 +0530
+Subject: [PATCH] sigma_dut: Sigma changes to enable DPP testing
+
+Add support to enable 5G channels for pkex method and changes
+for enabling AP VAP for all dpp tests.
+
+Enable support to reset hostapd after a DPP test is done.
+
+Signed-off-by: Arunpandi Kannan <quic_arunpand@quicinc.com>
+---
+ ap.c  | 19 +++++++++++++------
+ dpp.c | 53 ++++++++++++++++++++++++++++++++++++-----------------
+ 2 files changed, 49 insertions(+), 23 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -1423,7 +1423,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				ath_radio(dut, val);
+ 			} else if (dut->use_hostapd_pid_file) {
+ 				kill_hostapd_process_pid(dut);
+-			} else if (kill_process(dut, "(hostapd)", 1,
++			} else if (kill_process(dut, "(hostapd)", 0,
+ 						SIGTERM) == 0 ||
+ 				   system("killall hostapd") == 0) {
+ 				sigma_dut_print(dut, DUT_MSG_INFO,
+@@ -5450,7 +5450,6 @@ static int owrt_ap_post_config_commit(st
+ 	return 1;
+ }
+ 
+-
+ static int cmd_owrt_ap_config_commit(struct sigma_dut *dut,
+ 				     struct sigma_conn *conn,
+ 				     struct sigma_cmd *cmd)
+@@ -6453,7 +6452,7 @@ static int ath_ap_append_hostapd_conf(st
+ {
+ 	FILE *f;
+ 
+-	if (kill_process(dut, "(hostapd)", 1, SIGTERM) == 0 ||
++	if (kill_process(dut, "(hostapd)", 0, SIGTERM) == 0 ||
+ 	    system("killall hostapd") == 0) {
+ 		int i;
+ 
+@@ -9423,7 +9422,6 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 					   struct sigma_conn *conn,
+ 					   struct sigma_cmd *cmd)
+ {
+-	/* const char *name = get_param(cmd, "NAME"); */
+ 	FILE *f;
+ 	const char *ifname;
+ 	char buf[500];
+@@ -9527,6 +9525,15 @@ write_conf:
+ 		offset = dut->ap_chwidth_offset;
+ 	}
+ 
++	if (drv == DRIVER_MAC80211) {
++		if(cmd) {
++			const char *name = get_param(cmd, "NAME");
++			if (name && !strcmp(name, "QCOM-DUT") && mode >= AP_inval) {
++				return 1;
++			}
++		}
++	}
++
+ 	concat_sigma_tmpdir(dut, "/sigma_dut-ap.conf", ap_conf_path,
+ 			    sizeof(ap_conf_path));
+ 	f = fopen(ap_conf_path, "w");
+@@ -10793,7 +10800,7 @@ skip_vht_parameters_set:
+ 	if (system("slay hostapd") == 0)
+ #else /* __QNXNTO__ */
+ 	if (!dut->use_hostapd_pid_file &&
+-	    (kill_process(dut, "(hostapd)", 1, SIGTERM) == 0 ||
++	    (kill_process(dut, "(hostapd)", 0, SIGTERM) == 0 ||
+ 	     system("killall hostapd") == 0))
+ #endif /* __QNXNTO__ */
+ 	{
+@@ -12191,7 +12198,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 
+ 	if (dut->use_hostapd_pid_file) {
+ 		kill_hostapd_process_pid(dut);
+-	} else if (kill_process(dut, "(hostapd)", 1, SIGTERM) == 0 ||
++	} else if (kill_process(dut, "(hostapd)", 0, SIGTERM) == 0 ||
+ 		   system("killall hostapd") == 0) {
+ 		int i;
+ 		/* Wait some time to allow hostapd to complete cleanup before
+--- a/dpp.c
++++ b/dpp.c
+@@ -568,8 +568,6 @@ static int dpp_hostapd_run(struct sigma_
+ 	dut->ap_mode = dut->ap_channel <= 14 ? AP_11ng : AP_11na;
+ 	dut->ap_key_mgmt = AP_OPEN;
+ 	dut->ap_cipher = AP_PLAIN;
+-	if (!dut->ap_dpp_conf_addr || !dut->ap_dpp_conf_pkhash)
+-		dut->ap_start_disabled = 1;
+ 	return cmd_ap_config_commit(dut, NULL, NULL) == 1 ? 0 : -1;
+ }
+ 
+@@ -780,16 +778,26 @@ dpp_get_local_bootstrap(struct sigma_dut
+ 
+ 		/* Default channel list (normal DUT case) */
+ 		if (sigma_dut_is_ap(dut) && dut->hostapd_running &&
+-		    dut->ap_oper_chn &&
+-		    dut->ap_channel > 0 && dut->ap_channel <= 13)
++		    dut->ap_oper_chn) {
+ 			channel = dut->ap_channel;
+-		res = snprintf(buf, sizeof(buf),
+-			       "DPP_BOOTSTRAP_GEN type=%s curve=%s chan=81/%d%s%s%s%s%s",
+-			       type, curve, channel, include_mac ? " mac=" : "",
+-			       include_mac ? mac : "",
+-			       uri_curves ? " supported_curves=" : "",
+-			       uri_curves ? uri_curves : "",
+-			       host);
++			if (channel <= 14) {
++				res = snprintf(buf, sizeof(buf),
++					       "DPP_BOOTSTRAP_GEN type=%s curve=%s chan=81/%d%s%s%s%s%s",
++					       type, curve, channel, include_mac ? " mac=" : "",
++					       include_mac ? mac : "",
++					       uri_curves ? " supported_curves=" : "",
++					       uri_curves ? uri_curves : "",
++					       host);
++			} else {
++				res = snprintf(buf, sizeof(buf),
++					       "DPP_BOOTSTRAP_GEN type=%s curve=%s chan=115/%d mac=%s",
++					       type, curve, channel, mac);
++			}
++		} else {
++			res = snprintf(buf, sizeof(buf),
++				       "DPP_BOOTSTRAP_GEN type=%s curve=%s chan=81/%d mac=%s",
++				       type, curve, channel, mac);
++		}
+ 	}
+ 
+ 	if (res < 0 || res >= sizeof(buf) ||
+@@ -1159,6 +1167,10 @@ static int dpp_hostapd_conf_update(struc
+ 		goto out;
+ 	}
+ 
++	if (psk_akm)
++		wpa_command(ifname, "SET ieee80211w 1");
++	else
++		wpa_command(ifname, "SET ieee80211w 2");
+ 	if (pass_len) {
+ 		snprintf(buf2, sizeof(buf2), "SET wpa_passphrase %s",
+ 			 pass);
+@@ -2226,14 +2238,18 @@ static enum sigma_cmd_result dpp_automat
+ 
+ 	pkex_identifier[0] = '\0';
+ 	if (is_pkex_bs(bs)) {
+-		if (sigma_dut_is_ap(dut) && dut->ap_channel != 6) {
++		if (sigma_dut_is_ap(dut) && (dut->ap_channel != 6) &&
++			(dut->ap_channel != 44) && (dut->ap_channel != 149)) {
+ 			/* For now, have to make operating channel match DPP
+ 			 * listen channel. This should be removed once hostapd
+ 			 * has support for DPP listen on non-operating channel.
+ 			 */
+ 			sigma_dut_print(dut, DUT_MSG_INFO,
+ 					"Update hostapd operating channel to match listen needs");
+-			dut->ap_channel = 6;
++			if (dut->ap_channel <= 14)
++				dut->ap_channel = 6;
++			else
++				dut->ap_channel = 44;
+ 
+ 			if (get_driver_type(dut) == DRIVER_OPENWRT) {
+ 				snprintf(buf, sizeof(buf),
+@@ -2241,8 +2257,8 @@ static enum sigma_cmd_result dpp_automat
+ 					 dut->hostapd_ifname, dut->ap_channel);
+ 				run_system(dut, buf);
+ 			}
+-
+-			if (wpa_command(ifname, "SET channel 6") < 0 ||
++			snprintf(buf, sizeof(buf), "SET channel %d", dut->ap_channel);
++			if (wpa_command(ifname, buf) < 0 ||
+ 			    wpa_command(ifname, "DISABLE") < 0 ||
+ 			    wpa_command(ifname, "ENABLE") < 0) {
+ 				send_resp(dut, conn, SIGMA_ERROR,
+@@ -3017,8 +3033,11 @@ static enum sigma_cmd_result dpp_automat
+ 			freq = channel_to_freq(dut, dut->ap_channel);
+ 
+ 		if (is_pkex_bs(bs)) {
+-			/* default: channel 6 for PKEX */
+-			freq = 2437;
++			/* default: channel 6 or 44 for PKEX */
++			if (dut->ap_channel <= 14)
++				freq = 2437;
++			else
++				freq = 5220;
+ 		}
+ 
+ 		delay_qr_resp = get_param(cmd, "DPPDelayQRResponse");
+@@ -4406,7 +4425,7 @@ int dpp_mdns_start(struct sigma_dut *dut
+ 	const char *bskeyhash = NULL;
+ 	const char *ifname = get_station_ifname(dut);
+ 	char buf[2000];
+-	int opclass, chan;
++	int opclass = 0, chan = 0;
+ #ifdef ANDROID_MDNS
+ 	TXTRecordRef dpp_txt;
+ 	char service_name[100];

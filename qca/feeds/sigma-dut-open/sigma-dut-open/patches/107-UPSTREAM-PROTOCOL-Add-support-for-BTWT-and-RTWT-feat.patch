@@ -1,0 +1,116 @@
+From 63ff66202802fd90fc96ec2fd02a1fe5d5fcb382 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Mon, 14 Jul 2025 15:13:36 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Add support for BTWT and
+ RTWT features
+
+Adding support for WiFi 7 and WiFi 6 program's RTWT and BTWT features.
+CAPI parameters added to support the feature are RestrictedTWT,
+BroadcastTWT and to issue wifitool ap_twt_add_dialog command.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c        | 39 +++++++++++++++++++++++++++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 40 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 8a4039b..33fa24d 100644
+--- a/ap.c
++++ b/ap.c
+@@ -2888,6 +2888,14 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "RestrictedTWT");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0)
++			dut->ap_rtwt = VALUE_ENABLED;
++		else if (strcasecmp(val, "disable") == 0)
++			dut->ap_rtwt = VALUE_DISABLED;
++	}
++
+ 	val = get_param(cmd, "SUBeamformerMode");
+ 	if (val)
+ 		subeamformermode = atoi(val);
+@@ -9739,6 +9747,12 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 131 0", ifname);
+ 	}
+ 
++	if (dut->ap_btwt == VALUE_ENABLED) {
++		/* Set 2ms for SP command*/
++		fwtest_cmd_wrapper(dut, "-m 0x4d -v 0 22 2000", ifname);
++		/* SIFS Burst disable to handle short SP */
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 2 1", ifname);
++	}
+ }
+ 
+ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+@@ -9899,6 +9913,13 @@ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+ 		 * on SCS Request arrival from client test cases for AP Test Bed */
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 721", ifname, link_id);
+ 	}
++
++	if (dut->ap_btwt == VALUE_ENABLED) {
++		/* Set 2ms for SP command*/
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4d -v 0 22 2000", ifname, link_id);
++		/* SIFS Burst disable to handle short SP */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 2 1", ifname, link_id);
++	}
+ }
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))
+@@ -12093,6 +12114,17 @@ skip_vht_parameters_set:
+ 			fprintf(f, "epcs_wmm_ac_vo_txop_limit=102\n");
+ 		}
+ 
++		/*
++		Value = 0 - Disable twt responder, btwt, rtwt.
++		Value = 1 - Enable twt responder, disable btwt and rtwt.
++		Value = 2 - Enable twt responder, btwt and disable rtwt.
++		Value = 3 - Enable twt responder, btwt, rtwt.
++		*/
++		if (dut->ap_rtwt == VALUE_ENABLED)
++			fprintf(f, "twt_responder_caps=3\n");
++		else if (dut->ap_btwt == VALUE_ENABLED)
++			fprintf(f, "twt_responder_caps=2\n");
++
+ 		fclose(f);
+ 	}
+ 
+@@ -13655,6 +13687,7 @@ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+ 	dut->ap_twtinfoframerx = VALUE_NOT_SET;
+ 	dut->ap_ulmudata_disablerx = VALUE_NOT_SET;
+ 	dut->ap_btwt = VALUE_NOT_SET;
++	dut->ap_rtwt = VALUE_NOT_SET;
+ 	dut->ltf_trig = 0;
+ 	dut->nontrigger_txbf = VALUE_NOT_SET;
+ 	dut->ap_preamblepunct = VALUE_NOT_SET;
+@@ -20836,6 +20869,12 @@ static enum sigma_cmd_result mac80211_ap_set_rfeature(struct sigma_dut *dut,
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "BTWT_ID");
++	if (val) {
++		if (dut->ap_btwt == VALUE_ENABLED)
++			ap_send_btwt(dut, cmd, ifname);
++	}
++
+ 	if (++dut->intf_defined < dut->num_links)
+ 		mac80211_ap_set_rfeature(dut, conn, cmd);
+ 
+diff --git a/sigma_dut.h b/sigma_dut.h
+index ab40a3c..dd7c509 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1144,6 +1144,7 @@ struct sigma_dut {
+ 	enum value_not_set_enabled_disabled ap_twtinfoframerx;
+ 	enum value_not_set_enabled_disabled ap_ulmudata_disablerx;
+ 	enum value_not_set_enabled_disabled ap_btwt;
++	enum value_not_set_enabled_disabled ap_rtwt;
+ 	enum value_not_set_enabled_disabled nontrigger_txbf;
+ 	enum value_not_set_enabled_disabled ap_preamblepunct;
+ 	enum value_not_set_enabled_disabled eht_omctrl;
+-- 
+2.34.1
+

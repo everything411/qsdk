@@ -1,0 +1,48 @@
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#ifndef _DT_BINDINGS_CLK_QCOM_GCC_MACH_IPQ5332_H
+#define _DT_BINDINGS_CLK_QCOM_GCC_MACH_IPQ5332_H
+
+/* Clock Macro  */
+#define NSS_CC_CFG_CLK					173
+#define NSS_CC_PPE_CLK					174
+#define UNIPHY0_NSS_RX_CLK				175
+#define UNIPHY0_NSS_TX_CLK				176
+#define UNIPHY1_NSS_RX_CLK				177
+#define UNIPHY1_NSS_TX_CLK				178
+
+/* Reset Macro */
+#define NSS_CC_NSS_CSR_CLK				173
+#define NSS_CC_NSSNOC_NSS_CSR_CLK			174
+#define NSS_CC_PORT1_MAC_CLK				175
+#define NSS_CC_PORT2_MAC_CLK				176
+#define NSS_CC_PPE_SWITCH_IPE_CLK			177
+#define NSS_CC_PPE_SWITCH_CLK				178
+#define NSS_CC_PPE_SWITCH_CFG_CLK			179
+#define NSS_CC_PPE_EDMA_CFG_CLK				180
+#define NSS_CC_NSSNOC_PPE_CLK				181
+#define NSS_CC_NSSNOC_PPE_CFG_CLK			182
+#define NSS_CC_PPE_SWITCH_BTQ_CLK			183
+#define NSS_CC_PORT1_RX_CLK				184
+#define NSS_CC_PORT1_TX_CLK				185
+#define NSS_CC_PORT2_RX_CLK				186
+#define NSS_CC_PORT2_TX_CLK				187
+#define NSS_CC_UNIPHY_PORT1_RX_CLK			188
+#define NSS_CC_UNIPHY_PORT1_TX_CLK			189
+#define NSS_CC_UNIPHY_PORT2_RX_CLK			190
+#define NSS_CC_UNIPHY_PORT2_TX_CLK			191
+#define GCC_UNIPHY0_SOFT_RESET				192
+#define GCC_UNIPHY1_SOFT_RESET				193
+#define GCC_UNIPHY0_XPCS_RESET				194
+#define GCC_UNIPHY1_XPCS_RESET				195
+#define NSS_CC_PPE_BCR					196
+#define NSS_CC_PORT1_RX_RESET				197
+#define NSS_CC_PORT1_TX_RESET				198
+#define NSS_CC_PORT2_RX_RESET				199
+#define NSS_CC_PORT2_TX_RESET				200
+#define GCC_MDIO_MASTER_AHB_CLK				201
+#define NSS_CC_PPE_EDMA_CLK				202
+#endif

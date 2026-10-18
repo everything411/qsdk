@@ -1,0 +1,31 @@
+From 67c8ad746cac1accaae8bff9a0191387de11f948 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 28 May 2025 22:41:36 +0530
+Subject: [PATCH] cmd: mtdparts: Add SoC-specific length support
+
+This change introduces support for declaring
+partition lengths based on SoC-specific configurations.
+
+Change-Id: Ia08a2cb109fdae5ff9e85292938980922d729f74
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ cmd/mtdparts.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/cmd/mtdparts.c b/cmd/mtdparts.c
+index a021b2d198d..9f537bfdf75 100644
+--- a/cmd/mtdparts.c
++++ b/cmd/mtdparts.c
+@@ -129,7 +129,9 @@ static const char *mtdparts_default = MTDPARTS_DEFAULT;
+ 
+ /* copies of last seen 'mtdids', 'mtdparts' and 'partition' env variables */
+ #define MTDIDS_MAXLEN		128
++#ifndef MTDPARTS_MAXLEN
+ #define MTDPARTS_MAXLEN		512
++#endif
+ #define PARTITION_MAXLEN	16
+ static char last_ids[MTDIDS_MAXLEN + 1];
+ static char last_parts[MTDPARTS_MAXLEN + 1];
+-- 
+2.34.1
+

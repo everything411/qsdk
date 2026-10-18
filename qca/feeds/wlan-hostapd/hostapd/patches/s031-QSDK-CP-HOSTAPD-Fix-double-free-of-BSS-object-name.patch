@@ -1,0 +1,42 @@
+From b3cb4a1e67ec478939d2c48a6a0563c3c9500fe2 Mon Sep 17 00:00:00 2001
+From: Lokitha Thangavel <lthangav@qti.qualcomm.com>
+Date: Wed, 3 Dec 2025 11:18:07 +0530
+Subject: [PATCH] QSDK:CP:HOSTAPD: Fix double free of BSS object name
+
+In hostapd_ubus_free_bss(struct hostapd_data), the code unconditionally
+calls free(name)
+
+After the first teardown, obj->name still points to freed memory.
+If the function is invoked again (e.g., repeated BSS teardown paths,
+error-retry, or cleanup sequences), the same pointer is freed a
+second time, causing a double free.
+
+Guard the free(name) with a null check and explicitly set
+obj->name = NULL after freeing. This eliminates a crash due to
+heap corruption/double free.
+
+Patch-dependency: none
+
+Signed-off-by: Lokitha Thangavel <lthangav@qti.qualcomm.com>
+---
+ src/ap/ubus.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ubus.c b/src/ap/ubus.c
+index 266622c..622b0ae 100644
+--- a/src/ap/ubus.c
++++ b/src/ap/ubus.c
+@@ -1682,7 +1682,10 @@ void hostapd_ubus_free_bss(struct hostapd_data *hapd)
+ 	ubus_remove_object(ctx, obj);
+ 	hostapd_ubus_ref_dec();
+ 
+-	free(name);
++	if(name) {
++		free(name);
++		obj->name = NULL;
++	}
+ }
+ 
+ static void
+-- 
+2.34.1

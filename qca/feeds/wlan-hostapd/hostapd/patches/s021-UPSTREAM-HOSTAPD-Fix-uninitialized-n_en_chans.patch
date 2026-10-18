@@ -1,0 +1,43 @@
+From 80b0f352b52ce77290d712208d4bf79077a684d0 Mon Sep 17 00:00:00 2001
+From: Hariharan Basuthkar <hbasuthk@qti.qualcomm.com>
+Date: Tue, 21 Oct 2025 14:16:38 +0530
+Subject: [PATCH] UPSTREAM:HOSTAPD: Initialize n_en_chans in AFC list
+
+Initialize n_en_chans before use and replace the implicit zero check
+with a robust `<= 0` check in intf_afc_find_channel_list(). This fixes
+an uninitialized read when the width-fallback loop does not execute
+(for example, when *chan_width <= CHAN_WIDTH_20_NOHT).
+
+Tag: 6G_REGULATORY
+Fixes: Iefb97147622 ('UPSTREAM:PROTOCOL hostapd: Enhance Random Channel Change for AFC')
+
+Signed-off-by: Hariharan Basuthkar <hbasuthk@qti.qualcomm.com>
+---
+ src/ap/interference.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/interference.c b/src/ap/interference.c
+index 70adcdf..239be69 100644
+--- a/src/ap/interference.c
++++ b/src/ap/interference.c
+@@ -604,7 +604,7 @@ static int intf_afc_find_channel_list(struct hostapd_iface *iface,
+ 
+ 	for (i = 0; i < ARRAY_SIZE(pwr_mode_order); i++) {
+ 		enum nl80211_regulatory_power_modes pwr_mode;
+-		int n_en_chans;
++		int n_en_chans = 0;
+ 
+ 		*chan_width = start_chan_width;
+ 		pwr_mode = pwr_mode_order[i];
+@@ -616,7 +616,7 @@ static int intf_afc_find_channel_list(struct hostapd_iface *iface,
+ 				break;
+ 			*chan_width = get_next_max_width(*chan_width);
+ 		}
+-		if (!n_en_chans)
++		if (n_en_chans <= 0)
+ 			continue;
+ 		*best_ap_pwr_mode = pwr_mode;
+ 
+-- 
+2.34.1
+

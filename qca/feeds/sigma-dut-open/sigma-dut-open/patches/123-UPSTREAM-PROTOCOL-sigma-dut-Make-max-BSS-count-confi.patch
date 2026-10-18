@@ -1,0 +1,142 @@
+From 011fd8b5cbcbb72e0cd5048550dd64f1484476f6 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 11 Jun 2026 15:25:42 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL: sigma-dut: Make max BSS count configurable
+ based on memory profile
+
+Replace compile-time MAX_BSS_COUNT macro with runtime configuration
+that reads memory profile from kernel command line.
+
+Previously, MAX_BSS_COUNT was determined at compile time based on
+MEM_PROFILE macro (8 for 512M, 16 otherwise). This approach required
+separate builds for different memory configurations.
+
+Changes:
+- Remove compile-time MAX_BSS_COUNT macro definition
+- Add max_bss_count field to sigma_dut structure
+- Implement configure_max_bss_count() to parse /proc/cmdline
+  * Sets max_bss_count=16 for mem-profile=high
+  * Sets max_bss_count=8 for mem-profile=balanced/optimized
+  * Defaults to 16 if no profile found
+- Update MBSSID BSSID mask calculation in ap.c to use runtime value
+- Initialize max_bss_count during set_defaults()
+
+This enables a single binary to support multiple memory profiles
+by detecting the configuration at runtime.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c        |  4 ++--
+ sigma_dut.c | 40 +++++++++++++++++++++++++++++++++++++++-
+ sigma_dut.h | 11 +----------
+ 3 files changed, 42 insertions(+), 13 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -12336,7 +12336,7 @@ skip_vht_parameters_set:
+ 			if (!dut->mbss.num_non_tx_bss)
+ 				return -2;
+ 
+-			bssid_mask = MAX_BSS_COUNT - 1;
++			bssid_mask = dut->max_bss_count - 1;
+ 
+ 			base_val = bssid[5] & ~bssid_mask;
+ 			init_val = bssid[5] & bssid_mask;
+@@ -12347,7 +12347,7 @@ skip_vht_parameters_set:
+ 				fprintf(f, "\n");
+ 
+ 				/* start from 1 for non tx bssid */
+-				bssid[5] = base_val + ((init_val + i + 1) % MAX_BSS_COUNT);
++				bssid[5] = base_val + ((init_val + i + 1) % dut->max_bss_count);
+ 
+ 				snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, i+1);
+ 				fprintf(f, "bss=%s\n", ifname2);
+--- a/sigma_dut.c
++++ b/sigma_dut.c
+@@ -21,6 +21,7 @@
+ 
+ #define SIGMA_DUT_PORT 9000
+ #define MAX_CONNECTIONS 4
++#define COMMAND_LINE_SIZE 2048
+ 
+ extern enum driver_type wifi_chip_type;
+ 
+@@ -862,6 +863,36 @@ static void set_host_name(struct sigma_d
+ 	dut->host_name[len - 1] = '\0';
+ }
+ 
++int configure_max_bss_count(struct sigma_dut *dut)
++{
++	char cmdline[COMMAND_LINE_SIZE] = {0};
++	FILE *fd;
++	int ret;
++
++	fd = fopen("/proc/cmdline", "r");
++	if (fd < 0)
++		return -1;
++
++	ret = fread(cmdline, sizeof(char), COMMAND_LINE_SIZE, fd);
++	fclose(fd);
++	if (ret <= 0)
++		return -1;
++
++	// Ensure null termination
++	cmdline[ret] = '\0';
++
++	// Check profiles
++	if (strstr(cmdline, "mem-profile=high") != NULL)
++		dut->max_bss_count = 16;
++	else if ((strstr(cmdline, "mem-profile=balanced") != NULL) ||
++		 (strstr(cmdline, "mem-profile=optimized") != NULL))
++		dut->max_bss_count = 8;
++	else
++		return -1;
++
++	sigma_dut_print(dut, DUT_MSG_INFO, "mem-profile-found:max_bss_count=%d", dut->max_bss_count);
++	return 0;
++}
+ 
+ static void set_defaults(struct sigma_dut *dut)
+ {
+@@ -899,6 +930,14 @@ static void set_defaults(struct sigma_du
+ 
+ 	set_host_name(dut);
+ 	dut->pasn_type = 0xf;
++
++	if (configure_max_bss_count(dut) < 0) {
++		// Default fallback
++		dut->max_bss_count = 16;
++		sigma_dut_print(dut, DUT_MSG_ERROR,
++				"mem-profile not found, defaulting to 1G, max_bss_count=%d",
++				dut->max_bss_count);
++	}
+ }
+ 
+ 
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -711,16 +711,6 @@ struct multi_mbss_config {
+ 	enum if_band ap_band;
+ };
+ 
+-/* For MBSSID testcase, there will only be one MBSS group, hence
+- * number of non tx bss is MAX_BSS - 1. MAX_BSS of 1G profile is 16
+- * and MAX_BSS of 512M profile is 8
+- */
+-#if defined(MEM_PROFILE) && (MEM_PROFILE == 512)
+-#define MAX_BSS_COUNT   (8)
+-#else
+-#define MAX_BSS_COUNT   (16)
+-#endif
+-
+ struct mbss_support {
+ 	int num_non_tx_bss;
+ 	struct mbss_config conf[MAX_NON_TX_BSS_COUNT];
+@@ -1535,6 +1525,7 @@ struct sigma_dut {
+ 	enum value_not_set_enabled_disabled ap_linkreconfig;
+ 	enum value_not_set_enabled_disabled single_link_emlsr;
+ 	enum value_not_set_enabled_disabled band_6g_only;
++	int max_bss_count;
+ };
+ 
+ #ifdef NL80211_SUPPORT

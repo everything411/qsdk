@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include "ipq5210-u-boot.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. IPQ5210 RDP500";
+	compatible = "qcom,ipq5210-rdp500", "qcom,ipq5210";
+
+	aliases {
+		serial0 = &uart1;
+	};
+
+	soc@0 {
+		qmp_ssphy_0: ssphy@7D000 {
+			status = "okay";
+		};
+
+		qusb2_phy_0: qusb2_0@7B000 {
+			status = "okay";
+		};
+
+		usb3_0: usb3_0@8af8800 {
+			status = "okay";
+		};
+
+		pcie1_phy: phy@f4000 {
+			status = "okay";
+		};
+
+		pcie1: pcie@50000000 {
+			pinctrl-0 = <&pcie1_default_state>;
+			pinctrl-names = "default";
+			perst-gpios = <&tlmm 29 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		mdio_ahb: mdio-ahb@1400000 {
+			phy3: phy@29 {
+				reg = <29 0>;
+				phy_addr = <29>;
+				phy_type = <INTERNAL_PHY_TYPE>;
+				id = <4>;
+				uniphy_id = <0xFF>;
+				uniphy_type = <1>;
+
+				clocks = <&nsscc NSS_CC_EPHY_RX_CLK>,
+					 <&nsscc NSS_CC_EPHY_TX_CLK>,
+					 <&gcc GCC_GEPHY_SYS_CLK>;
+				clock-names = "ephy_rx_clk",
+					      "ephy_tx_clk",
+					      "sys_clk";
+
+				resets = <&nsscc NSS_CC_EPHY_RX_CLK_ARES>,
+					 <&nsscc NSS_CC_EPHY_TX_CLK_ARES>,
+					 <&gcc GCC_GEPHY_SYS_CLK_ARES>;
+				reset-names = "ephy_rx_reset",
+					      "ephy_tx_reset",
+					      "sys_clk_reset";
+
+				qcom,ldo-bias-reg = <0x1961000>;
+				qcom,pll-src-sel-reg = <0x9B42c>;
+				qcom,ephy-rx-mux-reg = <0x39B00610 0x0>;
+				qcom,ephy-tx-mux-reg = <0x39B00614 0x0>;
+			};
+		};
+
+		mdio: mdio@90000 {
+			status = "okay";
+			phy0: phy@0 {
+				phy-reset-gpio = <&tlmm 24 0>;
+				phy_addr = <0>;
+				phy_type = <QCA8075_PHY_TYPE>;
+				id = <1>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+			};
+
+			phy1: phy@1 {
+				phy_addr = <1>;
+				phy_type = <QCA8075_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+			};
+
+			phy2: phy@2 {
+				phy_addr = <2>;
+				phy_type = <QCA8075_PHY_TYPE>;
+				id = <3>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+			};
+		};
+
+		ess_instance: ess-instance{
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			phy-handle2 = <&phy2>;
+			phy-handle3 = <&phy3>;
+			status = "okay";
+		};
+	};
+};
+
+&tlmm {
+	pcie1_default_state: pcie1-default-state {
+		perst-n-pins {
+			pins = "gpio29";
+			function = "gpio";
+			drive-strength = <6>;
+			bias-pull-down;
+			output-low;
+		};
+	};
+
+	phy_rst_pinmux: phy_rst {
+		qca_8075_rst {
+			pins = "gpio24";
+			function = "gpio";
+			drive-strength = <6>;
+			bias-pull-down;
+		};
+	};
+};
+
+&tmel_qmp {
+	status = "okay";
+};
+
+&tmelcom {
+	status = "okay";
+};

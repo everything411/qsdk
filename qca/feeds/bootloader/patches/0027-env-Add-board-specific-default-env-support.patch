@@ -1,0 +1,40 @@
+From f2114264a138675986153b9e42effa35c021f5b0 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Mon, 26 May 2025 22:24:55 +0530
+Subject: [PATCH] env: Add board-specific default env support
+
+Change-Id: Ie21c7844216cab69fd38fe1ce384417c05d3af25
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ env/common.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/env/common.c b/env/common.c
+index a58955a4f42..180904b2cd3 100644
+--- a/env/common.c
++++ b/env/common.c
+@@ -368,6 +368,9 @@ int env_get_default_into(const char *name, char *buf, unsigned int len)
+ 	return env_get_from_linear(default_environment, name, buf, len);
+ }
+ 
++
++__weak void setup_board_default_env(void) {}
++
+ void env_set_default(const char *s, int flags)
+ {
+ 	if (s) {
+@@ -392,6 +395,11 @@ void env_set_default(const char *s, int flags)
+ 
+ 	gd->flags |= GD_FLG_ENV_READY;
+ 	gd->flags |= GD_FLG_ENV_DEFAULT;
++
++/*
++ * setup board default env
++ */
++	setup_board_default_env();
+ }
+ 
+ /* [re]set individual variables to their value in the default environment */
+-- 
+2.34.1
+

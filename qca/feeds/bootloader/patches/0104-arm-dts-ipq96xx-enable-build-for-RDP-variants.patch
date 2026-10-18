@@ -1,0 +1,38 @@
+From 86ea2b0e4fbf39a29c4c8b0f046500ba9d140698 Mon Sep 17 00:00:00 2001
+From: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+Date: Thu, 25 Jun 2026 17:13:13 +0530
+Subject: [PATCH] arm: dts: ipq96xx: enable build for RDP variants
+
+Enable build support for additional IPQ96xx RDP variants
+by including the corresponding DTBs in the build system.
+
+Add support for the following platforms:
+- RDP507
+- RDP529
+- RDP530
+- RDP532
+
+Change-Id: Ic17f2f2c558fe7d3a96f4ef85cf670651aa80677
+Signed-off-by: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index f5152504a49..ad31ea64fca 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -33,6 +33,10 @@ dtb-$(CONFIG_TARGET_IPQ9650) += ipq9650-emulation.dtb \
+ 				ipq9650-rdp506.dtb \
+ 				ipq9650-rdp490.dtb \
+ 				ipq9650-rdp491.dtb \
++				ipq9650-rdp507.dtb \
++				ipq9650-rdp529.dtb \
++				ipq9650-rdp530.dtb \
++				ipq9650-rdp532.dtb \
+ 				ipq9650-db-ju01.dtb \
+ 				ipq9650-db-ju01-c1.dtb \
+ 				ipq9650-db-ju02.dtb
+-- 
+2.34.1
+

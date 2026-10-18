@@ -1,0 +1,41 @@
+From 2bc365c8a9a31c56fba3f779c8659489c4e1728c Mon Sep 17 00:00:00 2001
+From: Aishwarya R <quic_aisr@quicinc.com>
+Date: Tue, 23 May 2023 16:06:08 +0530
+Subject: [PATCH] sigma-dut: turn off disabling of TxBF feature during
+ infrequent traffic
+
+firmware disables TxBF when infrequent traffic(if average time between its
+DL schedules is more than 200 ms) happens as perfomance optimization for ath12k
+chipsets.
+
+But for WFA test cases ping traffic is used for TxBF. As ping traffic is
+intermittent in nature, TxBF is disabled by firmware and ndp announcement
+not happening.
+
+Disable above TxBF disabling optimization in FW for WFA test cases using
+fwtest command. It is sent to enable the TxBF during infrequent traffic also.
+
+Signed-off-by: Aishwarya R <quic_aisr@quicinc.com>
+---
+ ap.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 50fab8d..3c8f44e 100644
+--- a/ap.c
++++ b/ap.c
+@@ -10405,6 +10405,11 @@ skip_key_mgmt:
+ 	/* allow some time for hostapd to start before returning success */
+ 	usleep(500000);
+ 
++	if (dut->ap_txBF && strncmp(dut->device_driver, "ath12k", 6) == 0) {
++		/* Turn off disabling of TxBF feature*/
++		run_system_wrapper(dut, "ath11k-fwtest -i %s -m 0x47 -v 0 253 65535", ifname);
++	}
++
+ hapd_started:
+ 	if (run_hostapd_cli(dut, "ping") != 0) {
+ 		send_resp(dut, conn, SIGMA_ERROR,
+-- 
+2.17.1
+

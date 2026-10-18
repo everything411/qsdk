@@ -1,0 +1,53 @@
+--- a/ap.c
++++ b/ap.c
+@@ -8333,7 +8337,9 @@ write_conf:
+ 	     drv == DRIVER_LINUX_WCN) &&
+	    (mode == AP_11ng || mode == AP_11na ||
+	     ((mode == AP_11ax || mode == AP_11be) && !dut->use_5g))) {
+-		int ht40plus = 0, ht40minus = 0, tx_stbc = 0;
++		int ht40plus = 0, ht40minus = 0;
++		char ht_caps[60];
++		int len = 0;
+ 
+ 		fprintf(f, "ieee80211n=1\n");
+		if (mode == AP_11ax || mode == AP_11be)
+@@ -8360,9 +8366,6 @@ write_conf:
+ 				ht40minus = 1;
+ 		}
+ 
+-		if (dut->ap_tx_stbc == VALUE_ENABLED)
+-			tx_stbc = 1;
+-
+ 		/* Overwrite the ht_capab with offset value if configured */
+ 		if (dut->ap_chwidth == AP_40 &&
+ 		    dut->ap_chwidth_offset == SEC_CH_40ABOVE) {
+@@ -8374,10 +8377,16 @@ write_conf:
+ 			ht40plus = 0;
+ 		}
+ 
+-		fprintf(f, "ht_capab=%s%s%s\n",
+-			ht40plus ? "[HT40+]" : "",
+-			ht40minus ? "[HT40-]" : "",
+-			tx_stbc ? "[TX-STBC]" : "");
++		if (ht40plus) {
++			len += snprintf(ht_caps + len, sizeof(ht_caps) - len, "%s", "[HT40+]");
++		} else if (ht40minus) {
++			len += snprintf(ht_caps + len, sizeof(ht_caps) - len, "%s", "[HT40-]");
++		}
++
++		len += snprintf(ht_caps + len, sizeof(ht_caps) - len, "%s", "[SHORT-GI-20][SHORT-GI-40]");
++		len += snprintf(ht_caps + len, sizeof(ht_caps) - len, "%s", "[TX-STBC][RX-STBC1]");
++		fprintf(f, "ht_capab=%s\n", ht_caps);
++
+ 	}
+ 
+ 	if ((drv == DRIVER_MAC80211 || drv == DRIVER_QNXNTO ||
+@@ -9143,7 +9152,7 @@ skip_key_mgmt:
+ 				(dut->ap_ldpc == VALUE_ENABLED) ?
+ 				"[RXLDPC]" : "",
+ 				(dut->ap_tx_stbc == VALUE_ENABLED) ?
+-				"[TX-STBC-2BY1]" : "",
++				"[TX-STBC-2BY1][RX-STBC-1]" : "",
+ 				dut->ap_mu_txBF ? "[MU-BEAMFORMER]" : "",
+ 				dut->ap_chwidth == AP_160 ? "[VHT160]" :
+ 				(dut->ap_chwidth == AP_80_80 ?

@@ -1,0 +1,1258 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Clock drivers for Qualcomm ipq9650
+ *
+ * (C) Copyright 2024 Linaro Ltd.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#include <linux/types.h>
+#include <clk-uclass.h>
+#include <dm.h>
+#include <linux/delay.h>
+#include <asm/io.h>
+#include <linux/bug.h>
+#include <linux/bitops.h>
+#include <dm/device-internal.h>
+#include <asm/arch/dt-bindings/clock/qcom,ipq9650-gcc.h>
+#include <asm/arch/dt-bindings/reset/qcom,ipq9650-gcc.h>
+#include "clock-qcom.h"
+
+#define	GCC_QUPV3_UART1_CMD_RCGR		0x03018
+#define	GCC_QUPV3_UART2_CMD_RCGR		0x04004
+#define GCC_SDCC1_APPS_CMD_RCGR			0x33004
+#define GCC_SDCC1_ICE_CORE_CMD_RCGR		0x33018
+#define GCC_QUPV3_SPI0_CMD_RCGR			0x02018
+#define GCC_QUPV3_WRAP_SE2_CMD_RCGR		0x03034
+#define GCC_QUPV3_WRAP_SE3_CMD_RCGR		0x03050
+#define GCC_QPIC_CMD_RCGR			(0x32020)
+#define GCC_QPIC_IO_MACRO_CMD_RCGR		(0x32004)
+#define GCC_USB0_MASTER_CMD_RCGR		(0x2C004)
+#define GCC_USB0_MOCK_UTMI_DIV_CDIVR		(0x2C040)
+#define GCC_USB0_MOCK_UTMI_CMD_RCGR		(0x2C02C)
+#define GCC_USB0_AUX_CMD_RCGR			(0x2C018)
+#define GCC_USB1_MOCK_UTMI_DIV_CDIVR		(0x3C018)
+#define GCC_USB1_MOCK_UTMI_CMD_RCGR		(0x3C004)
+
+#define CFG_CLK_SRC_GPLL4_OUT_AUX		(1 << 8)
+
+#define PCIE_GPLL0_OUT_AUX				(2 << 8)
+#define PCIE_GPLL4_OUT_MAIN				(2 << 8)
+#define PCIE_GPLL0_OUT_MAIN				(1 << 8)
+
+/* PCIE clock control registers */
+#define GCC_PCIE_AUX_CMD_RCGR				0x28004
+#define GCC_PCIE0_RCHNG_CMD_RCGR			0x28028
+#define GCC_PCIE0_AXI_M_CMD_RCGR 			0x28018
+#define GCC_PCIE0_AXI_S_CMD_RCGR			0x28020
+
+#define GCC_PCIE4_RCHNG_CMD_RCGR			0x25014
+#define GCC_PCIE4_AXI_M_CMD_RCGR 			0x25004
+#define GCC_PCIE4_AXI_S_CMD_RCGR			0x2500C
+
+#define GCC_PCIE3_RCHNG_CMD_RCGR			0x2B028
+#define GCC_PCIE3_AXI_M_CMD_RCGR 			0x2B018
+#define GCC_PCIE3_AXI_S_CMD_RCGR			0x2B020
+
+#define GCC_PCIE1_RCHNG_CMD_RCGR			0x29028
+#define GCC_PCIE1_AXI_M_CMD_RCGR 			0x29018
+#define GCC_PCIE1_AXI_S_CMD_RCGR			0x29020
+
+#define GCC_PCIE2_RCHNG_CMD_RCGR			0x2A028
+#define GCC_PCIE2_AXI_M_CMD_RCGR 			0x2A018
+#define GCC_PCIE2_AXI_S_CMD_RCGR			0x2A020
+
+/* Clock source selections */
+#define GCC_QPIC_SRC_SEL_GPLL0_OUT_MAIN			BIT(8)
+#define GCC_QPIC_IO_MACRO_SRC_SEL_GPLL0_OUT_MAIN	BIT(8)
+#define GCC_QUPV3_2X_CORE_SRC_SEL_GPLL0_OUT_MAIN	BIT(8)
+#define GCC_ANOC0_AXI_BFDCD_SRC_SEL_GPLL4_OUT_MAIN	(2 << 8)
+#define GCC_QDSS_TSCTR_SRC_SEL_GPLL4_OUT_MAIN		BIT(8)
+#define GCC_XO_SRC_SEL_XO				(0 << 8)
+#define GCC_QDSS_AT_SRC_SEL_GPLL4_OUT_MAIN		BIT(8)
+#define GCC_APSS_AHB_SRC_SEL_GPLL0_OUT_MAIN		BIT(8)
+#define GCC_APSS_AXI_SRC_SEL_GPLL0_OUT_MAIN		BIT(8)
+#define APSS_SILVER_SRC_SEL_APSSPLL_OUT_EARLY		2
+#define APSS_L3_SRC_SEL_APSSPLL_OUT_EARLY		2
+
+/* clock domains */
+#define GCC_QUPV3_2X_CORE_CMD_RCGR			(0x0100C)
+#define GCC_PCNOC_BFDCD_CMD_RCGR			(0x31004)
+#define GCC_SYSTEM_NOC_BFDCD_CMD_RCGR			(0x2E004)
+#define GCC_ANOC0_AXI_BFDCD_CMD_RCGR			(0x2E088)
+#define GCC_QDSS_TSCTR_CMD_RCGR				(0x2D01C)
+#define GCC_XO_CMD_RCGR					(0x34004)
+#define GCC_APSS_AHB_CMD_RCGR				(0x2400C)
+#define GCC_APSS_AXI_CMD_RCGR				(0x24004)
+#define APSS_SILVER_CMD_GFMUX				(0x00080)
+#define APSS_L3_CMD_GFMUX				(0x00080)
+
+/* clocks */
+#define GCC_MPM_AHB_CBCR				(0x37014)
+#define GCC_GEMNOC_ANOC_CBCR				(0x19044)
+#define GCC_ANOC0_AXI_CBCR				(0x2E0B4)
+#define GCC_APSS_TS_CBCR				(0x24030)
+#define GCC_APSS_DBG_CBCR				(0x2402C)
+#define GCC_CNOC_QOSGEN_EXTREF_CBCR			(0x310B0)
+#define GCC_AGGRNOC_ATB_CBCR				(0x2E0AC)
+#define GCC_AGGRNOC_TS_CBCR				(0x2E0B0)
+#define GCC_SYS_NOC_AT_CBCR				(0x2E038)
+#define GCC_PCNOC_AT_CBCR				(0x31024)
+#define GCC_PCNOC_TS_CBCR				(0x3102C)
+#define GCC_SNOC_TS_CBCR				(0x2E068)
+#define GCC_SNOC_QOSGEN_EXTREF_CBCR			(0x2E020)
+#define GCC_SNOC_XO_DCD_CBCR				(0x2E060)
+#define GCC_QPIC_AHB_CBCR				(0x32010)
+#define GCC_QPIC_CBCR					(0x32028)
+#define GCC_QPIC_IO_MACRO_CBCR				(0x3200C)
+#define GCC_QPIC_SLEEP_CBCR				(0x32018)
+#define GCC_QUPV3_2X_CORE_CBCR				(0x01020)
+#define GCC_QUPV3_AHB_MST_CBCR				(0x01014)
+#define GCC_QUPV3_AHB_SLV_CBCR				(0x0102C)
+#define GCC_QUPV3_CORE_CBCR				(0x01018)
+#define GCC_QUPV3_SLEEP_CBCR				(0x01028)
+#define GCC_ANOC1_AXI_CBCR				(0x2E0B8)
+#define GCC_ANOC_QOSGEN_EXTREF_CBCR			(0x2E098)
+#define GCC_ANOC_XO_DCD_CBCR				(0x2E09C)
+#define GCC_PCNOC_CE_EDPD_CBCR				(0x31020)
+#define GCC_CMN_LDO_CBCR				(0x3A014)
+#define GCC_SPDM_PCNOC_CY_CBCR				(0x36008)
+
+#define IO_MACRO_CLK_400_MHZ				(400000000)
+#define IO_MACRO_CLK_320_MHZ				(320000000)
+#define IO_MACRO_CLK_266_MHZ				(266000000)
+#define IO_MACRO_CLK_228_MHZ				(228000000)
+#define IO_MACRO_CLK_200_MHZ				(200000000)
+#define IO_MACRO_CLK_100_MHZ				(100000000)
+#define IO_MACRO_CLK_50_MHZ				(50000000)
+#define IO_MACRO_CLK_24_MHZ				(24000000)
+
+#define GCC_QUPV3_I2C0_CMD_RCGR			(0x3034)
+#define GCC_QUPV3_I2C1_CMD_RCGR			(0x3050)
+#define GCC_QUPV3_I2C2_CMD_RCGR			(0x3018)
+#define GCC_QUPV3_I2C3_CMD_RCGR			(0x0306C)
+
+/* Clock rate constants */
+#define CLK_1_25_MHZ				(1250000UL)
+#define CLK_2_5_MHZ				(2500000UL)
+#define CLK_12_5_MHZ				(12500000UL)
+#define CLK_24_MHZ				(24000000UL)
+#define CLK_25_MHZ				(25000000UL)
+#define CLK_78_125_MHZ				(78125000UL)
+#define CLK_50_MHZ				(50000000UL)
+#define CLK_125_MHZ				(125000000UL)
+#define CLK_156_25_MHZ				(156250000UL)
+#define CLK_312_5_MHZ				(312500000UL)
+#define GFMUX_UPDATE_TIMEOUT_US			1000
+
+/* Core NSS Clocks */
+#define NSS_CC_NSS_CSR_CBCR			(0x00714)
+#define NSS_CC_NSSNOC_NSS_CSR_CBCR		(0x00718)
+
+#define NSS_CC_PPE_SWITCH_IPE_CBCR		(0x00424)
+#define NSS_CC_PPE_SWITCH_BTQ_CBCR		(0x0042C)
+#define NSS_CC_PPE_SWITCH_CBCR			(0x00434)
+#define NSS_CC_PPE_SWITCH_CFG_CBCR		(0x0043C)
+#define NSS_CC_PPE_EDMA_CBCR			(0x00440)
+#define NSS_CC_PPE_EDMA_CFG_CBCR		(0x00448)
+
+/* PPE Core Clocks */
+#define NSS_CC_PPE_CLK_CBCR			(0x00410)
+#define NSS_CC_PPE_CFG_CLK_CBCR			(0x00418)
+
+/* NOC PPE Clocks */
+#define NSS_CC_NSSNOC_PPE_CBCR			(0x00440)
+#define NSS_CC_NSSNOC_PPE_CFG_CBCR		(0x00444)
+
+#define NSS_CC_PORT1_MAC_CBCR			(0x0044C)
+#define NSS_CC_PORT2_MAC_CBCR			(0x00454)
+#define NSS_CC_PORT3_MAC_CBCR			(0x0045C)
+#define NSS_CC_PORT4_MAC_CBCR			(0x00464)
+#define NSS_CC_PORT5_MAC_CBCR			(0x0046C)
+#define NSS_CC_PORT6_MAC_CBCR			(0x00474)
+
+#define NSS_CC_PORT1_RX_CBCR			(0x00548)
+#define NSS_CC_PORT1_TX_CBCR			(0x00550)
+#define NSS_CC_PORT2_RX_CBCR			(0x00558)
+#define NSS_CC_PORT2_TX_CBCR			(0x00560)
+#define NSS_CC_PORT3_RX_CBCR			(0x00568)
+#define NSS_CC_PORT3_TX_CBCR			(0x00570)
+#define NSS_CC_PORT4_RX_CBCR			(0x00578)
+#define NSS_CC_PORT4_TX_CBCR			(0x00580)
+#define NSS_CC_PORT5_RX_CBCR			(0x00588)
+#define NSS_CC_PORT5_TX_CBCR			(0x00590)
+#define NSS_CC_PORT6_RX_CBCR			(0x00598)
+#define NSS_CC_PORT6_TX_CBCR			(0x005A0)
+
+/* PTP Reference Clocks */
+#define NSS_CC_XGMAC0_PTP_REF_CBCR		(0x00468)
+#define NSS_CC_XGMAC1_PTP_REF_CBCR		(0x0046C)
+#define NSS_CC_XGMAC2_PTP_REF_CBCR		(0x00470)
+
+/* Debug Clock */
+#define NSS_CC_DEBUG_CBCR			(0x00750)
+
+/* Crypto Engine Clocks - JHPPE Specific */
+#define NSS_CC_CE_APB_CBCR			(0x005E8)
+#define NSS_CC_CE_AXI_CBCR			(0x005EC)
+#define NSS_CC_NSSNOC_CE_APB_CBCR		(0x005F4)
+#define NSS_CC_NSSNOC_CE_AXI_CBCR		(0x005F8)
+
+/* UNIPHY Port Clocks */
+#define NSS_CC_UNIPHY_PORT1_RX_CBCR		(0x005E0)
+#define NSS_CC_UNIPHY_PORT1_TX_CBCR		(0x005E4)
+#define NSS_CC_UNIPHY_PORT2_RX_CBCR		(0x005E8)
+#define NSS_CC_UNIPHY_PORT2_TX_CBCR		(0x005EC)
+#define NSS_CC_UNIPHY_PORT3_RX_CBCR		(0x005F0)
+#define NSS_CC_UNIPHY_PORT3_TX_CBCR		(0x005F4)
+#define NSS_CC_UNIPHY_PORT4_RX_CBCR		(0x005F8)
+#define NSS_CC_UNIPHY_PORT4_TX_CBCR		(0x005FC)
+#define NSS_CC_UNIPHY_PORT5_RX_CBCR		(0x00600)
+#define NSS_CC_UNIPHY_PORT5_TX_CBCR		(0x00604)
+#define NSS_CC_UNIPHY_PORT6_RX_CBCR		(0x00608)
+#define NSS_CC_UNIPHY_PORT6_TX_CBCR		(0x0060C)
+
+/* GCC Clock Registers */
+#define GCC_IM_SLEEP_CBCR			(0x34020)
+#define GCC_CMN_AHB_CBCR			(0x3A004)
+#define GCC_CMN_SYS_CBCR			(0x3A008)
+#define GCC_NSSCC_CBCR				(0x17034)
+#define GCC_NSSNOC_NSSCC_CBCR			(0x17030)
+#define GCC_NSSNOC_SNOC_CBCR			(0x17028)
+#define GCC_NSSNOC_SNOC_1_CBCR			(0x1707C)
+#define GCC_UNIPHY0_AHB_CBCR			(0x1704C)
+#define GCC_UNIPHY1_AHB_CBCR			(0x1705C)
+#define GCC_UNIPHY2_AHB_CBCR			(0x1706C)
+#define GCC_UNIPHY0_SYS_CBCR			(0x17048)
+#define GCC_UNIPHY1_SYS_CBCR			(0x17058)
+#define GCC_UNIPHY2_SYS_CBCR			(0x17068)
+
+#define GCC_QDSS_AT_CMD_RCGR			(0x2D004)
+#define GCC_NSSNOC_SNOC_CMD_RCGR		(0x2E008)
+#define GCC_UNIPHY_SYS_CMD_RCGR			(0x17094)
+/* Ethernet related clocks */
+#define GCC_NSSNOC_MEMNOC_BFDCD_CMD_RCGR	(0x17004)
+#define NSS_CC_PPE_CMD_RCGR			(0x003EC)
+#define NSS_CC_PPE_CFG_RCGR			(0x003F0)
+#define NSS_CC_CE_CMD_RCGR			(0x00644)
+#define NSS_CC_CFG_CMD_RCGR			(0x0070C)
+#define NSS_CC_CFG_CFG_RCGR			(0x00710)
+#define NSS_CC_EIP_BFDCD_CMD_RCGR		(0x006A8)
+
+#define NSS_CC_PORT1_RX_CMD_RCGR		(0x004B4)
+#define NSS_CC_PORT1_RX_CFG_RCGR		(0x004B8)
+#define NSS_CC_PORT1_RX_DIV_CDIVR		(0x004BC)
+#define NSS_CC_PORT1_TX_CMD_RCGR		(0x004C0)
+#define NSS_CC_PORT1_TX_CFG_RCGR		(0x004C4)
+#define NSS_CC_PORT1_TX_DIV_CDIVR		(0x004C8)
+#define NSS_CC_PORT2_RX_CMD_RCGR		(0x004CC)
+#define NSS_CC_PORT2_RX_CFG_RCGR		(0x004D0)
+#define NSS_CC_PORT2_RX_DIV_CDIVR		(0x004D4)
+#define NSS_CC_PORT2_TX_CMD_RCGR		(0x004D8)
+#define NSS_CC_PORT2_TX_CFG_RCGR		(0x004DC)
+#define NSS_CC_PORT2_TX_DIV_CDIVR		(0x004E0)
+#define NSS_CC_PORT3_RX_CMD_RCGR		(0x004E4)
+#define NSS_CC_PORT3_RX_CFG_RCGR		(0x004E8)
+#define NSS_CC_PORT3_RX_DIV_CDIVR		(0x004EC)
+#define NSS_CC_PORT3_TX_CMD_RCGR		(0x004F0)
+#define NSS_CC_PORT3_TX_CFG_RCGR		(0x004F4)
+#define NSS_CC_PORT3_TX_DIV_CDIVR		(0x004F8)
+#define NSS_CC_PORT4_RX_CMD_RCGR		(0x004FC)
+#define NSS_CC_PORT4_RX_CFG_RCGR		(0x00500)
+#define NSS_CC_PORT4_RX_DIV_CDIVR		(0x00504)
+#define NSS_CC_PORT4_TX_CMD_RCGR		(0x00508)
+#define NSS_CC_PORT4_TX_CFG_RCGR		(0x0050C)
+#define NSS_CC_PORT4_TX_DIV_CDIVR		(0x00510)
+#define NSS_CC_PORT5_RX_CMD_RCGR		(0x00514)
+#define NSS_CC_PORT5_RX_CFG_RCGR		(0x00518)
+#define NSS_CC_PORT5_RX_DIV_CDIVR		(0x0051C)
+#define NSS_CC_PORT5_TX_CMD_RCGR		(0x00520)
+#define NSS_CC_PORT5_TX_CFG_RCGR		(0x00524)
+#define NSS_CC_PORT5_TX_DIV_CDIVR		(0x00528)
+#define NSS_CC_PORT6_RX_CMD_RCGR		(0x0052C)
+#define NSS_CC_PORT6_RX_CFG_RCGR		(0x00530)
+#define NSS_CC_PORT6_RX_DIV_CDIVR		(0x00534)
+#define NSS_CC_PORT6_TX_CMD_RCGR		(0x00538)
+#define NSS_CC_PORT6_TX_CFG_RCGR		(0x0053C)
+#define NSS_CC_PORT6_TX_DIV_CDIVR		(0x00540)
+
+#define GCC_NSSNOC_MEMNOC_BFDCD_SRC_SEL_GPLL0_OUT_MAIN	BIT(8)
+#define GCC_QDSS_AT_SRC_SEL_GPLL0_OUT_MAIN		BIT(8)
+#define GCC_PCNOC_BFDCD_SRC_SEL_GPLL0_OUT_MAIN		BIT(8)
+#define GCC_SYSTEM_NOC_BFDCD_SRC_SEL_GPLL4_OUT_MAIN	(2 << 8)
+
+/* Clock source selections */
+#define NSS_CC_PPE_SRC_SEL_CMN_PLL_NSS_CLK_462M		(6 << 8)
+#define NSS_CC_PPE_SRC_SEL_GCC_GPLL0_OUT_AUX		(2 << 8)
+#define NSS_CC_PORT_RX_SRC_SEL_UNIPHY_NSS_RX_CLK	(3 << 8)
+#define NSS_CC_PORT_TX_SRC_SEL_UNIPHY_NSS_TX_CLK	(4 << 8)
+#define NSS_CC_PORT_5_RX_SRC_SEL_UNIPHY_NSS_RX_CLK	(5 << 8)
+#define NSS_CC_PORT_5_TX_SRC_SEL_UNIPHY_NSS_TX_CLK	(6 << 8)
+#define CMN_PLL_NSS_CLK_429M				(6 << 8)
+
+#define PCNOC_BFDCD_SRC_SEL_GPLL0_OUT_MAIN		BIT(8)
+#define SYSTEM_NOC_BFDCD_SRC_SEL_GPLL4_OUT_MAIN		(2 << 8)
+#define NSSNOC_MEMNOC_BFDCD_SRC_SEL_NSS_CMN_CLK		BIT(8)
+
+/* Reset Control Registers */
+#define NSS_CC_PPE_BCR_REG			(0x003E8)
+#define GCC_UNIPHY0_BCR_REG			(0x17044)
+#define GCC_UNIPHY1_BCR_REG			(0x17054)
+#define GCC_UNIPHY2_BCR_REG			(0x17064)
+
+int msm_set_parent(struct clk *clk, struct clk *parent)
+{
+	assert(clk);
+	assert(parent);
+	clk->dev->parent = parent->dev;
+	dev_set_uclass_priv(parent->dev, parent);
+	return 0;
+}
+
+ulong msm_get_rate(struct clk *clk)
+{
+	switch (clk->id) {
+	case GCC_USB0_MOCK_UTMI_CLK:
+	case GCC_USB1_MOCK_UTMI_CLK:
+		/* USB MOCK_UTMI clocks are configured to 24MHz from CXO */
+		clk->rate = CLK_24_MHZ;
+		break;
+	}
+
+	return (ulong)clk->rate;
+}
+
+static int calc_div_for_nss_port_clk(struct clk *clk, ulong rate,
+				     int *div, int *cdiv)
+{
+	int pclk_rate = clk_get_parent_rate(clk);
+
+	if (pclk_rate == CLK_125_MHZ) {
+		switch (rate) {
+		case CLK_2_5_MHZ:
+			*div = 9;
+			*cdiv = 9;
+			break;
+		case CLK_25_MHZ:
+			*div = 9;
+			break;
+		case CLK_125_MHZ:
+			*div = 1;
+			break;
+		default:
+			return -EINVAL;
+		}
+	} else if (pclk_rate == CLK_312_5_MHZ) {
+		switch (rate) {
+		case CLK_1_25_MHZ:
+			*div = 4;
+			*cdiv = 99;
+		case CLK_2_5_MHZ:
+			break;
+		case CLK_12_5_MHZ:
+			*div = 4;
+			*cdiv = 9;
+			break;
+		case CLK_25_MHZ:
+			break;
+		case CLK_78_125_MHZ:
+			*div = 7;
+			break;
+		case CLK_125_MHZ:
+			*div = 4;
+			break;
+		case CLK_156_25_MHZ:
+			*div = 3;
+			break;
+		case CLK_312_5_MHZ:
+			*div = 1;
+			break;
+		default:
+			return -EINVAL;
+		}
+	} else {
+		return -EINVAL;
+	};
+
+	return 0;
+}
+
+static void clk_gfmux_set_rate(phys_addr_t base, uint32_t cmd_gfmux,
+			       int source)
+{
+	u32 cfg;
+	u32 sts_bit;
+	int timeout = GFMUX_UPDATE_TIMEOUT_US;
+
+	if (source < 0 || source > 3)
+		return;
+
+	/* setup src select */
+	cfg = readl(base + cmd_gfmux + RCG_CFG_REG);
+	cfg &= ~GENMASK(3, 0);
+	cfg |= source;
+
+	/* Write new clock configuration */
+	writel(cfg, base + cmd_gfmux + RCG_CFG_REG);
+
+
+	/* Wait for update to complete */
+	sts_bit = 31 - source;
+	do {
+		cfg = readl(base + cmd_gfmux + RCG_CFG_REG);
+		if (cfg & BIT(sts_bit))
+			return;
+		udelay(1);
+	} while (--timeout);
+}
+
+static ulong ipq9650_set_rate(struct clk *clk, ulong rate)
+{
+	struct msm_clk_priv *priv = dev_get_priv(clk->dev);
+	int ret, src, div = 0, cdiv = 0;
+
+	switch (clk->id) {
+	case GCC_QUPV3_UART1_CLK:
+		clk_rcg_set_rate_mnd(priv->base, GCC_QUPV3_UART1_CMD_RCGR,
+				     0x19, 0, 0, CFG_CLK_SRC_CXO, 16);
+		break;
+	case GCC_QUPV3_UART2_CLK:
+		clk_rcg_set_rate_mnd(priv->base, GCC_QUPV3_UART2_CMD_RCGR,
+				     0x19, 0, 0, CFG_CLK_SRC_CXO, 16);
+		break;
+	case GCC_SDCC1_APPS_CLK:
+		clk_rcg_set_rate_mnd(priv->base, GCC_SDCC1_APPS_CMD_RCGR,
+				     0, 6, 25, CFG_CLK_SRC_GPLL0, 16);
+		break;
+	case GCC_SDCC1_ICE_CORE_CLK:
+		/* ICE Core Clock: 300 MHz */
+		clk_rcg_set_rate_mnd(priv->base, GCC_SDCC1_ICE_CORE_CMD_RCGR,
+				     0, 3, 8, CFG_CLK_SRC_GPLL0, 8);
+		break;
+	case GCC_QUPV3_SPI0_CLK:
+		clk_rcg_set_rate_mnd(priv->base, GCC_QUPV3_SPI0_CMD_RCGR,
+				     31, 0, 0, CFG_CLK_SRC_GPLL0, 16);
+		break;
+	case GCC_QUPV3_I2C_SE1_CLK:
+		/* Default: 64MHz */
+		clk_rcg_set_rate_mnd(priv->base, GCC_QUPV3_I2C2_CMD_RCGR,
+					0x18, 0, 0, CFG_CLK_SRC_GPLL0, 16);
+		break;
+	case GCC_QUPV3_I2C_SE2_CLK:
+		/* Default: 64MHz */
+		clk_rcg_set_rate_mnd(priv->base, GCC_QUPV3_I2C0_CMD_RCGR,
+					0x18, 0, 0, CFG_CLK_SRC_GPLL0, 16);
+
+		break;
+	case GCC_QUPV3_I2C_SE3_CLK:
+		/* Default: 64MHz */
+		clk_rcg_set_rate_mnd(priv->base, GCC_QUPV3_I2C1_CMD_RCGR,
+					0x18, 0, 0, CFG_CLK_SRC_GPLL0, 16);
+		break;
+	case GCC_QUPV3_I2C_SE4_CLK:
+		/* Default: 64MHz */
+		clk_rcg_set_rate_mnd(priv->base, GCC_QUPV3_I2C3_CMD_RCGR,
+					0x18, 0, 0, CFG_CLK_SRC_GPLL0, 16);
+		break;
+	case GCC_QPIC_CLK:
+		/* GCC_QPIC_CLK: 100 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_QPIC_CMD_RCGR,
+				    0, 0xF, 0, CFG_CLK_SRC_GPLL0);
+		break;
+	case GCC_QPIC_IO_MACRO_CLK:
+		src = CFG_CLK_SRC_GPLL0;
+		switch (rate) {
+		case IO_MACRO_CLK_24_MHZ:
+			src = CFG_CLK_SRC_CXO;
+			div = 0;
+			break;
+		case IO_MACRO_CLK_50_MHZ:
+			div = 31;
+			break;
+		case IO_MACRO_CLK_100_MHZ:
+			div = 15;
+			break;
+		case IO_MACRO_CLK_200_MHZ:
+			div = 7;
+			break;
+		case IO_MACRO_CLK_228_MHZ:
+			div = 6;
+			break;
+		case IO_MACRO_CLK_266_MHZ:
+			div = 5;
+			break;
+		case IO_MACRO_CLK_320_MHZ:
+			div = 4;
+			break;
+		case IO_MACRO_CLK_400_MHZ:
+			div = 3;
+			break;
+		default:
+			return -EINVAL;
+		}
+		clk_rcg_set_rate_v2(priv->base, GCC_QPIC_IO_MACRO_CMD_RCGR,
+				    0, div, 0, src);
+		break;
+	case GCC_USB0_MASTER_CLK:
+		/* Default: 200MHz */
+		clk_rcg_set_rate_mnd(priv->base, GCC_USB0_MASTER_CMD_RCGR, 7,
+					0, 0, CFG_CLK_SRC_GPLL0, 8);
+		break;
+	case GCC_USB0_MOCK_UTMI_CLK:
+		/* Default: 24MHz */
+		writel(0, priv->base + GCC_USB0_MOCK_UTMI_DIV_CDIVR);
+		clk_rcg_set_rate_mnd(priv->base, GCC_USB0_MOCK_UTMI_CMD_RCGR,
+					1, 0, 0, CFG_CLK_SRC_CXO, 8);
+		break;
+	case GCC_USB0_AUX_CLK:
+		/* Default: 24MHz */
+		clk_rcg_set_rate_mnd(priv->base, GCC_USB0_AUX_CMD_RCGR, 1,
+					0, 0, CFG_CLK_SRC_CXO, 8);
+		break;
+	case GCC_USB1_MOCK_UTMI_CLK:
+		/* Default: 24MHz */
+		writel(0, priv->base + GCC_USB1_MOCK_UTMI_DIV_CDIVR);
+		clk_rcg_set_rate_mnd(priv->base, GCC_USB1_MOCK_UTMI_CMD_RCGR,
+					1, 0, 0, CFG_CLK_SRC_CXO, 8);
+		break;
+	case GCC_PCIE0_AUX_CLK:
+		fallthrough;
+	case GCC_PCIE1_AUX_CLK:
+		fallthrough;
+	case GCC_PCIE2_AUX_CLK:
+		fallthrough;
+	case GCC_PCIE3_AUX_CLK:
+		fallthrough;
+	case GCC_PCIE4_AUX_CLK:
+		/* GCC_PCIE_AUX_CLK: 20 MHz */
+		clk_rcg_set_rate_mnd(priv->base, GCC_PCIE_AUX_CMD_RCGR,
+					0x1F, 2, 5, PCIE_GPLL0_OUT_AUX, 16);
+	case GCC_PCIE0_RCHNG_CLK:
+		/* GCC_PCIE0_RCHNG_CLK: 100 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE0_RCHNG_CMD_RCGR,
+					8, PCIE_GPLL0_OUT_MAIN);
+		break;
+	case GCC_PCIE0_AXI_M_CLK:
+		/* GCC_PCIE0_AXI_M_CLK: 200 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE0_AXI_M_CMD_RCGR,
+					6, PCIE_GPLL4_OUT_MAIN);
+		break;
+	case GCC_PCIE0_AXI_S_CLK:
+		/* GCC_PCIE0_AXI_S_CLK: 200 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE0_AXI_S_CMD_RCGR,
+					6, PCIE_GPLL4_OUT_MAIN);
+		break;
+
+	case GCC_PCIE4_RCHNG_CLK:
+		/* GCC_PCIE4_RCHNG_CLK: 100 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE4_RCHNG_CMD_RCGR,
+					8, PCIE_GPLL0_OUT_MAIN);
+		break;
+	case GCC_PCIE4_AXI_M_CLK:
+		/* GCC_PCIE4_AXI_M_CLK: 200 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE4_AXI_M_CMD_RCGR,
+					6, PCIE_GPLL4_OUT_MAIN);
+		break;
+	case GCC_PCIE4_AXI_S_CLK:
+		/* GCC_PCIE4_AXI_S_CLK: 200 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE4_AXI_S_CMD_RCGR,
+					6, PCIE_GPLL4_OUT_MAIN);
+		break;
+
+	case GCC_PCIE3_RCHNG_CLK:
+		/* GCC_PCIE3_RCHNG_CLK: 100 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE3_RCHNG_CMD_RCGR,
+					8, PCIE_GPLL0_OUT_MAIN);
+		break;
+	case GCC_PCIE3_AXI_M_CLK:
+		/* GCC_PCIE3_AXI_M_CLK: 266.67 MHz */
+		clk_rcg_set_rate_v2(priv->base, GCC_PCIE3_AXI_M_CMD_RCGR,
+					0, 8, 0, PCIE_GPLL4_OUT_MAIN);
+		break;
+	case GCC_PCIE3_AXI_S_CLK:
+		/* GCC_PCIE3_AXI_S_CLK: 200 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE3_AXI_S_CMD_RCGR,
+					6, PCIE_GPLL4_OUT_MAIN);
+		break;
+
+	case GCC_PCIE1_RCHNG_CLK:
+		/* GCC_PCIE1_RCHNG_CLK: 100 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE1_RCHNG_CMD_RCGR,
+					8, PCIE_GPLL0_OUT_MAIN);
+		break;
+	case GCC_PCIE1_AXI_M_CLK:
+		/* GCC_PCIE1_AXI_M_CLK: 266.67 MHz */
+		clk_rcg_set_rate_v2(priv->base, GCC_PCIE1_AXI_M_CMD_RCGR,
+					0, 8, 0, PCIE_GPLL4_OUT_MAIN);
+		break;
+	case GCC_PCIE1_AXI_S_CLK:
+		/* GCC_PCIE1_AXI_S_CLK: 200 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE1_AXI_S_CMD_RCGR,
+					6, PCIE_GPLL4_OUT_MAIN);
+		break;
+
+	case GCC_PCIE2_RCHNG_CLK:
+		/* GCC_PCIE2_RCHNG_CLK: 100 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE2_RCHNG_CMD_RCGR,
+					8, PCIE_GPLL0_OUT_MAIN);
+		break;
+	case GCC_PCIE2_AXI_M_CLK:
+		/* GCC_PCIE2_AXI_M_CLK: 266.67 MHz */
+		clk_rcg_set_rate_v2(priv->base, GCC_PCIE2_AXI_M_CMD_RCGR,
+					0, 8, 0, PCIE_GPLL4_OUT_MAIN);
+		break;
+	case GCC_PCIE2_AXI_S_CLK:
+		/* GCC_PCIE2_AXI_S_CLK: 200 MHz */
+		clk_rcg_set_rate(priv->base, GCC_PCIE2_AXI_S_CMD_RCGR,
+					6, PCIE_GPLL4_OUT_MAIN);
+		break;
+
+	case GCC_QUPV3_2X_CORE_CLK:
+		/* GCC_QUPV3_2X_CORE_CLK: 200 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_QUPV3_2X_CORE_CMD_RCGR,
+				    0, 7, 0,
+				    GCC_QUPV3_2X_CORE_SRC_SEL_GPLL0_OUT_MAIN);
+		break;
+	case GCC_PCNOC_BFDCD_CLK:
+		/* GCC_PCNOC_BFDCD_CLK: 100 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_PCNOC_BFDCD_CMD_RCGR,
+				    0, 0xF, 0,
+				    GCC_PCNOC_BFDCD_SRC_SEL_GPLL0_OUT_MAIN);
+		break;
+	case GCC_SYSTEM_NOC_BFDCD_CLK:
+		/* GCC_SYSTEM_NOC_BFDCD_CLK: 266 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_SYSTEM_NOC_BFDCD_CMD_RCGR,
+				    0, 8, 0,
+				    SYSTEM_NOC_BFDCD_SRC_SEL_GPLL4_OUT_MAIN);
+		break;
+	case GCC_ANOC0_AXI_BFDCD_CLK:
+		/* GCC_ANOC0_AXI_BFDCD_CLK: 342 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_ANOC0_AXI_BFDCD_CMD_RCGR,
+				    0, 6, 0,
+				    GCC_ANOC0_AXI_BFDCD_SRC_SEL_GPLL4_OUT_MAIN);
+		break;
+	case GCC_QDSS_TSCTR_CLK:
+		/* GCC_QDSS_TSCTR_CLK: 600 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_QDSS_TSCTR_CMD_RCGR,
+				    0, 3, 0,
+				    GCC_QDSS_TSCTR_SRC_SEL_GPLL4_OUT_MAIN);
+		break;
+	case GCC_XO_CLK:
+		/* GCC_XO_CLK: 24 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_XO_CMD_RCGR,
+				    0, 1, 0,
+				    GCC_XO_SRC_SEL_XO);
+		break;
+	case GCC_QDSS_AT_CLK:
+		/* GCC_QDSS_AT_CLK: 240 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_QDSS_AT_CMD_RCGR,
+				    0, 9, 0,
+				    GCC_QDSS_AT_SRC_SEL_GPLL4_OUT_MAIN);
+		break;
+	case GCC_APSS_AHB_CLK:
+		/* GCC_APSS_AHB_CLK: 100 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_APSS_AHB_CMD_RCGR,
+				    0, 0xF, 0,
+				    GCC_APSS_AHB_SRC_SEL_GPLL0_OUT_MAIN);
+		break;
+	case GCC_APSS_AXI_CLK:
+		/* GCC_APSS_AXI_CLK: 800 MHz  */
+		clk_rcg_set_rate_v2(priv->base, GCC_APSS_AXI_CMD_RCGR,
+				    0, 1, 0,
+				    GCC_APSS_AXI_SRC_SEL_GPLL0_OUT_MAIN);
+
+	case NSS_CC_PPE_CLK:
+		/* JHPPE: 462 MHz for PPE core clock - this is the root clock */
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PPE_CMD_RCGR, 0,
+				    1, 0,
+				    NSS_CC_PPE_SRC_SEL_CMN_PLL_NSS_CLK_462M);
+		break;
+	case NSS_CC_CE_AXI_CLK:
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_CE_CMD_RCGR, 0,
+				    1, 0,
+				    NSS_CC_PPE_SRC_SEL_CMN_PLL_NSS_CLK_462M);
+		break;
+	case NSS_CC_CFG_CLK:
+		/* NSS_CC_NSSNOC_NSS_CSR: 100 MHz - uses same RCG as NSS_CSR */
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_CFG_CMD_RCGR, 0,
+				    0xF, 0,
+				    NSS_CC_PPE_SRC_SEL_GCC_GPLL0_OUT_AUX);
+		break;
+	case NSS_CC_EIP_BFDCD_CLK:
+		/* Rate: 800 MHz from GPLL0 800M */
+		clk_rcg_set_rate(priv->base, NSS_CC_EIP_BFDCD_CMD_RCGR,
+				 1, NSS_CC_PPE_SRC_SEL_GCC_GPLL0_OUT_AUX);
+		break;
+	case NSS_CC_PORT1_RX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT1_RX_CMD_RCGR,
+				    NSS_CC_PORT1_RX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_RX_SRC_SEL_UNIPHY_NSS_RX_CLK);
+		break;
+	case NSS_CC_PORT1_TX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT1_TX_CMD_RCGR,
+				    NSS_CC_PORT1_TX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_TX_SRC_SEL_UNIPHY_NSS_TX_CLK);
+		break;
+	case NSS_CC_PORT2_RX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT2_RX_CMD_RCGR,
+				    NSS_CC_PORT2_RX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_RX_SRC_SEL_UNIPHY_NSS_RX_CLK);
+		break;
+	case NSS_CC_PORT2_TX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT2_TX_CMD_RCGR,
+				    NSS_CC_PORT2_TX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_TX_SRC_SEL_UNIPHY_NSS_TX_CLK);
+		break;
+	case NSS_CC_PORT3_RX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT3_RX_CMD_RCGR,
+				    NSS_CC_PORT3_RX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_RX_SRC_SEL_UNIPHY_NSS_RX_CLK);
+		break;
+	case NSS_CC_PORT3_TX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT3_TX_CMD_RCGR,
+				    NSS_CC_PORT3_TX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_TX_SRC_SEL_UNIPHY_NSS_TX_CLK);
+		break;
+	case NSS_CC_PORT4_RX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT4_RX_CMD_RCGR,
+				    NSS_CC_PORT4_RX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_RX_SRC_SEL_UNIPHY_NSS_RX_CLK);
+		break;
+	case NSS_CC_PORT4_TX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT4_TX_CMD_RCGR,
+				    NSS_CC_PORT4_TX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_TX_SRC_SEL_UNIPHY_NSS_TX_CLK);
+		break;
+	case NSS_CC_PORT5_RX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT5_RX_CMD_RCGR,
+				    NSS_CC_PORT5_RX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_5_RX_SRC_SEL_UNIPHY_NSS_RX_CLK);
+		break;
+	case NSS_CC_PORT5_TX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT5_TX_CMD_RCGR,
+				    NSS_CC_PORT5_TX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_5_TX_SRC_SEL_UNIPHY_NSS_TX_CLK);
+		break;
+	case NSS_CC_PORT6_RX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT6_RX_CMD_RCGR,
+				    NSS_CC_PORT6_RX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_RX_SRC_SEL_UNIPHY_NSS_RX_CLK);
+		break;
+	case NSS_CC_PORT6_TX_CLK:
+		ret = calc_div_for_nss_port_clk(clk, rate, &div, &cdiv);
+		if (ret < 0)
+			return ret;
+		clk_rcg_set_rate_v2(priv->base, NSS_CC_PORT6_TX_CMD_RCGR,
+				    NSS_CC_PORT6_TX_DIV_CDIVR, div, cdiv,
+				    NSS_CC_PORT_TX_SRC_SEL_UNIPHY_NSS_TX_CLK);
+		break;
+	case NSS_CC_UNIPHY_PORT1_RX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT1_TX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT2_RX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT2_TX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT3_RX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT3_TX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT4_RX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT4_TX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT5_RX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT5_TX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT6_RX_CLK:
+		fallthrough;
+	case NSS_CC_UNIPHY_PORT6_TX_CLK:
+		fallthrough;
+	case UNIPHY0_NSS_RX_CLK:
+		fallthrough;
+	case UNIPHY0_NSS_TX_CLK:
+		fallthrough;
+	case UNIPHY1_NSS_RX_CLK:
+		fallthrough;
+	case UNIPHY1_NSS_TX_CLK:
+		fallthrough;
+	case UNIPHY2_NSS_RX_CLK:
+		fallthrough;
+	case UNIPHY2_NSS_TX_CLK:
+		if (rate == CLK_125_MHZ) {
+			clk->rate = CLK_125_MHZ;
+		} else if (rate == CLK_312_5_MHZ) {
+			clk->rate = CLK_312_5_MHZ;
+		} else {
+			ret = -EINVAL;
+		}
+		break;
+	case APSS_SILVER_CLK:
+		clk_gfmux_set_rate(priv->base, APSS_SILVER_CMD_GFMUX,
+				   APSS_SILVER_SRC_SEL_APSSPLL_OUT_EARLY);
+		break;
+	case APSS_L3_CLK:
+		clk_gfmux_set_rate(priv->base, APSS_L3_CMD_GFMUX,
+				   APSS_L3_SRC_SEL_APSSPLL_OUT_EARLY);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return rate;
+}
+
+static const struct gate_clk ipq9650_clks[] = {
+	GATE_CLK(GCC_QUPV3_UART1_CLK,		0x0302C, 0x00000001),
+	GATE_CLK(GCC_QUPV3_UART2_CLK,		0x04018, 0x00000001),
+	GATE_CLK(GCC_SDCC1_AHB_CLK,		0x3303C, 0x00000001),
+	GATE_CLK(GCC_SDCC1_APPS_CLK,		0x3302C, 0x00000001),
+	GATE_CLK(GCC_SDCC1_ICE_CORE_CLK,	0x33034, 0x00000001),
+	GATE_CLK(GCC_QUPV3_SPI0_CLK,		0x0202C, 0x00000001),
+	GATE_CLK(GCC_QUPV3_I2C_SE1_CLK,		0x0302C, 0x00000001),
+	GATE_CLK(GCC_QUPV3_I2C_SE2_CLK,		0x03048, 0x00000001),
+	GATE_CLK(GCC_QUPV3_I2C_SE3_CLK,		0x03064, 0x00000001),
+	GATE_CLK(GCC_QUPV3_I2C_SE4_CLK,		0x03080, 0x00000001),
+	GATE_CLK(GCC_QPIC_CLK,			0x32028, 0x00000001),
+	GATE_CLK(GCC_QPIC_AHB_CLK,		0x32010, 0x00000001),
+	GATE_CLK(GCC_QPIC_IO_MACRO_CLK,		0x3200C, 0x00000001),
+	GATE_CLK(GCC_USB0_PIPE_CLK,		0x2C054,  0x00000001),
+	GATE_CLK(GCC_USB0_PHY_CFG_AHB_CLK,	0x2C05C,  0x00000001),
+	GATE_CLK(GCC_USB1_PHY_CFG_AHB_CLK,	0x3C01C,  0x00000001),
+	GATE_CLK(GCC_USB0_MASTER_CLK,		0x2C044,  0x00000001),
+	GATE_CLK(GCC_USB0_MOCK_UTMI_CLK,	0x2C050,  0x00000001),
+	GATE_CLK(GCC_USB0_AUX_CLK,		0x2C04C,  0x00000001),
+	GATE_CLK(GCC_USB0_SLEEP_CLK,		0x2C058,  0x00000001),
+	GATE_CLK(GCC_USB1_MOCK_UTMI_CLK,	0x3C024,  0x00000001),
+	GATE_CLK(GCC_USB1_MASTER_CLK,		0x3C028,  0x00000001),
+	GATE_CLK(GCC_USB1_SLEEP_CLK,		0x3C020,  0x00000001),
+	GATE_CLK(GCC_SNOC_USB_CLK,		0x2E0C4,  0x00000001),
+
+	GATE_CLK(GCC_PCIE0_AUX_CLK,		0x28070,  0x00000001),
+	GATE_CLK(GCC_PCIE0_AHB_CLK,		0x28030,  0x00000001),
+	GATE_CLK(GCC_PCIE0_PIPE_CLK,		0x28068,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE0_1LANE_M_CLK,	0x2E07C,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE0_1LANE_S_CLK,	0x2E0CC,  0x00000001),
+	GATE_CLK(GCC_PCIE0_AXI_M_CLK,		0x28038,  0x00000001),
+	GATE_CLK(GCC_PCIE0_AXI_S_CLK,		0x28040,  0x00000001),
+	GATE_CLK(GCC_PCIE0_AXI_S_BRIDGE_CLK,	0x28048,  0x00000001),
+
+	GATE_CLK(GCC_PCIE4_AUX_CLK,		0x25020,  0x00000001),
+	GATE_CLK(GCC_PCIE4_AHB_CLK,		0x2501C,  0x00000001),
+	GATE_CLK(GCC_PCIE4_PIPE_CLK,		0x2503C,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE4_1LANE_M_CLK,	0x2E0C0,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE4_1LANE_S_CLK,	0x2E0DC,  0x00000001),
+	GATE_CLK(GCC_PCIE4_AXI_M_CLK,		0x25028,  0x00000001),
+	GATE_CLK(GCC_PCIE4_AXI_S_CLK,		0x25030,  0x00000001),
+	GATE_CLK(GCC_PCIE4_AXI_S_BRIDGE_CLK,	0x25038,  0x00000001),
+
+	GATE_CLK(GCC_PCIE3_AUX_CLK,		0x2B07C,  0x00000001),
+	GATE_CLK(GCC_PCIE3_AHB_CLK,		0x2B030,  0x00000001),
+	GATE_CLK(GCC_PCIE3_PIPE_CLK,		0x2B068,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE3_2LANE_M_CLK,	0x2E0BC,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE3_2LANE_S_CLK,	0x2E0D8,  0x00000001),
+	GATE_CLK(GCC_PCIE3_AXI_M_CLK,		0x2B038,  0x00000001),
+	GATE_CLK(GCC_PCIE3_AXI_S_CLK,		0x2B040,  0x00000001),
+	GATE_CLK(GCC_PCIE3_AXI_S_BRIDGE_CLK,	0x2B048,  0x00000001),
+
+	GATE_CLK(GCC_PCIE1_AUX_CLK,		0x29074,  0x00000001),
+	GATE_CLK(GCC_PCIE1_AHB_CLK,		0x29030,  0x00000001),
+	GATE_CLK(GCC_PCIE1_PIPE_CLK,		0x29068,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE1_2LANE_M_CLK,	0x2E084,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE1_2LANE_S_CLK,	0x2E0D0,  0x00000001),
+	GATE_CLK(GCC_PCIE1_AXI_M_CLK,		0x29038,  0x00000001),
+	GATE_CLK(GCC_PCIE1_AXI_S_CLK,		0x29040,  0x00000001),
+	GATE_CLK(GCC_PCIE1_AXI_S_BRIDGE_CLK,	0x29048,  0x00000001),
+
+	GATE_CLK(GCC_PCIE2_AUX_CLK,		0x2A078,  0x00000001),
+	GATE_CLK(GCC_PCIE2_AHB_CLK,		0x2A030,  0x00000001),
+	GATE_CLK(GCC_PCIE2_PIPE_CLK,		0x2A068,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE2_2LANE_M_CLK,	0x2E080,  0x00000001),
+	GATE_CLK(GCC_ANOC_PCIE2_2LANE_S_CLK,	0x2E0D4,  0x00000001),
+	GATE_CLK(GCC_PCIE2_AXI_M_CLK,		0x2A038,  0x00000001),
+	GATE_CLK(GCC_PCIE2_AXI_S_CLK,		0x2A040,  0x00000001),
+	GATE_CLK(GCC_PCIE2_AXI_S_BRIDGE_CLK,	0x2A048,  0x00000001),
+
+	GATE_CLK(GCC_GEMNOC_ANOC_CLK,		0x19044,  0x00000001),
+	GATE_CLK(GCC_ANOC0_AXI_CLK,		0x2E0B4,  0x00000001),
+	GATE_CLK(GCC_APSS_TS_CLK,		0x24030,  0x00000001),
+	GATE_CLK(GCC_APSS_DBG_CLK,		0x2402C,  0x00000001),
+	GATE_CLK(GCC_CNOC_QOSGEN_EXTREF_CLK,	0x310B0,  0x00000001),
+	GATE_CLK(GCC_AGGRNOC_ATB_CLK,		0x2E0AC,  0x00000001),
+	GATE_CLK(GCC_AGGRNOC_TS_CLK,		0x2E0B0,  0x00000001),
+	GATE_CLK(GCC_SYS_NOC_AT_CLK,		0x2E038,  0x00000001),
+	GATE_CLK(GCC_PCNOC_AT_CLK,		0x31024,  0x00000001),
+	GATE_CLK(GCC_PCNOC_TS_CLK,		0x3102C,  0x00000001),
+	GATE_CLK(GCC_SNOC_TS_CLK,		0x2E068,  0x00000001),
+	GATE_CLK(GCC_SNOC_QOSGEN_EXTREF_CLK,	0x2E020,  0x00000001),
+	GATE_CLK(GCC_SNOC_XO_DCD_CLK,		0x2E060,  0x00000001),
+	GATE_CLK(GCC_QPIC_SLEEP_CLK,		0x32018,  0x00000001),
+	GATE_CLK(GCC_QUPV3_2X_CORE_CLK,		0x0B004,  0x00010000),
+	GATE_CLK(GCC_QUPV3_CORE_CLK,		0x0B004,  0x00008000),
+	GATE_CLK(GCC_QUPV3_AHB_MST_CLK,		0x0B004,  0x00004000),
+	GATE_CLK(GCC_MPM_AHB_CLK,		0x0B004,  0x00002000),
+	GATE_CLK(GCC_QUPV3_SLEEP_CLK,		0x0B004,  0x00000020),
+	GATE_CLK(GCC_QUPV3_AHB_SLV_CLK,		0x0B004,  0x00000010),
+	GATE_CLK(GCC_ANOC1_AXI_CLK,		0x2E0B8,  0x00000001),
+	GATE_CLK(GCC_ANOC_QOSGEN_EXTREF_CLK,	0x2E098,  0x00000001),
+	GATE_CLK(GCC_ANOC_XO_DCD_CLK,		0x2E09C,  0x00000001),
+	GATE_CLK(GCC_PCNOC_CE_EDPD_CLK,		0x31020,  0x00000001),
+	GATE_CLK(GCC_SPDM_PCNOC_CY_CLK,		0x36008,  0x00000001),
+
+	GATE_CLK(GCC_IM_SLEEP_CLK,		0x34020, 0x00000001),
+	GATE_CLK(GCC_CMN_12GPLL_AHB_CLK,	0x3A004, 0x00000001),
+	GATE_CLK(GCC_CMN_12GPLL_APU_CLK,	0x3A00C, 0x00000001),
+	GATE_CLK(GCC_CMN_12GPLL_SYS_CLK,	0x3A008, 0x00000001),
+	GATE_CLK(GCC_CMN_LDO_CLK,		0x3A014, 0x00000001),
+	GATE_CLK(GCC_REFGEN_CMN_UPHY_CORE_CLK,  0x2300C, 0x00000001),
+	GATE_CLK(GCC_REFGEN_CMN_UPHY_HCLK_CLK,  0x23010, 0x00000001),
+	GATE_CLK(GCC_REFGEN_PCIE_CORE_CLK,	 0x23020, 0x00000001),
+	GATE_CLK(GCC_REFGEN_PCIE_HCLK,		 0x23024, 0x00000001),
+	GATE_CLK(GCC_PCIE_CMN_LDO_CLK,		 0x2302C, 0x00000001),
+	GATE_CLK(GCC_PCIE_CMN_HCLK,		 0x23030, 0x00000001),
+	GATE_CLK(GCC_UNIPHY0_SYS_CLK,		0x17048, 0x00000001),
+	GATE_CLK(GCC_UNIPHY0_AHB_CLK,		0x1704C, 0x00000001),
+	GATE_CLK(GCC_UNIPHY1_SYS_CLK,		0x17058, 0x00000001),
+	GATE_CLK(GCC_UNIPHY1_AHB_CLK,		0x1705C, 0x00000001),
+	GATE_CLK(GCC_UNIPHY2_SYS_CLK,		0x17068, 0x00000001),
+	GATE_CLK(GCC_UNIPHY2_AHB_CLK,		0x1706C, 0x00000001),
+	GATE_CLK(GCC_NSSNOC_NSSCC_CLK,		0x17030, 0x00000001),
+	GATE_CLK(GCC_NSSCC_CLK,			0x17034, 0x00000001),
+	GATE_CLK(GCC_NSSNOC_SNOC_1_CLK,		0x1707C, 0x00000001),
+	GATE_CLK(GCC_NSSNOC_SNOC_CLK,		0x17028, 0x00000001),
+	/* Core NSS Clocks */
+	GATE_CLK(NSS_CC_NSS_CSR_CLK,		0x00714, 0x00000001),
+	GATE_CLK(NSS_CC_NSSNOC_NSS_CSR_CLK,	0x00718, 0x00000001),
+	GATE_CLK(NSS_CC_PPE_SWITCH_IPE_CLK,	0x00424, 0x00000001),
+	GATE_CLK(NSS_CC_PPE_SWITCH_BTQ_CLK,	0x0042C, 0x00000001),
+	GATE_CLK(NSS_CC_PPE_SWITCH_CLK,		0x00434, 0x00000001),
+	GATE_CLK(NSS_CC_PPE_SWITCH_CFG_CLK,	0x0043C, 0x00000001),
+	GATE_CLK(NSS_CC_PPE_CLK,		0x00410, 0x00000001),
+	GATE_CLK(NSS_CC_PPE_CFG_CLK,		0x00418, 0x00000001),
+	GATE_CLK(NSS_CC_PPE_EDMA_CLK,		0x00440, 0x00000001),
+	GATE_CLK(NSS_CC_PPE_EDMA_CFG_CLK,	0x00448, 0x00000001),
+	GATE_CLK(NSS_CC_NSSNOC_PPE_CLK,		0x004A4, 0x00000001),
+	GATE_CLK(NSS_CC_NSSNOC_PPE_CFG_CLK,	0x004A8, 0x00000001),
+	GATE_CLK(NSS_CC_PORT1_MAC_CLK,		0x0044C, 0x00000001),
+	GATE_CLK(NSS_CC_PORT2_MAC_CLK,		0x00454, 0x00000001),
+	GATE_CLK(NSS_CC_PORT3_MAC_CLK,		0x0045C, 0x00000001),
+	GATE_CLK(NSS_CC_PORT4_MAC_CLK,		0x00464, 0x00000001),
+	GATE_CLK(NSS_CC_PORT5_MAC_CLK,		0x0046C, 0x00000001),
+	GATE_CLK(NSS_CC_PORT6_MAC_CLK,		0x00474, 0x00000001),
+	GATE_CLK(NSS_CC_EIP_CLK,		0x006BC, 0x00000001),
+	GATE_CLK(NSS_CC_EIP_BFDCD_CLK,		0x0047C, 0x00000001),
+	GATE_CLK(NSS_CC_PORT1_RX_CLK,		0x00548, 0x00000001),
+	GATE_CLK(NSS_CC_PORT1_TX_CLK,		0x00550, 0x00000001),
+	GATE_CLK(NSS_CC_PORT2_RX_CLK,		0x00558, 0x00000001),
+	GATE_CLK(NSS_CC_PORT2_TX_CLK,		0x00560, 0x00000001),
+	GATE_CLK(NSS_CC_PORT3_RX_CLK,		0x00568, 0x00000001),
+	GATE_CLK(NSS_CC_PORT3_TX_CLK,		0x00570, 0x00000001),
+	GATE_CLK(NSS_CC_PORT4_RX_CLK,		0x00578, 0x00000001),
+	GATE_CLK(NSS_CC_PORT4_TX_CLK,		0x00580, 0x00000001),
+	GATE_CLK(NSS_CC_PORT5_RX_CLK,		0x00588, 0x00000001),
+	GATE_CLK(NSS_CC_PORT5_TX_CLK,		0x00590, 0x00000001),
+	GATE_CLK(NSS_CC_PORT6_RX_CLK,		0x00598, 0x00000001),
+	GATE_CLK(NSS_CC_PORT6_TX_CLK,		0x005A0, 0x00000001),
+	GATE_CLK(NSS_CC_XGMAC0_PTP_REF_CLK,	0x00488, 0x00000001),
+	GATE_CLK(NSS_CC_XGMAC1_PTP_REF_CLK,	0x0048C, 0x00000001),
+	GATE_CLK(NSS_CC_XGMAC2_PTP_REF_CLK,	0x00490, 0x00000001),
+	GATE_CLK(NSS_CC_XGMAC3_PTP_REF_CLK,	0x00494, 0x00000001),
+	GATE_CLK(NSS_CC_XGMAC4_PTP_REF_CLK,	0x00498, 0x00000001),
+	GATE_CLK(NSS_CC_XGMAC5_PTP_REF_CLK,	0x0049C, 0x00000001),
+	GATE_CLK(NSS_CC_DEBUG_CLK,		0x00770, 0x00000001),
+	/* Crypto Engine Clocks - JHPPE Specific */
+	GATE_CLK(NSS_CC_CE_APB_CLK,		0x00650, 0x00000001),
+	GATE_CLK(NSS_CC_CE_AXI_CLK,		0x00654, 0x00000001),
+	GATE_CLK(NSS_CC_NSSNOC_CE_APB_CLK,	0x0065C, 0x00000001),
+	GATE_CLK(NSS_CC_NSSNOC_CE_AXI_CLK,	0x00660, 0x00000001),
+	GATE_CLK(NSS_CC_NSSNOC_EIP_CLK,		0x006C4, 0x00000001),
+	/* UNIPHY Port Clocks */
+	GATE_CLK(NSS_CC_UNIPHY_PORT1_RX_CLK,	0x005E0, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT1_TX_CLK,	0x005E4, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT2_RX_CLK,	0x005E8, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT2_TX_CLK,	0x005EC, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT3_RX_CLK,	0x005F0, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT3_TX_CLK,	0x005F4, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT4_RX_CLK,	0x005F8, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT4_TX_CLK,	0x005FC, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT5_RX_CLK,	0x00600, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT5_TX_CLK,	0x00604, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT6_RX_CLK,	0x00608, 0x00000001),
+	GATE_CLK(NSS_CC_UNIPHY_PORT6_TX_CLK,	0x0060C, 0x00000001),
+	GATE_CLK(GCC_MDIO_AHB_CLK,		0x17040, 0x00000001),
+	GATE_CLK(GCC_NSSNOC_MEMNOC_CLK,		0x17024, 0x00000001),
+	GATE_CLK(GCC_NSSNOC_MEMNOC_1_CLK,	0x17084, 0x00000001),
+	GATE_CLK(GCC_NSSCFG_CLK,		0x1702C, 0x00000001),
+	GATE_CLK(GCC_NSSNOC_QOSGEN_REF_CLK,	0x1701C, 0x00000001),
+	GATE_CLK(GCC_NSSNOC_TIMEOUT_REF_CLK,	0x17020, 0x00000001),
+	GATE_CLK(GCC_USB_CMN_HCLK,		0x2303C, 0x00000001),
+	GATE_CLK(GCC_USB_CMN_LDO_CLK,		0x23038, 0x00000001),
+};
+
+static int ipq9650_enable(struct clk *clk)
+{
+	struct msm_clk_priv *priv = dev_get_priv(clk->dev);
+
+	if (priv->data->num_clks <= clk->id) {
+		debug("%s: unknown clk id %lu\n", __func__, clk->id);
+		return 0;
+	}
+
+	debug("%s: clk %s\n", __func__, ipq9650_clks[clk->id].name);
+
+	qcom_gate_clk_en(priv, clk->id);
+
+	return 0;
+}
+
+static const struct qcom_reset_map ipq9650_gcc_resets[] = {
+	[GCC_SDCC_BCR] = {0x33000, 0},
+	[GCC_QPIC_BCR]			= {0x32000, 0},
+	[GCC_USB0_PHY_BCR]		= {0x2C06C, 0},
+	[GCC_USB3PHY_0_PHY_BCR]		= {0x2C070, 0},
+	[GCC_QUSB2_0_PHY_BCR]		= {0x2C068, 0},
+	[GCC_QUSB2_1_PHY_BCR]		= {0x3C030, 0},
+	[GCC_USB_BCR]			= {0x2C000, 0},
+	[GCC_USB1_BCR]			= {0x3C000, 0},
+
+	[GCC_PCIE0_PHY_BCR]		= {0x28060, 0},
+	[GCC_PCIE0PHY_PHY_BCR]		= {0x2805c, 0},
+	[GCC_PCIE0_PIPE_ARES]		= {0x28068, 2},
+	[GCC_PCIE0_CORE_STICKY_RESET]	= {0x28058, 1},
+	[GCC_PCIE0_AXI_M_ARES]		= {0x28038, 2},
+	[GCC_PCIE0_AXI_S_ARES]		= {0x28040, 2},
+	[GCC_PCIE0_AXI_M_STICKY_RESET]	= {0x28058, 4},
+	[GCC_PCIE0_AXI_S_STICKY_RESET]	= {0x28058, 2},
+	[GCC_PCIE0_AHB_ARES]		= {0x28030, 2},
+	[GCC_PCIE0_AUX_ARES]		= {0x28070, 2},
+
+	[GCC_PCIE4_PHY_BCR]		= {0x2504C, 0},
+	[GCC_PCIE4PHY_PHY_BCR]		= {0x25048, 0},
+	[GCC_PCIE4_PIPE_ARES]		= {0x2503C, 2},
+	[GCC_PCIE4_CORE_STICKY_RESET]	= {0x25054, 1},
+	[GCC_PCIE4_AXI_M_ARES]		= {0x25028, 2},
+	[GCC_PCIE4_AXI_S_ARES]		= {0x25030, 2},
+	[GCC_PCIE4_AXI_M_STICKY_RESET]	= {0x25054, 4},
+	[GCC_PCIE4_AXI_S_STICKY_RESET]	= {0x25054, 2},
+	[GCC_PCIE4_AHB_ARES]		= {0x2501C, 2},
+	[GCC_PCIE4_AUX_ARES]		= {0x25020, 2},
+
+	[GCC_PCIE3_PHY_BCR]		= {0x2B060, 0},
+	[GCC_PCIE3PHY_PHY_BCR]		= {0x2B05C, 0},
+	[GCC_PCIE3_PIPE_ARES]		= {0x2B068, 2},
+	[GCC_PCIE3_CORE_STICKY_RESET]	= {0x2B058, 1},
+	[GCC_PCIE3_AXI_M_ARES]		= {0x2B038, 2},
+	[GCC_PCIE3_AXI_S_ARES]		= {0x2B040, 2},
+	[GCC_PCIE3_AXI_M_STICKY_RESET]	= {0x2B058, 4},
+	[GCC_PCIE3_AXI_S_STICKY_RESET]	= {0x2B058, 2},
+	[GCC_PCIE3_AHB_ARES]		= {0x2B030, 2},
+	[GCC_PCIE3_AUX_ARES]		= {0x2B07C, 2},
+
+	[GCC_PCIE1_PHY_BCR]		= {0x29060, 0},
+	[GCC_PCIE1PHY_PHY_BCR]		= {0x2905C, 0},
+	[GCC_PCIE1_PIPE_ARES]		= {0x29068, 2},
+	[GCC_PCIE1_CORE_STICKY_RESET]	= {0x29058, 1},
+	[GCC_PCIE1_AXI_M_ARES]		= {0x29038, 2},
+	[GCC_PCIE1_AXI_S_ARES]		= {0x29040, 2},
+	[GCC_PCIE1_AXI_M_STICKY_RESET]	= {0x29058, 4},
+	[GCC_PCIE1_AXI_S_STICKY_RESET]	= {0x29058, 2},
+	[GCC_PCIE1_AHB_ARES]		= {0x29030, 2},
+	[GCC_PCIE1_AUX_ARES]		= {0x29074, 2},
+
+	[GCC_PCIE2_PHY_BCR]		= {0x2A060, 0},
+	[GCC_PCIE2PHY_PHY_BCR]		= {0x2A05C, 0},
+	[GCC_PCIE2_PIPE_ARES]		= {0x2A068, 2},
+	[GCC_PCIE2_CORE_STICKY_RESET]	= {0x2A058, 1},
+	[GCC_PCIE2_AXI_M_ARES]		= {0x2A038, 2},
+	[GCC_PCIE2_AXI_S_ARES]		= {0x2A040, 2},
+	[GCC_PCIE2_AXI_M_STICKY_RESET]	= {0x2A058, 4},
+	[GCC_PCIE2_AXI_S_STICKY_RESET]	= {0x2A058, 2},
+	[GCC_PCIE2_AHB_ARES]		= {0x2A030, 2},
+	[GCC_PCIE2_AUX_ARES]		= {0x2A078, 2},
+
+	[GCC_NSS_BCR]			= {0x17000, 0},
+	[NSS_CC_PPE_BCR]		= {0x003E8, 0},
+	[GCC_UNIPHY0_BCR]		= {0x17044, 0},
+	[GCC_UNIPHY1_BCR]		= {0x17054, 0},
+	[GCC_UNIPHY2_BCR]		= {0x17064, 0},
+	[NSS_CC_PPE_EDMA_ARES]		= {0x00440, 2},
+	[GCC_UNIPHY0_AHB_ARES]		= {0x1704C, 2},
+	[GCC_UNIPHY1_AHB_ARES]		= {0x1705C, 2},
+	[GCC_UNIPHY2_AHB_ARES]		= {0x1706C, 2},
+	[GCC_UNIPHY0_SYS_ARES]		= {0x17048, 2},
+	[GCC_UNIPHY1_SYS_ARES]		= {0x17058, 2},
+	[GCC_UNIPHY2_SYS_ARES]		= {0x17068, 2},
+	[GCC_UNIPHY0_PMA_ARES]		= {0x17098, 0},
+	[GCC_UNIPHY1_PMA_ARES]		= {0x1709C, 0},
+	[GCC_UNIPHY2_PMA_ARES]		= {0x170A0, 0},
+	[GCC_UNIPHY0_XPCS_ARES]		= {0x17050, 2},
+	[GCC_UNIPHY1_XPCS_ARES]		= {0x17060, 2},
+	[GCC_UNIPHY2_XPCS_ARES]		= {0x17070, 2},
+	[GCC_REFGEN_CMN_UPHY_CORE_ARES] = {0x2300C, 2},
+	[GCC_REFGEN_CMN_UPHY_HCLK_ARES] = {0x23010, 2},
+	[NSS_CC_UNIPHY_PORT1_RX_CLK_ARES] = {0x005E0, 2},
+	[NSS_CC_UNIPHY_PORT1_TX_CLK_ARES] = {0x005E4, 2},
+	[NSS_CC_UNIPHY_PORT2_RX_CLK_ARES] = {0x005E8, 2},
+	[NSS_CC_UNIPHY_PORT2_TX_CLK_ARES] = {0x005EC, 2},
+	[NSS_CC_UNIPHY_PORT3_RX_CLK_ARES] = {0x005F0, 2},
+	[NSS_CC_UNIPHY_PORT3_TX_CLK_ARES] = {0x005F4, 2},
+	[NSS_CC_UNIPHY_PORT4_RX_CLK_ARES] = {0x005F8, 2},
+	[NSS_CC_UNIPHY_PORT4_TX_CLK_ARES] = {0x005FC, 2},
+	[NSS_CC_UNIPHY_PORT5_RX_CLK_ARES] = {0x00600, 2},
+	[NSS_CC_UNIPHY_PORT5_TX_CLK_ARES] = {0x00604, 2},
+	[NSS_CC_UNIPHY_PORT6_RX_CLK_ARES] = {0x00608, 2},
+	[NSS_CC_UNIPHY_PORT6_TX_CLK_ARES] = {0x0060C, 2},
+	[NSS_CC_PORT1_RX_CLK_ARES]	= {0x00548, 2},
+	[NSS_CC_PORT1_TX_CLK_ARES]	= {0x00550, 2},
+	[NSS_CC_PORT2_RX_CLK_ARES]	= {0x00558, 2},
+	[NSS_CC_PORT2_TX_CLK_ARES]	= {0x00560, 2},
+	[NSS_CC_PORT3_RX_CLK_ARES]	= {0x00568, 2},
+	[NSS_CC_PORT3_TX_CLK_ARES]	= {0x00570, 2},
+	[NSS_CC_PORT4_RX_CLK_ARES]	= {0x00578, 2},
+	[NSS_CC_PORT4_TX_CLK_ARES]	= {0x00580, 2},
+	[NSS_CC_PORT5_RX_CLK_ARES]	= {0x00588, 2},
+	[NSS_CC_PORT5_TX_CLK_ARES]	= {0x00590, 2},
+	[NSS_CC_PORT6_RX_CLK_ARES]	= {0x00598, 2},
+	[NSS_CC_PORT6_TX_CLK_ARES]	= {0x005A0, 2},
+	[NSS_CC_PORT1_MAC_CLK_ARES]	= {0x0044C, 2},
+	[NSS_CC_PORT2_MAC_CLK_ARES]	= {0x00454, 2},
+	[NSS_CC_PORT3_MAC_CLK_ARES]	= {0x0045C, 2},
+	[NSS_CC_PORT4_MAC_CLK_ARES]	= {0x00464, 2},
+	[NSS_CC_PORT5_MAC_CLK_ARES]	= {0x0046C, 2},
+	[NSS_CC_PORT6_MAC_CLK_ARES]	= {0x00474, 2},
+	[GCC_NSS_PARTIAL_RESET]		= {0x17008, 0},
+};
+
+static struct msm_clk_data ipq9650_gcc_data = {
+	.resets = ipq9650_gcc_resets,
+	.num_resets = ARRAY_SIZE(ipq9650_gcc_resets),
+	.clks = ipq9650_clks,
+	.num_clks = ARRAY_SIZE(ipq9650_clks),
+	.enable = ipq9650_enable,
+	.set_rate = ipq9650_set_rate,
+};
+
+static int ipq9650_nsscc_probe(struct udevice *dev)
+{
+	struct clk cmn_nss_clk, cmn_ppe_clk;
+	int ret;
+
+	/* Get CMN PLL NSS clock input */
+	ret = clk_get_by_name(dev, "nss", &cmn_nss_clk);
+	if (ret) {
+		debug("%s: Failed to get CMN NSS clock: %d\n", __func__, ret);
+		/* Continue even if CMN clock not available */
+	}
+
+	/* Get CMN PLL PPE clock input */
+	ret = clk_get_by_name(dev, "ppe", &cmn_ppe_clk);
+	if (ret) {
+		debug("%s: Failed to get CMN PPE clock: %d\n", __func__, ret);
+		/* Continue even if CMN clock not available */
+	}
+
+	debug("%s: NSSCC probe complete with CMN PLL clocks\n", __func__);
+	return 0;
+}
+
+static struct msm_clk_data ipq9650_nsscc_data = {
+	.resets = ipq9650_gcc_resets,
+	.num_resets = ARRAY_SIZE(ipq9650_gcc_resets),
+	.clks = ipq9650_clks,
+	.num_clks = ARRAY_SIZE(ipq9650_clks),
+	.enable = ipq9650_enable,
+	.set_rate = ipq9650_set_rate,
+};
+
+static struct msm_clk_data ipq9650_apss_data = {
+	.resets = ipq9650_gcc_resets,
+	.num_resets = ARRAY_SIZE(ipq9650_gcc_resets),
+	.clks = ipq9650_clks,
+	.num_clks = ARRAY_SIZE(ipq9650_clks),
+	.enable = ipq9650_enable,
+	.set_rate = ipq9650_set_rate,
+};
+
+static const struct udevice_id gcc_ipq9650_of_match[] = {
+	{
+		.compatible = "qcom,ipq9650-gcc",
+		.data = (ulong)&ipq9650_gcc_data,
+	},
+	{ }
+};
+
+static const struct udevice_id nsscc_ipq9650_of_match[] = {
+	{
+		.compatible = "qcom,ipq9650-nsscc",
+		.data = (ulong)&ipq9650_nsscc_data,
+	},
+	{ }
+};
+
+static const struct udevice_id apss_ipq9650_of_match[] = {
+	{
+		.compatible = "qcom,ipq9650-apss",
+		.data = (ulong)&ipq9650_apss_data,
+	},
+	{ }
+};
+
+U_BOOT_DRIVER(gcc_ipq9650) = {
+	.name		= "gcc_ipq9650",
+	.id		= UCLASS_NOP,
+	.of_match	= gcc_ipq9650_of_match,
+	.bind		= qcom_cc_bind,
+	.flags		= DM_FLAG_PRE_RELOC | DM_FLAG_DEFAULT_PD_CTRL_OFF,
+};
+
+U_BOOT_DRIVER(nsscc_ipq9650) = {
+	.name		= "nsscc_ipq9650",
+	.id		= UCLASS_NOP,
+	.of_match	= nsscc_ipq9650_of_match,
+	.bind		= qcom_cc_bind,
+	.probe		= ipq9650_nsscc_probe,
+	.flags		= DM_FLAG_PRE_RELOC | DM_FLAG_DEFAULT_PD_CTRL_OFF,
+};
+
+U_BOOT_DRIVER(apss_ipq9650) = {
+	.name		= "apss_ipq9650",
+	.id		= UCLASS_NOP,
+	.of_match	= apss_ipq9650_of_match,
+	.bind		= qcom_cc_bind,
+	.flags		= DM_FLAG_PRE_RELOC | DM_FLAG_DEFAULT_PD_CTRL_OFF,
+};

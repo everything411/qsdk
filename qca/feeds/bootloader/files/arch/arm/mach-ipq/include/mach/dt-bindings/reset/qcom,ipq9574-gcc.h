@@ -1,0 +1,45 @@
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
+/*
+ * Copyright (c) 2018-2023, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#ifndef _DT_BINDINGS_RESET_IPQ_GCC_MACH_IPQ9574_H
+#define _DT_BINDINGS_RESET_IPQ_GCC_MACH_IPQ9574_H
+
+#define GCC_UNIPHY0_SOFT_RESET					155
+#define GCC_UNIPHY1_SOFT_RESET					156
+#define GCC_UNIPHY2_SOFT_RESET					157
+#define NSS_CC_UNIPHY_PORT1_TX_RESET				158
+#define NSS_CC_UNIPHY_PORT1_RX_RESET				159
+#define NSS_CC_UNIPHY_PORT2_TX_RESET				160
+#define NSS_CC_UNIPHY_PORT2_RX_RESET				161
+#define NSS_CC_UNIPHY_PORT3_TX_RESET				162
+#define NSS_CC_UNIPHY_PORT3_RX_RESET				163
+#define NSS_CC_UNIPHY_PORT4_TX_RESET				164
+#define NSS_CC_UNIPHY_PORT4_RX_RESET				165
+#define NSS_CC_UNIPHY_PORT5_TX_RESET				166
+#define NSS_CC_UNIPHY_PORT5_RX_RESET				167
+#define NSS_CC_UNIPHY_PORT6_TX_RESET				168
+#define NSS_CC_UNIPHY_PORT6_RX_RESET				169
+#define NSS_CC_PORT1_TX_RESET					170
+#define NSS_CC_PORT1_RX_RESET					171
+#define NSS_CC_PORT2_TX_RESET					172
+#define NSS_CC_PORT2_RX_RESET					173
+#define NSS_CC_PORT3_TX_RESET					174
+#define NSS_CC_PORT3_RX_RESET					175
+#define NSS_CC_PORT4_TX_RESET					176
+#define NSS_CC_PORT4_RX_RESET					177
+#define NSS_CC_PORT5_TX_RESET					178
+#define NSS_CC_PORT5_RX_RESET					179
+#define NSS_CC_PORT6_TX_RESET					180
+#define NSS_CC_PORT6_RX_RESET					181
+#define NSS_CC_PPE_EDMA_RESET					182
+#define NSS_CC_PPE_CFG_RESET					183
+#define NSS_CC_PORT1_MAC_RESET					184
+#define NSS_CC_PORT2_MAC_RESET					185
+#define NSS_CC_PORT3_MAC_RESET					186
+#define NSS_CC_PORT4_MAC_RESET					187
+#define NSS_CC_PORT5_MAC_RESET					188
+#define NSS_CC_PORT6_MAC_RESET					189
+#endif

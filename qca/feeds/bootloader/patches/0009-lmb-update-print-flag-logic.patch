@@ -1,0 +1,36 @@
+From 08e4c7d9c589ad98c85b87bae8165abaaf669387 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Thu, 8 May 2025 15:24:02 +0530
+Subject: [PATCH] lmb: update print flag logic
+
+Due to the change referenced in commit ID 3d56c06551d7a54870cfdf8c639b3ff35521b87f
+with the message "lmb: Move enum lmb_flags to a u32,"
+the bit position has changed. As a result, the existing logic prints
+the wrong flag. To avoid this issue, a fix has been raised with new logic
+
+Change-Id: I7f93e7f0b5eb350573ff314cd3177f344559a11d
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ lib/lmb.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/lmb.c b/lib/lmb.c
+index 61bb13dc4e2..f339a1c225c 100644
+--- a/lib/lmb.c
++++ b/lib/lmb.c
+@@ -449,10 +449,10 @@ static void lmb_print_region_flags(u32 flags)
+ 	}
+ 
+ 	do {
+-		int bitpos = pflags ? fls(pflags) - 1 : 0;
++		int bitpos = pflags ? fls(pflags) : 0;
+ 
+ 		printf("%s", flag_str[bitpos]);
+-		pflags &= ~(1u << bitpos);
++		pflags ^= BIT(bitpos - 1);
+ 		puts(pflags ? ", " : "\n");
+ 	} while (pflags);
+ }
+-- 
+2.34.1
+

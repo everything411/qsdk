@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include "ipq5332-rdp442.dts"
+#include "ipq5332-rdp-common-ub.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. IPQ5332 RDP442";
+	compatible = "qcom,ipq5332-rdp442", "qcom,ipq5332";
+
+	soc@0 {
+		hs_m31phy_0: hs_m31phy@7b000 {
+			status = "okay";
+		};
+
+		usb0: usb@8af8800 {
+			qcom,select-utmi-as-pipe-clk;
+			status = "okay";
+
+			dwc3@8a00000 {
+				phys = <&hs_m31phy_0>;
+				phy-names = "usb2-phy";
+				maximum-speed = "high-speed";
+			};
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&mdio_pinmux>;
+			status = "okay";
+
+			phy0: ethernet-switch@1 {
+				phy-reset-gpio = <&tlmm 51 0>;
+				dev-mode = <0x1>;
+				phy_addr = <1>;
+				phy_type = <QCA8x8x_SWITCH_TYPE>;
+				id = <1>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+				max_speed = <2500>;
+				force-speed;
+				xgmac;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port0: port@0 {
+						phy_addr = <0>;
+						label = "cpu";
+						phy-mode = "2500base-x";
+						fixed-link {
+							speed = <2500>;
+							full-duplex;
+						};
+					};
+
+					port1: port@1 {
+						phy_addr = <1>;
+						label = "lan";
+					};
+
+					port2: port@2 {
+						phy_addr = <2>;
+						label = "lan";
+					};
+
+					port3: port@3 {
+						phy_addr = <3>;
+						label = "lan";
+					};
+
+					port4: port@4 {
+						phy_addr = <4>;
+						label = "lan";
+					};
+				};
+			};
+		};
+
+		ethernet: nss-switch {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			status = "okay";
+
+			phy1: phy@ff {
+				phy_addr = <0xFF>;
+				phy_type = <SFP10G_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <1>;
+				uniphy_type = <0>;
+				max_speed = <10000>;
+				xgmac;
+			};
+		};
+
+	};
+};
+
+&blsp1_spi0 {
+	pinctrl-0 = <&spi_0_data_clk_pins &spi_0_cs_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	flash@0 {
+		compatible = "micron,n25q128a11", "jedec,spi-nor";
+		reg = <0>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <50000000>;
+	};
+};
+
+&tlmm {
+	spi_0_data_clk_pins: spi-0-data-clk-state {
+		pins = "gpio14", "gpio15", "gpio16";
+		function = "blsp0_spi";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	spi_0_cs_pins: spi-0-cs-state {
+		pins = "gpio17";
+		function = "blsp0_spi";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
+	mdio_pinmux: mdio {
+		mdc {
+			pins = "gpio27";
+			function = "mdc1";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		mdio {
+			pins = "gpio28";
+			function = "mdio1";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	phy_rst_pinmux: phy_rst {
+		qti_8x8x_rst {
+			pins = "gpio51";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
+		qti_sfp_tx_los {
+			pins = "gpio24";
+			drive-strength = <8>;
+			bias-pull-up;
+			output-low;
+		};
+	};
+
+	blsp1_i2c1_pinmux: blsp1_i2c1_pins {
+		blsp1_scl {
+			pins = "gpio29";
+			function = "blsp1_i2c0";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
+		blsp1_sda {
+			pins = "gpio30";
+			function = "blsp1_i2c0";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	pcie0_default_state: pcie0-default-state {
+		pins = "gpio38";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+		output-low;
+	};
+
+	pcie1_default_state: pcie1-default-state {
+		pins = "gpio47";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+		output-low;
+	};
+};
+
+&blsp1_i2c1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&blsp1_i2c1_pinmux>;
+	status = "okay";
+};
+
+&pcie0 {
+	pinctrl-0 = <&pcie0_default_state>;
+	pinctrl-names = "default";
+	perst-gpios = <&tlmm 38 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
+
+&pcie1 {
+	pinctrl-0 = <&pcie1_default_state>;
+	pinctrl-names = "default";
+	perst-gpios = <&tlmm 47 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};

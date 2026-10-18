@@ -1,0 +1,49 @@
+From 4628efd22e4a28d6307f0cbf3b5f438e7a9e8c30 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 28 May 2025 16:13:56 +0530
+Subject: [PATCH] autoboot: Reorder Ethernet init and WDT stop logic
+
+This update adjusts the sequence of Ethernet initialization and
+watchdog timer stop during autoboot.
+
+Change-Id: I5526d4af4611b05c3d3affe454076f0e764a77ba
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ common/autoboot.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/common/autoboot.c b/common/autoboot.c
+index 6227316db72..5bd71dd3b3c 100644
+--- a/common/autoboot.c
++++ b/common/autoboot.c
+@@ -418,14 +418,6 @@ static int abortboot_single_key(int bootdelay)
+ 
+ 	putc('\n');
+ 
+-#if defined(CONFIG_CMD_NET) && defined(CONFIG_ETH_SKIP_INIT_R)
+-	initr_net();
+-#endif
+-
+-#if defined(CONFIG_IPQ_STOP_WDT)
+-	ipq_wdt_start(false);
+-#endif
+-
+ 	return abort;
+ }
+ 
+@@ -530,4 +522,12 @@ void autoboot_command(const char *s)
+ 		if (s)
+ 			run_command_list(s, -1, 0);
+ 	}
++
++#if defined(CONFIG_CMD_NET) && defined(CONFIG_ETH_SKIP_INIT_R)
++	initr_net();
++#endif
++
++#if defined(CONFIG_IPQ_STOP_WDT)
++	ipq_wdt_start(false);
++#endif
+ }
+-- 
+2.34.1
+

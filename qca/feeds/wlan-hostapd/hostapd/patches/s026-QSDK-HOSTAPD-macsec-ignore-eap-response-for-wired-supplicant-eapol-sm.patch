@@ -1,0 +1,52 @@
+From 6181cf73b516c6466056678900c7721acc019445 Mon Sep 17 00:00:00 2001
+From: Lei Wei <leiwei@qti.qualcomm.com>
+Date: Wed, 15 Oct 2025 17:06:47 +0800
+Subject: [PATCH] QSDK:HOSTAPD:macsec: ignore-eap-response-for-wired-supplicant-eapol-sm
+
+Signed-off-by: Lei Wei <leiwei@qti.qualcomm.com>
+---
+ src/eapol_supp/eapol_supp_sm.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/src/eapol_supp/eapol_supp_sm.c b/src/eapol_supp/eapol_supp_sm.c
+index abc1416a3..835bdf042 100644
+--- a/src/eapol_supp/eapol_supp_sm.c
++++ b/src/eapol_supp/eapol_supp_sm.c
+@@ -19,6 +19,7 @@
+ #include "eap_peer/eap_config.h"
+ #include "eap_peer/eap_proxy.h"
+ #include "eapol_supp_sm.h"
++#include "../../wpa_supplicant/wpa_supplicant_i.h"
+ 
+ #define STATE_MACHINE_DATA struct eapol_sm
+ #define STATE_MACHINE_DEBUG_PREFIX "EAPOL"
+@@ -1367,6 +1368,26 @@ int eapol_sm_rx_eapol(struct eapol_sm *sm, const u8 *src, const u8 *buf,
+ 			}
+ 		}
+ 
++		/*
++		 * The EAP-Response is currently ignored in eap_sm_parseEapReq() in
++		 * EAP state machine. Here also ignore it in EAPOL state machine to
++		 * avoid the unexpected restart of EAPOL authentication triggered
++		 * by the EAP-Response message from the other supplicant in the
++		 * topology of two wired 802.1x station authentication with the
++		 * authenticator through a hub switch.
++		 */
++		struct wpa_supplicant *wpa_s = (struct wpa_supplicant *)sm->ctx->ctx;
++		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_WIRED) {
++			const struct eap_hdr *ehdr =
++				(const struct eap_hdr *) (hdr + 1);
++			if (plen >= sizeof(*ehdr) && ehdr->code == EAP_CODE_RESPONSE) {
++				if (sm->config->eap_methods->method != EAP_TYPE_LEAP) {
++					wpa_printf(MSG_DEBUG, "EAPOL: Ignore EAP-Response packet");
++					break;
++				}
++			}
++		}
++
+ 		if (sm->cached_pmk) {
+ 			/* Trying to use PMKSA caching, but Authenticator did
+ 			 * not seem to have a matching entry. Need to restart
+-- 
+2.34.1
+

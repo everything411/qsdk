@@ -1,0 +1,125 @@
+From bf9edc90b4791cf14fb584f304173fd902bd0cf9 Mon Sep 17 00:00:00 2001
+From: Ramasamy Kaliappan <rkaliapp@qti.qualcomm.com>
+Date: Fri, 14 Nov 2025 12:02:49 +0530
+Subject: [PATCH 3/3] UPSTREAM:PROTOCOL:hostapd: Fix SAE Auth Failure When Link
+ Addresses Swap in Multi-Link STA
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When a station initially connects as a 3-link STA (e.g., link 0 on
+2.4 GHz, link 1 on 5 GHz, and link 2 on 6 GHz), it may later move
+away and return without disconnecting.
+
+In some cases, MLD stations swap link addresses and use the MAC
+address of link 0 in the authentication frame for the 5 GHz band.
+In the current design, during SAE confirmation, the process attempts
+to fetch the MLD MAC address by looking up the station using the link
+address.
+
+However, when the link 0 address is not part of the 5 GHz hapd, the
+lookup fails, causing SAE confirmation to fail. This results in an
+incorrect "non-ML auth" error and adds the STA as a new non-ML
+STA entry.
+
+Fetch the MLD address directly from the authentication frame in
+the SAE confirm fixed-length field instead of relying on link
+address lookup.
+
+Patch-dependency: None
+
+Signed-off-by: Ramasamy Kaliappan <rkaliapp@qti.qualcomm.com>
+---
+ src/ap/ieee802_11_eht.c | 62 ++++++++---------------------------------
+ 1 file changed, 12 insertions(+), 50 deletions(-)
+
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index 7fa5efd89613..af4f6c7ba846 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -898,14 +898,15 @@ sae_commit_skip_fixed_fields(const struct ieee80211_mgmt *mgmt, size_t len,
+ 	return pos;
+ }
+ 
++#define GROUP_19_CONFIRM_FIXED_FIELDS_LEN  32
++#define GROUP_20_CONFIRM_FIXED_FIELDS_LEN  48
++#define GROUP_21_CONFIRM_FIXED_FIELDS_LEN  64
+ 
+ static const u8 *
+ sae_confirm_skip_fixed_fields(struct hostapd_data *hapd,
+ 			      const struct ieee80211_mgmt *mgmt, size_t len,
+ 			      const u8 *pos, u16 status_code)
+ {
+-	struct sta_info *sta;
+-
+ 	if (status_code == WLAN_STATUS_REJECTED_WITH_SUGGESTED_BSS_TRANSITION)
+ 		return pos;
+ 
+@@ -913,55 +914,16 @@ sae_confirm_skip_fixed_fields(struct hostapd_data *hapd,
+ 	if (len < 2)
+ 		goto truncated;
+ 	pos += 2;
+-
+-	/*
+-	 * At this stage we should already have an MLD station and actually SA
+-	 * will be replaced with the MLD MAC address by the driver. However,
+-	 * there is at least a theoretical race condition in a case where the
+-	 * peer sends the SAE confirm message quickly enough for the driver
+-	 * translation mechanism to not be available to update the SAE confirm
+-	 * message addresses. Work around that by searching for the STA entry
+-	 * using the link address of the non-AP MLD if no match is found based
+-	 * on the MLD MAC address.
+-	 */
+-	sta = ap_get_sta(hapd, mgmt->sa);
+-	if (!sta)
+-		sta = ap_get_link_sta(hapd,mgmt->sa);
+-	if (!sta)
+-	 	sta = ap_get_unadded_sta(hapd, mgmt->sa);
+-	if(!sta) {
+-		for (sta = hapd->sta_list; sta; sta = sta->next) {
+-			int link_id = hapd->mld_link_id;
+-
+-			if (!sta->mld_info.mld_sta ||
+-			    sta->mld_info.links[link_id].valid ||
+-			    !ether_addr_equal(
+-				    mgmt->sa,
+-				    sta->mld_info.links[link_id].peer_addr))
+-				continue;
+-			wpa_printf(MSG_DEBUG,
+-				   "SAE: Found MLD STA for SAE confirm based on link address");
+-			break;
+-		}
+-		if (!sta)
+-			return NULL;
+-	}
+-
+-	if (!sta->sae || sta->sae->state < SAE_COMMITTED || !sta->sae->tmp) {
+-		if (sta->sae)
+-			wpa_printf(MSG_DEBUG, "SAE: Invalid state=%u",
+-				   sta->sae->state);
+-		else
+-			wpa_printf(MSG_DEBUG, "SAE: No SAE context");
++	len -= 2;
++
++	if (len >= GROUP_21_CONFIRM_FIXED_FIELDS_LEN)
++		pos += GROUP_21_CONFIRM_FIXED_FIELDS_LEN;
++	else if (len >= GROUP_20_CONFIRM_FIXED_FIELDS_LEN)
++		pos += GROUP_20_CONFIRM_FIXED_FIELDS_LEN;
++	else if (len >= GROUP_19_CONFIRM_FIXED_FIELDS_LEN)
++		pos += GROUP_19_CONFIRM_FIXED_FIELDS_LEN;
++	else
+ 		return NULL;
+-	}
+-
+-	wpa_printf(MSG_DEBUG, "SAE: confirm: kck_len=%zu",
+-		   sta->sae->tmp->kck_len);
+-
+-	if (len - 2 < sta->sae->tmp->kck_len)
+-		goto truncated;
+-	pos += sta->sae->tmp->kck_len;
+ 
+ 	if (pos - mgmt->u.auth.variable > (int) len) {
+ 	truncated:
+-- 
+2.34.1
+

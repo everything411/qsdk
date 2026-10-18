@@ -1,0 +1,8 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
+# FastRPC CDSP secure device
+ACTION=="add", SUBSYSTEM=="misc", KERNEL=="fastrpc-cdsp-secure", MODE="0640", OWNER="fastrpc", GROUP="fastrpc"
+
+# FastRPC CDSP device
+ACTION=="add", SUBSYSTEM=="misc", KERNEL=="fastrpc-cdsp", MODE="0664", OWNER="fastrpc", GROUP="fastrpc"

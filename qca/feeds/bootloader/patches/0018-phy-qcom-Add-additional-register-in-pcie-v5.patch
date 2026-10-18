@@ -1,0 +1,39 @@
+From 9971f81fbfafab5fa9576cfb129e9fe5768d9686 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Thu, 15 May 2025 20:18:28 +0530
+Subject: [PATCH] phy: qcom: Add additional register in pcie-v5
+
+Change-Id: I03a118f860e045d298db311e7fcb80fb25495a16
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/phy/qcom/phy-qcom-qmp-pcs-pcie-v5.h | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/drivers/phy/qcom/phy-qcom-qmp-pcs-pcie-v5.h b/drivers/phy/qcom/phy-qcom-qmp-pcs-pcie-v5.h
+index 2801bcf10f2..e3436cd8f5d 100644
+--- a/drivers/phy/qcom/phy-qcom-qmp-pcs-pcie-v5.h
++++ b/drivers/phy/qcom/phy-qcom-qmp-pcs-pcie-v5.h
+@@ -13,5 +13,20 @@
+ #define QPHY_V5_PCS_PCIE_INT_AUX_CLK_CONFIG1		0x54
+ #define QPHY_V5_PCS_PCIE_OSC_DTCT_ACTIONS		0x94
+ #define QPHY_V5_PCS_PCIE_EQ_CONFIG2			0xa8
++/* Only for QMP V5 PHY - PCS_PCIE registers */
++#define QPHY_V5_PCS_PCIE_L1P1_WAKEUP_DLY_TIME_AUXCLK_L  0x44
++#define QPHY_V5_PCS_PCIE_L1P1_WAKEUP_DLY_TIME_AUXCLK_H  0x48
++#define QPHY_V5_PCS_PCIE_L1P2_WAKEUP_DLY_TIME_AUXCLK_L  0x4c
++#define QPHY_V5_PCS_PCIE_L1P2_WAKEUP_DLY_TIME_AUXCLK_H  0x50
++#define QPHY_V5_PCS_PCIE_OSC_DTCT_CONFIG1               0x5c
++#define QPHY_V5_PCS_PCIE_OSC_DTCT_CONFIG2               0x60
++#define QPHY_V5_PCS_PCIE_OSC_DTCT_CONFIG4               0x68
++#define QPHY_V5_PCS_PCIE_OSC_DTCT_MODE2_CONFIG2         0x7c
++#define QPHY_V5_PCS_PCIE_OSC_DTCT_MODE2_CONFIG4         0x84
++#define QPHY_V5_PCS_PCIE_OSC_DTCT_MODE2_CONFIG5         0x88
++#define QPHY_V5_PCS_PCIE_OSC_DTCT_MODE2_CONFIG6         0x8c
++#define QPHY_V5_PCS_PCIE_EQ_CONFIG1                     0xa4
++#define QPHY_V5_PCS_PCIE_PRESET_P10_PRE                 0xc0
++#define QPHY_V5_PCS_PCIE_PRESET_P10_POST                0xe4
+ 
+ #endif
+-- 
+2.34.1
+

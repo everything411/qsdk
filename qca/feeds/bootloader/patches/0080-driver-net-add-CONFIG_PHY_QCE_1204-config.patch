@@ -1,0 +1,44 @@
+From 476f52dc85f7c375c64ff64401f6d96dbfdb2d55 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Thu, 5 Feb 2026 10:36:10 +0530
+Subject: [PATCH] driver: net: add CONFIG_PHY_QCE_1204 config
+
+Add CONFIG_PHY_QCE_1204 config to enable
+qce1204 phy device
+
+Change-Id: I79340ab784b1d216f85a28143339c3a924409a3a
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/net/phy/Kconfig  | 6 ++++++
+ drivers/net/phy/Makefile | 1 +
+ 2 files changed, 7 insertions(+)
+
+diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
+index 15b75d0c10c..d7201517960 100644
+--- a/drivers/net/phy/Kconfig
++++ b/drivers/net/phy/Kconfig
+@@ -412,3 +412,9 @@ config PHY_QCA_8337
+ 	bool "QCA Ethernet QCA8337 support"
+ 	---help---
+ 	  Adds support for the QCA Ethernet QCA8337.
++
++config PHY_QCE_1204
++	bool "QCA Ethernet 4 port QCE1204 phy mode support"
++	---help---
++	Adds support for the QCA Ethernet QCE1204 PHY with QUSGMII interface.
++
+diff --git a/drivers/net/phy/Makefile b/drivers/net/phy/Makefile
+index e2d4d630540..2c4c5a72f2d 100644
+--- a/drivers/net/phy/Makefile
++++ b/drivers/net/phy/Makefile
+@@ -33,6 +33,7 @@ obj-$(CONFIG_PHY_QCA_8075) += qcom_qca8075.o
+ obj-$(CONFIG_PHY_QCA_8081) += qcom_qca8081.o
+ obj-$(CONFIG_PHY_QCA_81XX) += qcom_qca81xx.o
+ obj-$(CONFIG_PHY_QCA_8033) += qcom_qca8033.o
++obj-$(CONFIG_PHY_QCE_1204) += qcom_qce1204.o
+ obj-$(CONFIG_PHY_QCA_8337) += qcom_qca8337.o
+ obj-$(CONFIG_PHY_REALTEK) += realtek.o
+ obj-$(CONFIG_PHY_SMSC) += smsc.o
+-- 
+2.34.1
+

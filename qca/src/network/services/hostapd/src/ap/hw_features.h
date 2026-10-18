@@ -1,0 +1,131 @@
+/*
+ * hostapd / Hardware feature query and different modes
+ * Copyright 2002-2003, Instant802 Networks, Inc.
+ * Copyright 2005-2006, Devicescape Software, Inc.
+ * Copyright (c) 2008-2011, Jouni Malinen <j@w1.fi>
+ *
+ * This software may be distributed under the terms of the BSD license.
+ * See README for more details.
+ */
+
+#ifndef HW_FEATURES_H
+#define HW_FEATURES_H
+
+#ifdef NEED_AP_MLME
+void hostapd_free_hw_features(struct hostapd_hw_modes *hw_features,
+			      size_t num_hw_features);
+int hostapd_get_hw_features(struct hostapd_iface *iface);
+int hostapd_csa_update_hwmode(struct hostapd_iface *iface);
+int hostapd_acs_completed(struct hostapd_iface *iface, int err);
+int hostapd_select_hw_mode(struct hostapd_iface *iface);
+const char * hostapd_hw_mode_txt(int mode);
+int hostapd_hw_get_freq(struct hostapd_data *hapd, int chan);
+int hostapd_hw_get_channel(struct hostapd_data *hapd, int freq);
+int hostapd_check_ht_capab(struct hostapd_iface *iface);
+int hostapd_check_edmg_capab(struct hostapd_iface *iface);
+int hostapd_check_he_6ghz_capab(struct hostapd_iface *iface);
+int hostapd_validate_bss_capab(struct hostapd_data *hapd);
+void hostapd_stop_setup_timers(struct hostapd_iface *iface);
+int hostapd_hw_skip_mode(struct hostapd_iface *iface,
+			 struct hostapd_hw_modes *mode);
+int hostapd_determine_mode(struct hostapd_iface *iface);
+void hostapd_free_multi_hw_info(struct hostapd_multi_hw_info *multi_hw_info);
+int hostapd_set_current_hw_info(struct hostapd_iface *iface, int oper_freq);
+struct hostapd_multi_hw_info *hostapd_get_current_hw_info(struct hostapd_iface *iface,
+							   int oper_freq);
+
+/**
+ * hostapd_free_6ghz_channels() - Free 6 GHz channels for a given mode
+ * @mode: Pointer to the hostapd_hw_modes structure
+ *
+ * This function frees the 6 GHz channels for the given mode.
+ *
+ * Returns: None
+ */
+void hostapd_free_6ghz_channels(struct hostapd_hw_modes *mode);
+#else /* NEED_AP_MLME */
+static inline void
+hostapd_free_hw_features(struct hostapd_hw_modes *hw_features,
+			 size_t num_hw_features)
+{
+}
+
+static inline int hostapd_get_hw_features(struct hostapd_iface *iface)
+{
+	return -1;
+}
+
+static inline int hostapd_csa_update_hwmode(struct hostapd_iface *iface)
+{
+	return 0;
+}
+
+static inline int hostapd_acs_completed(struct hostapd_iface *iface, int err)
+{
+	return -1;
+}
+
+static inline int hostapd_select_hw_mode(struct hostapd_iface *iface)
+{
+	return -100;
+}
+
+static inline const char * hostapd_hw_mode_txt(int mode)
+{
+	return "UNKNOWN";
+}
+
+static inline int hostapd_hw_get_freq(struct hostapd_data *hapd, int chan)
+{
+	return -1;
+}
+
+static inline int hostapd_check_ht_capab(struct hostapd_iface *iface)
+{
+	return 0;
+}
+
+static inline int hostapd_check_edmg_capab(struct hostapd_iface *iface)
+{
+	return 0;
+}
+
+static inline void hostapd_stop_setup_timers(struct hostapd_iface *iface)
+{
+}
+
+static inline int hostapd_hw_skip_mode(struct hostapd_iface *iface,
+				       struct hostapd_hw_modes *mode)
+{
+	return 0;
+}
+
+static inline int hostapd_check_he_6ghz_capab(struct hostapd_iface *iface)
+{
+	return 0;
+}
+
+static inline int hostapd_determine_mode(struct hostapd_iface *iface)
+{
+	return 0;
+}
+
+static inline
+void hostapd_free_multi_hw_info(struct hostapd_multi_hw_info *multi_hw_info)
+{
+}
+
+static inline int hostapd_set_current_hw_info(struct hostapd_iface *iface,
+					      u32 oper_freq)
+{
+	return 0;
+}
+
+struct hostapd_multi_hw_info *hostapd_get_current_hw_info(struct hostapd_iface *iface,
+							   int oper_freq)
+{
+	return NULL;
+}
+#endif /* NEED_AP_MLME */
+
+#endif /* HW_FEATURES_H */

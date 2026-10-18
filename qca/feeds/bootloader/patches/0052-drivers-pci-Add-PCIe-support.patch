@@ -1,0 +1,42 @@
+From 2ebc055845b754dea63b51eaadfefe7a284e117d Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Thu, 17 Jul 2025 19:57:18 +0530
+Subject: [PATCH] drivers: pci: Add PCIe support
+
+This patch adds the PCIe support for the
+IPQ52xx chipset
+
+Change-Id: I76502271a843e94771a68a6fa5ebf0c6d78f12ba
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/pci/pcie_dw_qcom.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/pci/pcie_dw_qcom.c b/drivers/pci/pcie_dw_qcom.c
+index 2bc59df5af3..a2f158ff730 100644
+--- a/drivers/pci/pcie_dw_qcom.c
++++ b/drivers/pci/pcie_dw_qcom.c
+@@ -728,6 +728,12 @@ static const struct qcom_pcie_ops ops_ipq5424 = {
+ 	.clear_sid = qcom_pcie_clear_sidtable,
+ };
+ 
++static const struct qcom_pcie_ops ops_ipq5200 = {
++	.config_sid = NULL,
++	.sku = NULL,
++	.clear_sid = qcom_pcie_clear_sidtable,
++};
++
+ static const struct udevice_id qcom_pcie_ids[] = {
+ 	{ .compatible = "qcom,pcie-sa8540p", .data = (ulong)&ops_1_9_0 },
+ 	{ .compatible = "qcom,pcie-sc7280", .data = (ulong)&ops_1_9_0 },
+@@ -743,6 +749,7 @@ static const struct udevice_id qcom_pcie_ids[] = {
+ 	{ .compatible = "qcom,pcie-sm8550", .data = (ulong)&ops_1_9_0 },
+ 	{ .compatible = "qcom,pcie-x1e80100", .data = (ulong)&ops_1_9_0 },
+ 	{ .compatible = "qcom,pcie-ipq9574", .data = (ulong) &ops_ipq9574},
++	{ .compatible = "qcom,pcie-ipq5200", .data = (ulong) &ops_ipq5200},
+ 	{ .compatible = "qcom,pcie-ipq5332", .data = (ulong) &ops_ipq5332},
+ 	{ .compatible = "qcom,pcie-ipq5424", .data = (ulong) &ops_ipq5424},
+ 	{ }
+-- 
+2.34.1
+

@@ -1,0 +1,31 @@
+From 814e2287d9849c1e44f57e7dfea2ee193a1b70ab Mon Sep 17 00:00:00 2001
+From: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+Date: Tue, 8 Jul 2025 11:06:21 +0530
+Subject: [PATCH] arch: arm: mach-ipq: SPL support for IPQ Chipsets
+
+This commit adds support for Secondary Program Loader (SPL) for IPQ
+chipsets. Enabling SPL support allows for a minimal bootloader to
+initialize hardware and load the full U-Boot image, which is especially
+useful for resource-constrained environments.
+
+Change-Id: If46cc877f75e2d04abdb05ae7ca7bca5003bc184
+Signed-off-by: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+---
+ arch/arm/Kconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 581e2342eea..6108e336010 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -804,6 +804,7 @@ config ARCH_IPQ
+ 	select MSM_SMEM
+ 	imply OF_UPSTREAM
+ 	imply CMD_DM
++	select SUPPORT_SPL
+ 
+ config ARCH_KEYSTONE
+ 	bool "TI Keystone"
+-- 
+2.34.1
+

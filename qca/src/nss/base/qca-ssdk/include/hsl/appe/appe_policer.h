@@ -1,0 +1,222 @@
+/*
+ * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#ifndef _APPE_POLICER_H_
+#define _APPE_POLICER_H_
+
+#define DSCP_REMAP_TBL_MAX_ENTRY	128
+
+sw_error_t
+appe_in_meter_head_reg_get(
+		a_uint32_t dev_id,
+		union in_meter_head_reg_u *value);
+
+sw_error_t
+appe_in_meter_head_reg_set(
+		a_uint32_t dev_id,
+		union in_meter_head_reg_u *value);
+
+sw_error_t
+appe_dscp_remap_tbl_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		union dscp_remap_tbl_u *value);
+
+sw_error_t
+appe_dscp_remap_tbl_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		union dscp_remap_tbl_u *value);
+
+sw_error_t
+appe_in_meter_head_reg_meter_ll_head_get(
+		a_uint32_t dev_id,
+		unsigned int *value);
+
+sw_error_t
+appe_in_meter_head_reg_meter_ll_head_set(
+		a_uint32_t dev_id,
+		unsigned int value);
+
+sw_error_t
+appe_in_meter_head_reg_meter_ll_tail_get(
+		a_uint32_t dev_id,
+		unsigned int *value);
+
+sw_error_t
+appe_in_meter_head_reg_meter_ll_tail_set(
+		a_uint32_t dev_id,
+		unsigned int value);
+
+sw_error_t
+appe_dscp_remap_tbl_dei_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_dscp_remap_tbl_dei_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_dscp_remap_tbl_dscp_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_dscp_remap_tbl_dscp_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_dscp_remap_tbl_pcp_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_dscp_remap_tbl_pcp_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_exceed_chg_dscp_cmd_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_exceed_chg_dscp_cmd_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_exceed_dscp_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_exceed_dscp_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_violate_chg_dscp_cmd_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_violate_chg_dscp_cmd_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_violate_dscp_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_violate_dscp_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_violate_remap_cmd_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_violate_remap_cmd_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_exceed_remap_cmd_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_exceed_remap_cmd_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_cir_max_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_cir_max_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_eir_max_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_eir_max_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_grp_end_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_grp_end_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_grp_cf_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_grp_cf_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_nxt_ptr_get(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t *value);
+
+sw_error_t
+appe_in_acl_meter_cfg_tbl_nxt_ptr_set(
+		a_uint32_t dev_id,
+		a_uint32_t index,
+		a_uint32_t value);
+#endif
+

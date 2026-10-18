@@ -1,0 +1,47 @@
+From f7ab98ccb1815ae726d01395bdfe0a431e544385 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Wed, 21 May 2025 15:25:54 +0530
+Subject: [PATCH] pinctrl: qcom: Add pinctrl support for IPQ52xx chipset
+
+This patch adds the pinctrl driver support for IPQ52xx chipset
+
+Change-Id: Icf0e8f834f4ee3cc2a6194d9160ba55e01c37f30
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/pinctrl/qcom/Kconfig  | 7 +++++++
+ drivers/pinctrl/qcom/Makefile | 1 +
+ 2 files changed, 8 insertions(+)
+
+diff --git a/drivers/pinctrl/qcom/Kconfig b/drivers/pinctrl/qcom/Kconfig
+index e9e34a0614c..b1a76e4ba59 100644
+--- a/drivers/pinctrl/qcom/Kconfig
++++ b/drivers/pinctrl/qcom/Kconfig
+@@ -41,6 +41,13 @@ config PINCTRL_QCOM_IPQ5424
+ 	  Say Y here to enable support for pinctrl on the IPQ5424 SoC,
+ 	  as well as the associated GPIO driver.
+ 
++config PINCTRL_QCOM_IPQ5200
++	bool "Qualcomm IPQ5200 GCC"
++	select PINCTRL_QCOM
++	help
++	  Say Y here to enable support for pinctrl on the IPQ5200 SoC,
++	  as well as the associated GPIO driver.
++
+ config PINCTRL_QCOM_IPQ9574
+ 	bool "Qualcomm IPQ9574 GCC"
+ 	select PINCTRL_QCOM
+diff --git a/drivers/pinctrl/qcom/Makefile b/drivers/pinctrl/qcom/Makefile
+index 131f2a5ebea..760cdc77e2f 100644
+--- a/drivers/pinctrl/qcom/Makefile
++++ b/drivers/pinctrl/qcom/Makefile
+@@ -5,6 +5,7 @@
+ obj-$(CONFIG_PINCTRL_QCOM) += pinctrl-qcom.o
+ obj-$(CONFIG_PINCTRL_QCOM_APQ8016) += pinctrl-apq8016.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ4019) += pinctrl-ipq4019.o
++obj-$(CONFIG_PINCTRL_QCOM_IPQ5200) += pinctrl-ipq5200.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5332) += pinctrl-ipq5332.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5424) += pinctrl-ipq5424.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ9574) += pinctrl-ipq9574.o
+-- 
+2.34.1
+

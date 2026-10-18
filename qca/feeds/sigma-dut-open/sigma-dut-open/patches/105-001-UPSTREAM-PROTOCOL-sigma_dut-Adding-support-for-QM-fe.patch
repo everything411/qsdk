@@ -1,0 +1,159 @@
+From 6ba7d06d7764ba3bd379020dc09b182d6ef090a9 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Fri, 27 Jun 2025 11:32:30 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL: sigma_dut: Adding support for QM features
+
+Adding support for QM program certification features: SCS(Stream
+Classification Service) and MSCS(Mirrored Stream Classification
+Service).
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c        | 61 ++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ sigma_dut.h |  1 +
+ 2 files changed, 61 insertions(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -101,6 +101,8 @@
+ #define SAE_PK_KEY_P521 \
+ 	"MIHcAgEBBEIBuNKSnOQY5ZVdBgWiXcL1Gr/W+VCw69nOte1gT4sqdVeV3grCl5HJxogVG2LFdtnEDLJrs0AtFoFN9nWnIuMu+ZWgBwYFK4EEACOhgYkDgYYABADuDQkFO2102xXwNnoGpBU+13kNuxZ/gwy8+G0UG75h6iiTqNWRaQIpSWgTmPNER7Ubb7etyXaoOTnsq4v4f9m8wgDt2LMZptHvUkHCq522rRK43ITmCayelbHWY1FhhAE1ETXRItSV8nLymjliEtjdfP45dsr25ySlkSaVCBNUFrAtfw=="
+ 
++#define MSCS_RESPONSE_STATUS_CODE	(97)
++
+ /*
+  * MTU for Ethernet need to take into account 8-byte SNAP header
+  * to be added when encapsulating Ethernet frame into 802.11.
+@@ -3044,6 +3046,19 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "MSCS");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0) {
++			dut->ap_mscs = VALUE_ENABLED;
++		} else if (strcasecmp(val, "disable") == 0) {
++			dut->ap_mscs = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorcode, Unsupported MSCS");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -9851,6 +9866,12 @@ static void fwtest_set_eht_params(struct
+ 
+ 	if (dut->ap_trigsubfb == VALUE_ENABLED)
+ 		mac80211_enable_tbsu_sounding(dut, ifname, link_id);
++
++	if (dut->ap_scs == VALUE_ENABLED && dut->device_type == AP_testbed) {
++		/* Dynamic fake Qdepth enabled for all ACs as needed based
++		 * on SCS Request arrival from client test cases for AP Test Bed */
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 721", ifname, link_id);
++	}
+ }
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))
+@@ -11352,7 +11373,8 @@ skip_key_mgmt:
+ 
+ 		if ((dut->program == PROGRAM_VHT) ||
+ 		    ((dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT ||
+-			  dut->program == PROGRAM_WPA3) &&
++			  dut->program == PROGRAM_WPA3 ||
++			  dut->program == PROGRAM_QM) &&
+ 		     !check_band(dut, BAND_2G, link_id))) {
+ 			int vht_oper_centr_freq_idx;
+ 
+@@ -12011,6 +12033,12 @@ skip_vht_parameters_set:
+ 		if (check_band(dut, BAND_6G, link_id))
+ 			fprintf(f, "he_6ghz_reg_pwr_type=0\n");
+ 
++		if (dut->ap_scs == VALUE_ENABLED)
++			fprintf(f, "enable_scs=1\n");
++
++		if (dut->ap_mscs == VALUE_ENABLED)
++			fprintf(f, "enable_mscs=1\n");
++
+ 		fclose(f);
+ 	}
+ 
+@@ -12447,6 +12475,21 @@ hapd_started:
+ 			 */
+ 			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 926 1", ifname);
+ 		}
++
++		if (dut->ap_scs == VALUE_ENABLED && dut->device_type == AP_testbed) {
++			/* Dynamic fake Qdepth enabled for all ACs as needed based
++			 * on SCS Request arrival from client test cases for AP Test Bed */
++			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 721", ifname);
++		}
++	}
++
++	if (dut->program == PROGRAM_QM) {
++		if (dut->ap_mscs == VALUE_ENABLED)
++			run_system_wrapper(dut,
++					   "echo 1 > /sys/kernel/debug/ecm/ecm_classifier_mscs/enabled");
++		else if (dut->ap_mscs == VALUE_DISABLED)
++			run_system_wrapper(dut,
++					   "echo 0 > /sys/kernel/debug/ecm/ecm_classifier_mscs/enabled");
+ 	}
+ 
+ 	/* Disable latency aware txmode selection */
+@@ -13686,10 +13729,17 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->multi_mld = 0;
+ 
+ 	dut->hostapd_running = 0;
+-	dut->ap_scs = VALUE_NOT_SET;
+ 	dut->ap_trigsubfb = VALUE_NOT_SET;
+ 	dut->num_users_ofdma = 0;
+ 
++	if (dut->program == PROGRAM_QM && dut->device_type != AP_testbed) {
++		dut->ap_scs = VALUE_ENABLED;
++		dut->ap_mscs = VALUE_ENABLED;
++	} else {
++		dut->ap_scs = VALUE_NOT_SET;
++		dut->ap_mscs = VALUE_NOT_SET;
++	}
++
+ 	if (get_openwrt_driver_type() == OPENWRT_DRIVER_ATHEROS)
+ 		return 1;
+ 
+@@ -20428,6 +20478,25 @@ static enum sigma_cmd_result mac80211_ap
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "MSCS");
++	if (val) {
++		if (strcasecmp(val, "teardownclient") == 0) {
++			val = get_param(cmd, "MSCSClientMac");
++			if (val) {
++				if (parse_mac_address(dut, val, mac_addr) < 0) {
++					sigma_dut_print(dut, DUT_MSG_ERROR,
++							"MAC Address not in proper format");
++					return STATUS_SENT_ERROR;
++				}
++				snprintf(buf, sizeof(buf),
++					 "hostapd_cli -i %s %s send_unsolicited_mscs_resp %02x:%02x:%02x:%02x:%02x:%02x --status %d",
++					 ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
++					 mac_addr[4], mac_addr[5], MSCS_RESPONSE_STATUS_CODE);
++				run_system(dut, buf);
++			}
++		}
++	}
++
+ 	if (++dut->intf_defined < dut->num_links)
+ 		mac80211_ap_set_rfeature(dut, conn, cmd);
+ 
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1480,6 +1480,7 @@ struct sigma_dut {
+ 	/*Use ap_pmf_link for interface specific cases*/
+ 	enum ap_pmf ap_pmf_link[MAX_MLD_SUPPORTED];
+ 	enum value_not_set_enabled_disabled ap_scs;
++	enum value_not_set_enabled_disabled ap_mscs;
+ 	int multi_mbssid;
+ 	int no_of_mbssid_groups;
+ 	struct mbssid_set mbss_set[MAX_MBSSID_SET];

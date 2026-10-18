@@ -1,0 +1,39 @@
+From 61207725a32cb301c027bd71b4a3046e821478d5 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Wed, 23 Aug 2023 22:16:22 +0530
+Subject: [PATCH] sigma_dut : Enabling beacon protection when EHT is enabled
+
+Beacon protection is not enabled expilicitly when
+EHT capabiltity is enabled, but it is necessary to
+enable protection. Hence enable beacon protection
+when EHT is enabled.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -968,6 +968,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		dut->ap_is_dual = 1;
+ 
+ 	if (dut->program == PROGRAM_EHT) {
++		dut->ap_pmf = AP_PMF_OPTIONAL;
++		dut->ap_beacon_prot = 1;
+ 		if (dut->ap_interface_5g && dut->ap_interface_6g)
+ 			dut->ap_is_dual = 1;
+ 		if (dut->ap_interface_2g && dut->ap_interface_6g)
+@@ -11558,8 +11560,11 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_beacon_prot = dut->user_config_ap_beacon_prot;
+ 	dut->ap_transition_disable = 0;
+ 
+-	if (dut->program == PROGRAM_EHT)
++	if (dut->program == PROGRAM_EHT) {
+ 		dut->ap_group_mgmt_cipher = AP_BIP_GMAC_256;
++		dut->ap_pmf = AP_PMF_OPTIONAL;
++		dut->ap_beacon_prot = 1;
++	}
+ 
+ 	dut->dpp_conf_id = -1;
+ 	free(dut->ap_dpp_conf_addr);

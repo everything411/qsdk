@@ -1,0 +1,68 @@
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
+/*
+ * Copyright (c) 2018,2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#ifndef _DT_BINDINGS_CLOCK_IPQ_GCC_MACH_IPQ5424_H
+#define  _DT_BINDINGS_CLOCK_IPQ_GCC_MACH_IPQ5424_H
+
+#define GCC_PCNOC_BFDCD_CLK			145
+#define GCC_SYSTEM_NOC_BFDCD_CLK		146
+#define GCC_NSSNOC_MEMNOC_BFDCD_CLK		147
+#define GCC_NSSNOC_MEMNOC_CLK			148
+#define GCC_NSSNOC_MEMNOC_1_CLK			149
+#define NSS_CC_NSS_CSR_CLK			150
+#define NSS_CC_NSSNOC_NSS_CSR_CLK		151
+#define NSS_CC_CE_APB_CLK			152
+#define NSS_CC_CE_APB_CLK_dummy			153
+#define NSS_CC_CE_AXI_CLK			154
+#define NSS_CC_NSSNOC_CE_APB_CLK		155
+#define NSS_CC_NSSNOC_CE_AXI_CLK		156
+#define NSS_CC_PORT1_MAC_CLK			157
+#define NSS_CC_PORT2_MAC_CLK			158
+#define NSS_CC_PORT3_MAC_CLK			159
+#define NSS_CC_NSSNOC_PPE_CLK			160
+#define NSS_CC_NSSNOC_PPE_CFG_CLK		161
+#define NSS_CC_PPE_EDMA_CLK			162
+#define NSS_CC_PPE_EDMA_CFG_CLK			163
+#define NSS_CC_PPE_SWITCH_CLK			164
+#define NSS_CC_PPE_SWITCH_IPE_CLK		165
+#define NSS_CC_PPE_SWITCH_BTQ_CLK		166
+#define NSS_CC_PORT1_RX_CLK			167
+#define NSS_CC_PORT1_TX_CLK			168
+#define NSS_CC_PORT2_RX_CLK			169
+#define NSS_CC_PORT2_TX_CLK			170
+#define NSS_CC_PORT3_RX_CLK			171
+#define NSS_CC_PORT3_TX_CLK			172
+#define NSS_CC_UNIPHY_PORT1_RX_CLK		173
+#define NSS_CC_UNIPHY_PORT1_TX_CLK		174
+#define NSS_CC_UNIPHY_PORT2_RX_CLK		175
+#define NSS_CC_UNIPHY_PORT2_TX_CLK		176
+#define NSS_CC_UNIPHY_PORT3_RX_CLK		177
+#define NSS_CC_UNIPHY_PORT3_TX_CLK		178
+#define NSS_CC_PPE_CLK				179
+#define NSS_CC_CE_CLK				180
+#define NSS_CC_CFG_CLK				181
+#define UNIPHY0_NSS_RX_CLK			182
+#define UNIPHY0_NSS_TX_CLK			183
+#define UNIPHY1_NSS_RX_CLK			184
+#define UNIPHY1_NSS_TX_CLK			185
+#define UNIPHY2_NSS_RX_CLK			186
+#define UNIPHY2_NSS_TX_CLK			187
+#define GCC_APCS_CLOCK_BRANCH_ENA_VOTE		188
+#define GCC_QUPV3_CORE_CLK			189
+#define GCC_QUPV3_2X_CORE_CLK			190
+#define GCC_QUPV3_SLEEP_CLK			191
+
+#define CLK_1_25_MHZ					(1250000UL)
+#define CLK_2_5_MHZ					(2500000UL)
+#define CLK_12_5_MHZ					(12500000UL)
+#define CLK_25_MHZ					(25000000UL)
+#define CLK_78_125_MHZ					(78125000UL)
+#define CLK_50_MHZ					(50000000UL)
+#define CLK_125_MHZ					(125000000UL)
+#define CLK_156_25_MHZ					(156250000UL)
+#define CLK_312_5_MHZ					(312500000UL)
+
+#endif

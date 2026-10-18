@@ -1,0 +1,40 @@
+From fb2c826e58eaa88587afe90af5202e7bf4c5ac01 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 17 Sep 2025 15:41:37 +0530
+Subject: [PATCH] net: phy: Add qca8337 switch support
+
+Change-Id: Ieb6cbc55f350ae3d9f1a20a9d4da99dbce73e68e
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/net/phy/Kconfig  | 5 +++++
+ drivers/net/phy/Makefile | 1 +
+ 2 files changed, 6 insertions(+)
+
+diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
+index 7e54d85ab43..15b75d0c10c 100644
+--- a/drivers/net/phy/Kconfig
++++ b/drivers/net/phy/Kconfig
+@@ -407,3 +407,8 @@ config PHY_QCA_8033
+ 	bool "QCA Ethernet QCA8033 support"
+ 	---help---
+ 	  Adds support for the QCA Ethernet QCA8033.
++
++config PHY_QCA_8337
++	bool "QCA Ethernet QCA8337 support"
++	---help---
++	  Adds support for the QCA Ethernet QCA8337.
+diff --git a/drivers/net/phy/Makefile b/drivers/net/phy/Makefile
+index 85e1da52714..e2d4d630540 100644
+--- a/drivers/net/phy/Makefile
++++ b/drivers/net/phy/Makefile
+@@ -33,6 +33,7 @@ obj-$(CONFIG_PHY_QCA_8075) += qcom_qca8075.o
+ obj-$(CONFIG_PHY_QCA_8081) += qcom_qca8081.o
+ obj-$(CONFIG_PHY_QCA_81XX) += qcom_qca81xx.o
+ obj-$(CONFIG_PHY_QCA_8033) += qcom_qca8033.o
++obj-$(CONFIG_PHY_QCA_8337) += qcom_qca8337.o
+ obj-$(CONFIG_PHY_REALTEK) += realtek.o
+ obj-$(CONFIG_PHY_SMSC) += smsc.o
+ obj-$(CONFIG_PHY_TERANETICS) += teranetics.o
+-- 
+2.34.1
+

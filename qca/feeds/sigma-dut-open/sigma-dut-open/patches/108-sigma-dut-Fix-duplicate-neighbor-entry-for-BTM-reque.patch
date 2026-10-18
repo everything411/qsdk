@@ -1,0 +1,107 @@
+From d391d29de010520e615c6c0cd4992ffda06547bb Mon Sep 17 00:00:00 2001
+From: Mohan Kumar G <mkumarg@qti.qualcomm.com>
+Date: Wed, 23 Jul 2025 16:24:58 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Fix duplicate neighbor entry for
+ BTM requests
+
+Currently, when adding an existing neighbor to the neighbor list
+in sigma_dut, a duplicate entry is added to it causing multiple
+BTM requests to be sent for same BSSID. Fix this issue by
+checking if the neighbor to be added already exists in the
+neighbor list.
+
+Signed-off-by: Mohan Kumar G <mkumarg@qti.qualcomm.com>
+---
+ ap.c | 44 ++++++++++++++++++++++++++++++++------------
+ 1 file changed, 32 insertions(+), 12 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 771e114..dc0f997 100644
+--- a/ap.c
++++ b/ap.c
+@@ -19023,6 +19023,14 @@ static int mac80211_update_mbo_pref_ap_list(struct sigma_dut *dut, int link_id)
+ 	return 0;
+ }
+ 
++static int get_neighbor(struct sigma_dut *dut, uint8_t *bssid) {
++    for (int i = 0; i < dut->nebor_cnt; i++) {
++            if (memcmp(dut->btm[i].ap_mld_mac, bssid, ETH_ALEN) == 0)
++                return i;
++    }
++    return -1;
++}
++
+ static int mac80211_set_nebor(struct sigma_dut *dut, const char *ifname,
+ 			      struct sigma_cmd *cmd, int link_id)
+ {
+@@ -19037,6 +19045,7 @@ static int mac80211_set_nebor(struct sigma_dut *dut, const char *ifname,
+ 	char *token, *subtoken;
+ 	char parser[200];
+ 	int neighbor_cnt = 0;
++	int existing_neighbor = -1;
+ 	uint8_t self_mac[ETH_ALEN];
+ 
+ 	get_hwaddr(ifname, self_mac);
+@@ -19047,15 +19056,31 @@ static int mac80211_set_nebor(struct sigma_dut *dut, const char *ifname,
+ 		return -1;
+ 	}
+ 
+-	val = get_param(cmd, "Nebor_Op_Class");
++	neighbor_cnt = dut->nebor_cnt;
++	if (neighbor_cnt >= NUM_NEIGHBORS) {
++		sigma_dut_print(dut, DUT_MSG_ERROR,
++				"Max neighbor support exceeded");
++		return -1;
++	}
++
++	val = get_param(cmd, "Nebor_MLD_address");
+ 	if (val) {
+-		neighbor_cnt = dut->nebor_cnt;
+-		if (neighbor_cnt >= NUM_NEIGHBORS) {
+-			sigma_dut_print(dut, DUT_MSG_ERROR,
+-				  "Max neighbor support exceeded");
++		uint8_t temp_bssid[ETH_ALEN];
++		if (parse_mac_address(dut, val, temp_bssid) < 0)
+ 			return -1;
++
++		existing_neighbor = get_neighbor(dut, temp_bssid);
++		if(existing_neighbor != -1) {
++			sigma_dut_print(dut, DUT_MSG_INFO, "Existing neighbor found for MLD addr %s\n", val);
++			memset(&dut->btm[existing_neighbor], 0,sizeof(struct btm_ap));
++			neighbor_cnt = existing_neighbor;
+ 		}
+ 
++		memcpy(dut->btm[neighbor_cnt].ap_mld_mac, temp_bssid, ETH_ALEN);
++	}
++
++	val = get_param(cmd, "Nebor_Op_Class");
++	if (val) {
+ 		if (strlen(val) > sizeof(parser)) {
+ 			sigma_dut_print(dut, DUT_MSG_ERROR,
+ 					"Input length (%zu) for Nebor_Op_Class is too large",
+@@ -19140,12 +19165,6 @@ static int mac80211_set_nebor(struct sigma_dut *dut, const char *ifname,
+ 	} else
+ 		return -1;
+ 
+-	val = get_param(cmd, "Nebor_MLD_address");
+-	if (val) {
+-		if (parse_mac_address(dut, val, dut->btm[neighbor_cnt].ap_mld_mac) < 0)
+-			return -1;
+-	}
+-
+ 	val = get_param(cmd, "Nebor_MLD_LinkIDs");
+ 	if (val) {
+ 		if (strlen(val) > sizeof(parser)) {
+@@ -19174,7 +19193,8 @@ static int mac80211_set_nebor(struct sigma_dut *dut, const char *ifname,
+ 	if (bssid_cnt > 1) {
+ 		dut->btm_ml_link = 1;
+ 		dut->btm[neighbor_cnt].num_of_bss = bssid_cnt;
+-		dut->nebor_cnt = neighbor_cnt + 1;
++		if (existing_neighbor == -1)
++			dut->nebor_cnt = neighbor_cnt + 1;
+ 	} else {
+ 		mbo_add_nebor_entry(dut, dut->btm[neighbor_cnt].nebor_bssid[0],
+ 				dut->btm[neighbor_cnt].nebor_op_class[0],
+-- 
+2.34.1
+

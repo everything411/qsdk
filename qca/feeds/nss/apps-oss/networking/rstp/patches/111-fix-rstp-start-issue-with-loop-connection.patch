@@ -1,0 +1,57 @@
+[networking feeds] Fix rstp start issue with loop connection
+
+Make switch ports restart auto-negotiation during rstp initialization
+Change-Id: I505100313e8b9a228bb347f78dab5d0dfa920d8b
+Signed-off-by: zhongjia <quic_zhongjia@quicinc.com>
+
+diff -Nur a/qca_switch.c b/qca_switch.c
+--- a/qca_switch.c	2025-01-23 10:58:50.500176114 -0800
++++ b/qca_switch.c	2025-01-23 10:59:21.396391749 -0800
+@@ -64,6 +64,7 @@
+ 	case SW_API_MIRROR_ANALY_PT_SET:
+ 	case SW_API_FDB_RESV_ADD:
+ 	case SW_API_FDB_RESV_DEL:
++	case SW_API_PT_AN_RESTART:
+ 		return 2;
+ 	case SW_API_FDB_DELPORT:
+ 	case SW_API_PT_SPEED_GET:
+@@ -144,6 +145,18 @@
+ 		return 0;
+ }
+ 
++int qca_switch_restart_port(struct switch_port *sw_port)
++{
++	/* for link up, the loop may happen before rstp start and cause congestion in switch
++	 * to make sure that BPDU traffic can go through between switch,
++	 * need to restart switch port.
++	 */
++	if (qca_switch_get_port_link_status(sw_port))
++		sw_uk_exec(SW_API_PT_AN_RESTART, qca_switch_get_switch_id(), sw_port->priv.port_num);
++
++	return 0;
++}
++
+ unsigned short qca_switch_get_atheros_header_type(void)
+ {
+ 	char cmd[128];
+diff -Nur a/switch_api.c b/switch_api.c
+--- a/switch_api.c	2025-01-23 10:58:50.500176114 -0800
++++ b/switch_api.c	2025-01-23 11:00:21.632812174 -0800
+@@ -448,10 +448,16 @@
+ 	return sw_port->priv.ops->flush_fdb(sw_port);
+ }
+ 
++extern int qca_switch_restart_port(struct switch_port *sw_port);
++
+ /*call this API when a rstp bridge port created*/
+ int switch_port_attach_if(int ifindex)
+ {
+-	return 0;
++	struct switch_port *sw_port = find_switch_port_by_index(ifindex);
++	if (!sw_port) {
++		return -1;
++	}
++	return qca_switch_restart_port(sw_port);
+ }
+ 
+ /*call this API when a rstp bridge port deleted*/

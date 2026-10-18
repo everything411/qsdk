@@ -1,0 +1,63 @@
+/*
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *
+ */
+
+#ifndef __IPQ5424_RESET_H__
+#define __IPQ5424_RESET_H__
+
+#define GCC_SDCC1_BCR				0
+#define GCC_USB_BCR				1
+#define GCC_QUSB2_0_PHY_BCR			2
+#define GCC_USB0_PHY_BCR			3
+#define GCC_USB3PHY_0_PHY_BCR			4
+#define GCC_USB1_BCR				5
+#define GCC_QUSB2_1_PHY_BCR			6
+#define GCC_PCIE0_PHY_BCR			7
+#define GCC_PCIE0PHY_PHY_BCR			8
+#define GCC_PCIE1_PHY_BCR			9
+#define GCC_PCIE1PHY_PHY_BCR			10
+#define GCC_PCIE2_PHY_BCR			11
+#define GCC_PCIE2PHY_PHY_BCR			12
+#define GCC_PCIE3_PHY_BCR			13
+#define GCC_PCIE3PHY_PHY_BCR			14
+#define GCC_PCIE1_BCR				15
+#define GCC_UNIPHY0_BCR				16
+#define GCC_UNIPHY1_BCR				17
+#define GCC_UNIPHY2_BCR				18
+#define GCC_UNIPHY0_SOFT_RESET			19
+#define GCC_UNIPHY1_SOFT_RESET			20
+#define GCC_UNIPHY2_SOFT_RESET			21
+#define GCC_UNIPHY0_XPCS_RESET			22
+#define GCC_UNIPHY1_XPCS_RESET			23
+#define GCC_UNIPHY2_XPCS_RESET			24
+#define NSS_CC_PPE_BCR				25
+#define NSS_CC_PORT1_RX_RESET			26
+#define NSS_CC_PORT1_TX_RESET			27
+#define NSS_CC_PORT2_RX_RESET			28
+#define NSS_CC_PORT2_TX_RESET			29
+#define NSS_CC_PORT3_RX_RESET			30
+#define NSS_CC_PORT3_TX_RESET			31
+#define GCC_UNIPHY0_AHB_RESET			32
+#define GCC_UNIPHY1_AHB_RESET			33
+#define GCC_UNIPHY2_AHB_RESET			33
+#define NSS_CC_PORT1_MAC_RESET			34
+#define NSS_CC_PORT2_MAC_RESET			35
+#define NSS_CC_PORT3_MAC_RESET			36
+#define GCC_PCIE0_BCR				37
+#define GCC_PCIE2_BCR				38
+#define GCC_PCIE3_BCR				39
+
+#endif

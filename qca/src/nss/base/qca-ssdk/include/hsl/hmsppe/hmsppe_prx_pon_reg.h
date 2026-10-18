@@ -1,0 +1,425 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#ifndef _HMSPPE_PRX_PON_REG_H_
+#define _HMSPPE_PRX_PON_REG_H_
+
+/*[register] PASS_THROUGH_CTRL*/
+#define PASS_THROUGH_CTRL
+#define PASS_THROUGH_CTRL_ADDRESS 0xaa0
+#define PASS_THROUGH_CTRL_NUM     1
+#define PASS_THROUGH_CTRL_INC     0x4
+#define PASS_THROUGH_CTRL_TYPE    REG_TYPE_RW
+#define PASS_THROUGH_CTRL_DEFAULT 0xa
+	/*[field] COPY_CPU_EN*/
+	#define PASS_THROUGH_CTRL_COPY_CPU_EN
+	#define PASS_THROUGH_CTRL_COPY_CPU_EN_OFFSET  0
+	#define PASS_THROUGH_CTRL_COPY_CPU_EN_LEN     4
+	#define PASS_THROUGH_CTRL_COPY_CPU_EN_DEFAULT 0xa
+
+struct pass_through_ctrl {
+	a_uint32_t  copy_cpu_en:4;
+	a_uint32_t  _reserved0:28;
+};
+
+union pass_through_ctrl_u {
+	a_uint32_t val;
+	struct pass_through_ctrl bf;
+};
+
+/*[register] DOT1P_MAPPER_DEFAULT*/
+#define DOT1P_MAPPER_DEFAULT
+#define DOT1P_MAPPER_DEFAULT_ADDRESS 0x1880
+#define DOT1P_MAPPER_DEFAULT_NUM     1
+#define DOT1P_MAPPER_DEFAULT_INC     0x4
+#define DOT1P_MAPPER_DEFAULT_TYPE    REG_TYPE_RW
+#define DOT1P_MAPPER_DEFAULT_DEFAULT 0x0
+	/*[field] VID*/
+	#define DOT1P_MAPPER_DEFAULT_VID
+	#define DOT1P_MAPPER_DEFAULT_VID_OFFSET  0
+	#define DOT1P_MAPPER_DEFAULT_VID_LEN     12
+	#define DOT1P_MAPPER_DEFAULT_VID_DEFAULT 0x0
+	/*[field] PCP*/
+	#define DOT1P_MAPPER_DEFAULT_PCP
+	#define DOT1P_MAPPER_DEFAULT_PCP_OFFSET  12
+	#define DOT1P_MAPPER_DEFAULT_PCP_LEN     3
+	#define DOT1P_MAPPER_DEFAULT_PCP_DEFAULT 0x0
+	/*[field] DEI*/
+	#define DOT1P_MAPPER_DEFAULT_DEI
+	#define DOT1P_MAPPER_DEFAULT_DEI_OFFSET  15
+	#define DOT1P_MAPPER_DEFAULT_DEI_LEN     1
+	#define DOT1P_MAPPER_DEFAULT_DEI_DEFAULT 0x0
+	/*[field] DSCP*/
+	#define DOT1P_MAPPER_DEFAULT_DSCP
+	#define DOT1P_MAPPER_DEFAULT_DSCP_OFFSET  16
+	#define DOT1P_MAPPER_DEFAULT_DSCP_LEN     6
+	#define DOT1P_MAPPER_DEFAULT_DSCP_DEFAULT 0x0
+	/*[field] DSCP_MASK*/
+	#define DOT1P_MAPPER_DEFAULT_DSCP_MASK
+	#define DOT1P_MAPPER_DEFAULT_DSCP_MASK_OFFSET  22
+	#define DOT1P_MAPPER_DEFAULT_DSCP_MASK_LEN     6
+	#define DOT1P_MAPPER_DEFAULT_DSCP_MASK_DEFAULT 0x0
+	/*[field] MISS_ACTION*/
+	#define DOT1P_MAPPER_DEFAULT_MISS_ACTION
+	#define DOT1P_MAPPER_DEFAULT_MISS_ACTION_OFFSET  28
+	#define DOT1P_MAPPER_DEFAULT_MISS_ACTION_LEN     2
+	#define DOT1P_MAPPER_DEFAULT_MISS_ACTION_DEFAULT 0x0
+
+struct dot1p_mapper_default {
+	a_uint32_t  vid:12;
+	a_uint32_t  pcp:3;
+	a_uint32_t  dei:1;
+	a_uint32_t  dscp:6;
+	a_uint32_t  dscp_mask:6;
+	a_uint32_t  miss_action:2;
+	a_uint32_t  _reserved0:2;
+};
+
+union dot1p_mapper_default_u {
+	a_uint32_t val;
+	struct dot1p_mapper_default bf;
+};
+
+/*[table] DOT1P_MAPPER_RULE*/
+#define DOT1P_MAPPER_RULE
+#define DOT1P_MAPPER_RULE_ADDRESS 0x2000
+#define DOT1P_MAPPER_RULE_NUM     128
+#define DOT1P_MAPPER_RULE_INC     0x8
+#define DOT1P_MAPPER_RULE_TYPE    REG_TYPE_RW
+#define DOT1P_MAPPER_RULE_DEFAULT 0x0
+	/*[field] VALID*/
+	#define DOT1P_MAPPER_RULE_VALID
+	#define DOT1P_MAPPER_RULE_VALID_OFFSET  0
+	#define DOT1P_MAPPER_RULE_VALID_LEN     1
+	#define DOT1P_MAPPER_RULE_VALID_DEFAULT 0x0
+	/*[field] SRC_INCL*/
+	#define DOT1P_MAPPER_RULE_SRC_INCL
+	#define DOT1P_MAPPER_RULE_SRC_INCL_OFFSET  1
+	#define DOT1P_MAPPER_RULE_SRC_INCL_LEN     1
+	#define DOT1P_MAPPER_RULE_SRC_INCL_DEFAULT 0x0
+	/*[field] PORT_TYPE*/
+	#define DOT1P_MAPPER_RULE_PORT_TYPE
+	#define DOT1P_MAPPER_RULE_PORT_TYPE_OFFSET  2
+	#define DOT1P_MAPPER_RULE_PORT_TYPE_LEN     2
+	#define DOT1P_MAPPER_RULE_PORT_TYPE_DEFAULT 0x0
+	/*[field] SRC_INFO*/
+	#define DOT1P_MAPPER_RULE_SRC_INFO
+	#define DOT1P_MAPPER_RULE_SRC_INFO_OFFSET  4
+	#define DOT1P_MAPPER_RULE_SRC_INFO_LEN     8
+	#define DOT1P_MAPPER_RULE_SRC_INFO_DEFAULT 0x0
+	/*[field] DEST_INCL*/
+	#define DOT1P_MAPPER_RULE_DEST_INCL
+	#define DOT1P_MAPPER_RULE_DEST_INCL_OFFSET  12
+	#define DOT1P_MAPPER_RULE_DEST_INCL_LEN     1
+	#define DOT1P_MAPPER_RULE_DEST_INCL_DEFAULT 0x0
+	/*[field] DEST_INFO*/
+	#define DOT1P_MAPPER_RULE_DEST_INFO
+	#define DOT1P_MAPPER_RULE_DEST_INFO_OFFSET  13
+	#define DOT1P_MAPPER_RULE_DEST_INFO_LEN     8
+	#define DOT1P_MAPPER_RULE_DEST_INFO_DEFAULT 0x0
+	/*[field] VID_INCL*/
+	#define DOT1P_MAPPER_RULE_VID_INCL
+	#define DOT1P_MAPPER_RULE_VID_INCL_OFFSET  21
+	#define DOT1P_MAPPER_RULE_VID_INCL_LEN     1
+	#define DOT1P_MAPPER_RULE_VID_INCL_DEFAULT 0x0
+	/*[field] VID*/
+	#define DOT1P_MAPPER_RULE_VID
+	#define DOT1P_MAPPER_RULE_VID_OFFSET  22
+	#define DOT1P_MAPPER_RULE_VID_LEN     12
+	#define DOT1P_MAPPER_RULE_VID_DEFAULT 0x0
+	/*[field] PRIORITY_TYPE*/
+	#define DOT1P_MAPPER_RULE_PRIORITY_TYPE
+	#define DOT1P_MAPPER_RULE_PRIORITY_TYPE_OFFSET  34
+	#define DOT1P_MAPPER_RULE_PRIORITY_TYPE_LEN     1
+	#define DOT1P_MAPPER_RULE_PRIORITY_TYPE_DEFAULT 0x0
+	/*[field] PCP_INCL reuse PRIORITY_TYPE[0]*/
+	#define DOT1P_MAPPER_RULE_PCP_INCL
+	#define DOT1P_MAPPER_RULE_PCP_INCL_OFFSET  35
+	#define DOT1P_MAPPER_RULE_PCP_INCL_LEN     1
+	#define DOT1P_MAPPER_RULE_PCP_INCL_DEFAULT 0x0
+	/*[field] DSCP_INCL reuse PRIORITY_TYPE[1]*/
+	#define DOT1P_MAPPER_RULE_DSCP_INCL
+	#define DOT1P_MAPPER_RULE_DSCP_INCL_OFFSET  35
+	#define DOT1P_MAPPER_RULE_DSCP_INCL_LEN     1
+	#define DOT1P_MAPPER_RULE_DSCP_INCL_DEFAULT 0x0
+	/*[field] PCP reuse PRIORITY_TYPE[0]*/
+	#define DOT1P_MAPPER_RULE_PCP
+	#define DOT1P_MAPPER_RULE_PCP_OFFSET  36
+	#define DOT1P_MAPPER_RULE_PCP_LEN     3
+	#define DOT1P_MAPPER_RULE_PCP_DEFAULT 0x0
+	/*[field] DSCP reuse PRIORITY_TYPE[1]*/
+	#define DOT1P_MAPPER_RULE_DSCP
+	#define DOT1P_MAPPER_RULE_DSCP_OFFSET  36
+	#define DOT1P_MAPPER_RULE_DSCP_LEN     6
+	#define DOT1P_MAPPER_RULE_DSCP_DEFAULT 0x0
+	/*[field] DEI_INCL reuse PRIORITY_TYPE[0]*/
+	#define DOT1P_MAPPER_RULE_DEI_INCL
+	#define DOT1P_MAPPER_RULE_DEI_INCL_OFFSET  39
+	#define DOT1P_MAPPER_RULE_DEI_INCL_LEN     1
+	#define DOT1P_MAPPER_RULE_DEI_INCL_DEFAULT 0x0
+	/*[field] DEI reuse PRIORITY_TYPE[0]*/
+	#define DOT1P_MAPPER_RULE_DEI
+	#define DOT1P_MAPPER_RULE_DEI_OFFSET  40
+	#define DOT1P_MAPPER_RULE_DEI_LEN     1
+	#define DOT1P_MAPPER_RULE_DEI_DEFAULT 0x0
+	/*[field] GEM_PORT*/
+	#define DOT1P_MAPPER_RULE_GEM_PORT
+	#define DOT1P_MAPPER_RULE_GEM_PORT_OFFSET  42
+	#define DOT1P_MAPPER_RULE_GEM_PORT_LEN     8
+	#define DOT1P_MAPPER_RULE_GEM_PORT_DEFAULT 0x0
+
+struct dot1p_mapper_rule_0 {
+	a_uint32_t  valid:1;
+	a_uint32_t  src_incl:1;
+	a_uint32_t  port_type:2;
+	a_uint32_t  src_info:8;
+	a_uint32_t  dest_incl:1;
+	a_uint32_t  dest_info:8;
+	a_uint32_t  vid_incl:1;
+	a_uint32_t  vid_0:10;
+	a_uint32_t  vid_1:2;
+	a_uint32_t  priority_type:1;
+	a_uint32_t  pcp_incl:1;
+	a_uint32_t  pcp:3;
+	a_uint32_t  dei_incl:1;
+	a_uint32_t  dei:1;
+	a_uint32_t  _reserved0:1;
+	a_uint32_t  gem_port:8;
+	a_uint32_t  _reserved1:14;
+};
+
+struct dot1p_mapper_rule_1 {
+	a_uint32_t  valid:1;
+	a_uint32_t  src_incl:1;
+	a_uint32_t  port_type:2;
+	a_uint32_t  src_info:8;
+	a_uint32_t  dest_incl:1;
+	a_uint32_t  dest_info:8;
+	a_uint32_t  vid_incl:1;
+	a_uint32_t  vid_0:10;
+	a_uint32_t  vid_1:2;
+	a_uint32_t  priority_type:1;
+	a_uint32_t  dscp_incl:1;
+	a_uint32_t  dscp:6;
+	a_uint32_t  gem_port:8;
+	a_uint32_t  _reserved0:14;
+};
+
+union dot1p_mapper_rule_u {
+	a_uint32_t val[2];
+	struct dot1p_mapper_rule_0 bf;
+	struct dot1p_mapper_rule_1 bf1;
+};
+
+/*[table] DOT1P_MAPPER_ACTION*/
+#define DOT1P_MAPPER_ACTION
+#define DOT1P_MAPPER_ACTION_ADDRESS 0x2800
+#define DOT1P_MAPPER_ACTION_NUM     128
+#define DOT1P_MAPPER_ACTION_INC     0x8
+#define DOT1P_MAPPER_ACTION_TYPE    REG_TYPE_RW
+#define DOT1P_MAPPER_ACTION_DEFAULT 0x0
+	/*[field] GEM_PORT_EN*/
+	#define DOT1P_MAPPER_ACTION_GEM_PORT_EN
+	#define DOT1P_MAPPER_ACTION_GEM_PORT_EN_OFFSET  0
+	#define DOT1P_MAPPER_ACTION_GEM_PORT_EN_LEN     1
+	#define DOT1P_MAPPER_ACTION_GEM_PORT_EN_DEFAULT 0x0
+	/*[field] SERVICE_CODE_EN*/
+	#define DOT1P_MAPPER_ACTION_SERVICE_CODE_EN
+	#define DOT1P_MAPPER_ACTION_SERVICE_CODE_EN_OFFSET  1
+	#define DOT1P_MAPPER_ACTION_SERVICE_CODE_EN_LEN     1
+	#define DOT1P_MAPPER_ACTION_SERVICE_CODE_EN_DEFAULT 0x0
+	/*[field] SERVICE_CODE*/
+	#define DOT1P_MAPPER_ACTION_SERVICE_CODE
+	#define DOT1P_MAPPER_ACTION_SERVICE_CODE_OFFSET  2
+	#define DOT1P_MAPPER_ACTION_SERVICE_CODE_LEN     8
+	#define DOT1P_MAPPER_ACTION_SERVICE_CODE_DEFAULT 0x0
+	/*[field] POLICER_DS_EN*/
+	#define DOT1P_MAPPER_ACTION_POLICER_DS_EN
+	#define DOT1P_MAPPER_ACTION_POLICER_DS_EN_OFFSET  10
+	#define DOT1P_MAPPER_ACTION_POLICER_DS_EN_LEN     1
+	#define DOT1P_MAPPER_ACTION_POLICER_DS_EN_DEFAULT 0x0
+	/*[field] POLICER_EN*/
+	#define DOT1P_MAPPER_ACTION_POLICER_EN
+	#define DOT1P_MAPPER_ACTION_POLICER_EN_OFFSET  11
+	#define DOT1P_MAPPER_ACTION_POLICER_EN_LEN     1
+	#define DOT1P_MAPPER_ACTION_POLICER_EN_DEFAULT 0x0
+	/*[field] POLICER_ID*/
+	#define DOT1P_MAPPER_ACTION_POLICER_ID
+	#define DOT1P_MAPPER_ACTION_POLICER_ID_OFFSET  12
+	#define DOT1P_MAPPER_ACTION_POLICER_ID_LEN     9
+	#define DOT1P_MAPPER_ACTION_POLICER_ID_DEFAULT 0x0
+	/*[field] INT_PRI_EN*/
+	#define DOT1P_MAPPER_ACTION_INT_PRI_EN
+	#define DOT1P_MAPPER_ACTION_INT_PRI_EN_OFFSET  21
+	#define DOT1P_MAPPER_ACTION_INT_PRI_EN_LEN     1
+	#define DOT1P_MAPPER_ACTION_INT_PRI_EN_DEFAULT 0x0
+	/*[field] INT_PRI*/
+	#define DOT1P_MAPPER_ACTION_INT_PRI
+	#define DOT1P_MAPPER_ACTION_INT_PRI_OFFSET  22
+	#define DOT1P_MAPPER_ACTION_INT_PRI_LEN     4
+	#define DOT1P_MAPPER_ACTION_INT_PRI_DEFAULT 0x0
+	/*[field] INT_DP_EN*/
+	#define DOT1P_MAPPER_ACTION_INT_DP_EN
+	#define DOT1P_MAPPER_ACTION_INT_DP_EN_OFFSET  26
+	#define DOT1P_MAPPER_ACTION_INT_DP_EN_LEN     1
+	#define DOT1P_MAPPER_ACTION_INT_DP_EN_DEFAULT 0x0
+	/*[field] INT_DP*/
+	#define DOT1P_MAPPER_ACTION_INT_DP
+	#define DOT1P_MAPPER_ACTION_INT_DP_OFFSET  27
+	#define DOT1P_MAPPER_ACTION_INT_DP_LEN     2
+	#define DOT1P_MAPPER_ACTION_INT_DP_DEFAULT 0x0
+	/*[field] ENQUEUE_VP_VALID*/
+	#define DOT1P_MAPPER_ACTION_ENQUEUE_VP_VALID
+	#define DOT1P_MAPPER_ACTION_ENQUEUE_VP_VALID_OFFSET  29
+	#define DOT1P_MAPPER_ACTION_ENQUEUE_VP_VALID_LEN     1
+	#define DOT1P_MAPPER_ACTION_ENQUEUE_VP_VALID_DEFAULT 0x0
+	/*[field] ENQUEUE_VP*/
+	#define DOT1P_MAPPER_ACTION_ENQUEUE_VP
+	#define DOT1P_MAPPER_ACTION_ENQUEUE_VP_OFFSET  30
+	#define DOT1P_MAPPER_ACTION_ENQUEUE_VP_LEN     8
+	#define DOT1P_MAPPER_ACTION_ENQUEUE_VP_DEFAULT 0x0
+	/*[field] EG_PORT_OVERRIDE*/
+	#define DOT1P_MAPPER_ACTION_EG_PORT_OVERRIDE
+	#define DOT1P_MAPPER_ACTION_EG_PORT_OVERRIDE_OFFSET  38
+	#define DOT1P_MAPPER_ACTION_EG_PORT_OVERRIDE_LEN     1
+	#define DOT1P_MAPPER_ACTION_EG_PORT_OVERRIDE_DEFAULT 0x0
+	/*[field] EG_PHY_PORT*/
+	#define DOT1P_MAPPER_ACTION_EG_PHY_PORT
+	#define DOT1P_MAPPER_ACTION_EG_PHY_PORT_OFFSET  39
+	#define DOT1P_MAPPER_ACTION_EG_PHY_PORT_LEN     4
+	#define DOT1P_MAPPER_ACTION_EG_PHY_PORT_DEFAULT 0x0
+	/*[field] EG_PORT_VP*/
+	#define DOT1P_MAPPER_ACTION_EG_PORT_VP
+	#define DOT1P_MAPPER_ACTION_EG_PORT_VP_OFFSET  43
+	#define DOT1P_MAPPER_ACTION_EG_PORT_VP_LEN     8
+	#define DOT1P_MAPPER_ACTION_EG_PORT_VP_DEFAULT 0x0
+	/*[field] ACTION*/
+	#define DOT1P_MAPPER_ACTION_ACTION
+	#define DOT1P_MAPPER_ACTION_ACTION_OFFSET  51
+	#define DOT1P_MAPPER_ACTION_ACTION_LEN     2
+	#define DOT1P_MAPPER_ACTION_ACTION_DEFAULT 0x0
+	/*[field] POST_BYPASS_BITMAP*/
+	#define DOT1P_MAPPER_ACTION_POST_BYPASS_BITMAP
+	#define DOT1P_MAPPER_ACTION_POST_BYPASS_BITMAP_OFFSET  53
+	#define DOT1P_MAPPER_ACTION_POST_BYPASS_BITMAP_LEN     8
+	#define DOT1P_MAPPER_ACTION_POST_BYPASS_BITMAP_DEFAULT 0x0
+
+struct dot1p_mapper_action {
+	a_uint32_t  gem_port_en:1;
+	a_uint32_t  service_code_en:1;
+	a_uint32_t  service_code:8;
+	a_uint32_t  policer_ds_en:1;
+	a_uint32_t  policer_en:1;
+	a_uint32_t  policer_id:9;
+	a_uint32_t  int_pri_en:1;
+	a_uint32_t  int_pri:4;
+	a_uint32_t  int_dp_en:1;
+	a_uint32_t  int_dp:2;
+	a_uint32_t  enqueue_vp_valid:1;
+	a_uint32_t  enqueue_vp_0:2;
+	a_uint32_t  enqueue_vp_1:6;
+	a_uint32_t  eg_port_override:1;
+	a_uint32_t  eg_phy_port:4;
+	a_uint32_t  eg_port_vp:8;
+	a_uint32_t  action:2;
+	a_uint32_t  post_bypass_bitmap:8;
+	a_uint32_t  _reserved0:3;
+};
+
+union dot1p_mapper_action_u {
+	a_uint32_t val[2];
+	struct dot1p_mapper_action bf;
+};
+
+/*[register] GEM_PORT_MAPPING_CTRL*/
+#define GEM_PORT_MAPPING_CTRL
+#define GEM_PORT_MAPPING_CTRL_ADDRESS 0x130
+#define GEM_PORT_MAPPING_CTRL_NUM     8
+#define GEM_PORT_MAPPING_CTRL_INC     0x4
+#define GEM_PORT_MAPPING_CTRL_TYPE    REG_TYPE_RW
+#define GEM_PORT_MAPPING_CTRL_DEFAULT 0x0
+	/*[field] MAPPING_EN*/
+	#define GEM_PORT_MAPPING_CTRL_MAPPING_EN
+	#define GEM_PORT_MAPPING_CTRL_MAPPING_EN_OFFSET  0
+	#define GEM_PORT_MAPPING_CTRL_MAPPING_EN_LEN     1
+	#define GEM_PORT_MAPPING_CTRL_MAPPING_EN_DEFAULT 0x0
+
+struct gem_port_mapping_ctrl {
+	a_uint32_t  mapping_en:1;
+	a_uint32_t  _reserved0:31;
+};
+
+union gem_port_mapping_ctrl_u {
+	a_uint32_t val;
+	struct gem_port_mapping_ctrl bf;
+};
+
+/*[table] GEM_PORT_MAPPING_TBL*/
+#define GEM_PORT_MAPPING_TBL
+#define GEM_PORT_MAPPING_TBL_ADDRESS 0x1800
+#define GEM_PORT_MAPPING_TBL_NUM     128
+#define GEM_PORT_MAPPING_TBL_INC     0x8
+#define GEM_PORT_MAPPING_TBL_TYPE    REG_TYPE_RW
+#define GEM_PORT_MAPPING_TBL_DEFAULT 0x0
+	/*[field] PORT_VP*/
+	#define GEM_PORT_MAPPING_TBL_PORT_VP
+	#define GEM_PORT_MAPPING_TBL_PORT_VP_OFFSET  0
+	#define GEM_PORT_MAPPING_TBL_PORT_VP_LEN     8
+	#define GEM_PORT_MAPPING_TBL_PORT_VP_DEFAULT 0x0
+	/*[field] PORT_VALID*/
+	#define GEM_PORT_MAPPING_TBL_PORT_VALID
+	#define GEM_PORT_MAPPING_TBL_PORT_VALID_OFFSET  8
+	#define GEM_PORT_MAPPING_TBL_PORT_VALID_LEN     1
+	#define GEM_PORT_MAPPING_TBL_PORT_VALID_DEFAULT 0x0
+	/*[field] INT_PRI*/
+	#define GEM_PORT_MAPPING_TBL_INT_PRI
+	#define GEM_PORT_MAPPING_TBL_INT_PRI_OFFSET  9
+	#define GEM_PORT_MAPPING_TBL_INT_PRI_LEN     4
+	#define GEM_PORT_MAPPING_TBL_INT_PRI_DEFAULT 0x0
+	/*[field] INT_DP*/
+	#define GEM_PORT_MAPPING_TBL_INT_DP
+	#define GEM_PORT_MAPPING_TBL_INT_DP_OFFSET  13
+	#define GEM_PORT_MAPPING_TBL_INT_DP_LEN     2
+	#define GEM_PORT_MAPPING_TBL_INT_DP_DEFAULT 0x0
+	/*[field] INT_PRI_DP_VALID*/
+	#define GEM_PORT_MAPPING_TBL_INT_PRI_DP_VALID
+	#define GEM_PORT_MAPPING_TBL_INT_PRI_DP_VALID_OFFSET  15
+	#define GEM_PORT_MAPPING_TBL_INT_PRI_DP_VALID_LEN     1
+	#define GEM_PORT_MAPPING_TBL_INT_PRI_DP_VALID_DEFAULT 0x0
+	/*[field] DST_INFO*/
+	#define GEM_PORT_MAPPING_TBL_DST_INFO
+	#define GEM_PORT_MAPPING_TBL_DST_INFO_OFFSET  16
+	#define GEM_PORT_MAPPING_TBL_DST_INFO_LEN     14
+	#define GEM_PORT_MAPPING_TBL_DST_INFO_DEFAULT 0x0
+	/*[field] DST_INFO_VALID*/
+	#define GEM_PORT_MAPPING_TBL_DST_INFO_VALID
+	#define GEM_PORT_MAPPING_TBL_DST_INFO_VALID_OFFSET  30
+	#define GEM_PORT_MAPPING_TBL_DST_INFO_VALID_LEN     1
+	#define GEM_PORT_MAPPING_TBL_DST_INFO_VALID_DEFAULT 0x0
+	/*[field] SERVICE_CODE*/
+	#define GEM_PORT_MAPPING_TBL_SERVICE_CODE
+	#define GEM_PORT_MAPPING_TBL_SERVICE_CODE_OFFSET  31
+	#define GEM_PORT_MAPPING_TBL_SERVICE_CODE_LEN     8
+	#define GEM_PORT_MAPPING_TBL_SERVICE_CODE_DEFAULT 0x0
+
+struct gem_port_mapping_tbl {
+	a_uint32_t  port_vp:8;
+	a_uint32_t  port_valid:1;
+	a_uint32_t  int_pri:4;
+	a_uint32_t  int_dp:2;
+	a_uint32_t  int_pri_dp_valid:1;
+	a_uint32_t  dst_info:14;
+	a_uint32_t  dst_info_valid:1;
+	a_uint32_t  service_code_0:1;
+	a_uint32_t  service_code_1:7;
+	a_uint32_t  _reserved0:25;
+};
+
+union gem_port_mapping_tbl_u {
+	a_uint32_t val[2];
+	struct gem_port_mapping_tbl bf;
+};
+
+#endif

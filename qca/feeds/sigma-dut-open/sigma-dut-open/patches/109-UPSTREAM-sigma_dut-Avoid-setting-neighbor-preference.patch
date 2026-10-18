@@ -1,0 +1,81 @@
+From 692a9f1b65307b6e319308c6653ac51dbf5b82b6 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Tue, 12 Aug 2025 10:58:32 +0530
+Subject: [PATCH] UPSTREAM: PROTOCOL: sigma_dut: neighbor report changes
+for three link testcases
+
+When sending btm request frames for self mac in EHT program, the
+neighbor preference value is set to zero for two link testcases. The
+expectation with three link testcases is that the preference value
+should be non zero for the self mac. Hence adding exception for three
+link testcases.
+
+Also three link testcases require per sta information in the neighbor
+report, support for the same has been included by adding the additional
+partner_link_set argument in the issued bss_tm_req hostapd cli command.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -15238,13 +15238,39 @@ static int mac80211_ap_send_frame_btm_re
+ 		for (i = 0; i < count; i++)
+ 			strlcat(nr_cmd_buf, nr[i], sizeof(nr_cmd_buf));
+ 
+-		snprintf(buf, sizeof(buf),
+-			"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s %s mbo=0:%d:1",
+-			ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+-			mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+-			dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+-			bss_term ? bss_term_str : " ",
+-			cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
++		if (!(dut->ap_interface_5g && dut->ap_interface_6g && dut->ap_interface_2g)) {
++			snprintf(buf, sizeof(buf),
++				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s %s mbo=0:%d:1",
++				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++				mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++				dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++				bss_term ? bss_term_str : " ",
++				cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
++		} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
++			snprintf(buf, sizeof(buf),
++				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d,%d",
++				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++				mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++				dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++				bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++				dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1],  dut->btm[0].nebor_linkid[2]);
++		} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1) {
++			snprintf(buf, sizeof(buf),
++				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d",
++				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++				mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++				dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++				bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++				dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1]);
++		} else if (dut->btm[0].nebor_linkid[0] != -1) {
++			snprintf(buf, sizeof(buf),
++				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d",
++				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++				mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++				dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++				bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++				dut->btm[0].nebor_linkid[0]);
++		}
+ 
+ 		sigma_dut_print(dut, DUT_MSG_INFO, "bss_tm_req buf %s\n", buf);
+ 		if (run_hostapd_cli(dut, buf) != 0)
+@@ -19188,7 +19214,9 @@ static int mac80211_set_nebor(struct sig
+ 			 * program this is not needed */
+ 			if ((dut->program == PROGRAM_EHT) &&
+ 			    (memcmp(dut->btm[neighbor_cnt].nebor_bssid[bssid_cnt],
+-				    self_mac, ETH_ALEN) == 0))
++				    self_mac, ETH_ALEN) == 0) &&
++			    (!(dut->ap_interface_5g && dut->ap_interface_6g &&
++			       dut->ap_interface_2g)))
+ 				dut->btm[neighbor_cnt].ap_ne_pref = 0;
+ 			bssid_cnt++;
+ 		}

@@ -1,0 +1,344 @@
+From 0d3dbc71a5803197a15bc0d8d6433b2935eadd1b Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 10 Jul 2025 11:11:31 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut:Adding support for DSCP
+ Policy feature
+
+Adding support for QM program certification features: DSCP policy.
+Support added for CAPI parameter DSCPPolicyCapability and new sigma
+dut command ap_set_qos and parameter QoS_MAP_SET. Also added support
+for setting DSCP policy and sending unsolicited dscp request.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+Signed-off-by: Aishwarya R <aisr@qti.qualcomm.com>
+---
+ ap.c        | 39 +++++++++++++++++++++++++++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 40 insertions(+)
+
+Index: sigma-dut-20250224/ap.c
+===================================================================
+--- sigma-dut-20250224.orig/ap.c
++++ sigma-dut-20250224/ap.c
+@@ -102,6 +102,7 @@
+ 	"MIHcAgEBBEIBuNKSnOQY5ZVdBgWiXcL1Gr/W+VCw69nOte1gT4sqdVeV3grCl5HJxogVG2LFdtnEDLJrs0AtFoFN9nWnIuMu+ZWgBwYFK4EEACOhgYkDgYYABADuDQkFO2102xXwNnoGpBU+13kNuxZ/gwy8+G0UG75h6iiTqNWRaQIpSWgTmPNER7Ubb7etyXaoOTnsq4v4f9m8wgDt2LMZptHvUkHCq522rRK43ITmCayelbHWY1FhhAE1ETXRItSV8nLymjliEtjdfP45dsr25ySlkSaVCBNUFrAtfw=="
+ 
+ #define MSCS_RESPONSE_STATUS_CODE	(97)
++#define STA_MAC_ADDR_FILE		"/tmp/sta_mac"
+ 
+ /*
+  * MTU for Ethernet need to take into account 8-byte SNAP header
+@@ -3059,6 +3060,19 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "DSCPPolicyCapability");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0) {
++			dut->ap_dscp_cap = VALUE_ENABLED;
++		} else if (strcasecmp(val, "disable") == 0) {
++			dut->ap_dscp_cap = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_INVALID,
++				  "errorcode,DSCPPolicyCapability");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -12038,6 +12052,14 @@ skip_vht_parameters_set:
+ 		if (dut->ap_mscs == VALUE_ENABLED)
+ 			fprintf(f, "enable_mscs=1\n");
+ 
++		if (dut->ap_dscp_cap == VALUE_ENABLED)
++			fprintf(f, "enable_dscp_policy_capa=1\n");
++
++		if (dut->ap_qos_map_set == 1)
++			fprintf(f, "qos_map_set=%s\n", QOS_MAP_SET_1);
++		else if (dut->ap_qos_map_set == 2)
++			fprintf(f, "qos_map_set=%s\n", QOS_MAP_SET_2);
++
+ 		fclose(f);
+ 	}
+ 
+@@ -13721,6 +13743,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->hostapd_running = 0;
+ 	dut->ap_trigsubfb = VALUE_NOT_SET;
+ 	dut->num_users_ofdma = 0;
++	dut->ap_dscp_cap = VALUE_NOT_SET;
+ 
+ 	if (dut->program == PROGRAM_QM && dut->device_type == AP_dut) {
+ 		dut->ap_scs = VALUE_ENABLED;
+@@ -15382,6 +15405,42 @@ static int mac80211_send_frame_scsresp(s
+ }
+ 
+ 
++static int mac80211_send_frame_dscppolicyreq(struct sigma_dut *dut, struct sigma_cmd *cmd,
++					const char *ifname)
++{
++	const char *val;
++	char dest_mac[20];
++	char temp[200];
++	char buf[600];
++	int req_ctrl_reset;
++
++	memset(buf, 0, sizeof(buf));
++
++	val = get_param(cmd, "Dest_MAC");
++	if (val) {
++		strlcpy(dest_mac, val, sizeof(dest_mac));
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s send_unsolicited_dscp_req %s",
++			 ifname, dest_mac);
++	}
++
++	val = get_param(cmd, "RequestControl_Reset");
++	if (val) {
++		req_ctrl_reset = atoi(val);
++		snprintf(temp, sizeof(temp), " reset=%d", req_ctrl_reset);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	val = get_param(cmd, "PolicyID_List");
++	if (val) {
++		snprintf(temp, sizeof(temp), " policy_id_list=%s", val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	run_system_wrapper(dut, buf);
++	return 0;
++}
++
++
+ static int mac80211_ap_send_frame_qm(struct sigma_dut *dut, struct sigma_conn *conn,
+ 				     struct sigma_cmd *cmd)
+ {
+@@ -15395,6 +15454,8 @@ static int mac80211_ap_send_frame_qm(str
+ 
+ 	if (strcasecmp(val, "SCSResp") == 0)
+ 		mac80211_send_frame_scsresp(dut, cmd, ifname);
++	else if (strcasecmp(val, "DSCPPolicyReq") == 0)
++		mac80211_send_frame_dscppolicyreq(dut, cmd, ifname);
+ 	else
+ 		return -1;
+ 
+@@ -15415,6 +15476,7 @@ static int ap_send_frame_qm(struct sigma
+ 	}
+ }
+ 
++
+ enum sigma_cmd_result cmd_ap_send_frame(struct sigma_dut *dut,
+ 					struct sigma_conn *conn,
+ 					struct sigma_cmd *cmd)
+@@ -19837,6 +19899,129 @@ static void mac80211_set_ackpolicy_4(str
+ 	fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 99 1", ifname);
+ }
+ 
++static int mac80211_set_dscp_policy(struct sigma_dut *dut,
++				    struct sigma_cmd *cmd,
++				    const char *ifname)
++{
++	const char *str_val;
++	char buf[500];
++	char temp[200];
++	FILE *fptr;
++
++	memset(buf, 0, sizeof(buf));
++	memset(temp, 0, sizeof(temp));
++	snprintf(temp, sizeof(temp), "iw dev %s station dump | grep Station | cut -c 9-25 > %s",
++		 ifname, STA_MAC_ADDR_FILE);
++	run_system_wrapper(dut, temp);
++
++	fptr = fopen(STA_MAC_ADDR_FILE, "r");
++	if (fptr == NULL) {
++		sigma_dut_print(dut, DUT_MSG_ERROR, "Error opening file %s", STA_MAC_ADDR_FILE);
++		return STATUS_SENT_ERROR;
++	}
++
++	if (fgets(temp, sizeof(temp), fptr) == NULL) {
++		sigma_dut_print(dut, DUT_MSG_ERROR, "Error reading file %s", STA_MAC_ADDR_FILE);
++		return STATUS_SENT_ERROR;
++	}
++
++	temp[strcspn(temp, "\n")] = ' ';
++	snprintf(buf, sizeof(buf), "hostapd_cli -i %s set_dscp_policy %s", ifname, temp);
++
++	str_val = get_param(cmd, "DSCPPolicy_PolicyID");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " policy_id=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "DSCPPolicy_RequestType");
++	if (str_val) {
++		if ((strcasecmp(str_val, "Remove") == 0) || (strcasecmp(str_val, "Add") == 0)) {
++			snprintf(temp, sizeof(temp), " request_type=%s", str_val);
++			strlcat(buf, temp, sizeof(buf));
++		} else {
++			sigma_dut_print(dut, DUT_MSG_ERROR, "Unsupported DSCPPolicy_RequestType");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
++	str_val = get_param(cmd, "DSCPPolicy_DSCP");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " dscp=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "TCLAS_ClassifierMask");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " classifier_mask=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "TCLAS_ClassifierParams_Version");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " ip_version=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "TCLAS_ClassifierParams_SrcIPAddr");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " src_ip=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "TCLAS_ClassifierParams_DestIPAddr");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " dst_ip=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "TCLAS_ClassifierParams_DestPort");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " dst_port=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "TCLAS_ClassifierParams_Protocol");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " protocol=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "TCLAS_ClassifierParams_SrcPort");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " src_port=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "DomainName_Domain");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " domain_name=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "PortRange_StartPort");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " start_port=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "PortRange_EndPort");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " end_port=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	str_val = get_param(cmd, "RequestControl_Reset");
++	if (str_val) {
++		snprintf(temp, sizeof(temp), " reset=%s", str_val);
++		strlcat(buf, temp, sizeof(buf));
++	}
++
++	run_system_wrapper(dut, buf);
++
++	return SUCCESS_SEND_STATUS;
++}
++
+ static enum sigma_cmd_result mac80211_ap_set_rfeature(struct sigma_dut *dut,
+ 						      struct sigma_conn *conn,
+ 						      struct sigma_cmd *cmd)
+@@ -20558,6 +20743,14 @@ static enum sigma_cmd_result mac80211_ap
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "DSCPPolicy_PolicyID");
++	if (!val)
++		val = get_param(cmd, "RequestControl_Reset");
++	if (val) {
++		if (mac80211_set_dscp_policy(dut, cmd, ifname) == STATUS_SENT_ERROR)
++			return STATUS_SENT_ERROR;
++	}
++
+ 	if (++dut->intf_defined < dut->num_links)
+ 		mac80211_ap_set_rfeature(dut, conn, cmd);
+ 
+@@ -20748,6 +20941,47 @@ cmd_ap_preset_testparameters(struct sigm
+ }
+ 
+ 
++static int cmd_ap_set_qos(struct sigma_dut *dut, struct sigma_conn *conn,
++			  struct sigma_cmd *cmd)
++{
++	const char *val, *dest;
++	char buf[100];
++
++	dest = get_param(cmd, "STA_MAC");
++	if (dest) {
++		/* This is a special/ugly way of using this command.
++		 * If "Dest" MAC is included, assume that this command
++		 * is being issued after ap_config_commit for dynamically
++		 * setting the QoS Map Set.
++		 */
++		val = get_param(cmd, "QoS_MAP_SET");
++		if (val) {
++			dut->ap_qos_map_set = atoi(val);
++			sigma_dut_print(dut, DUT_MSG_INFO, "ap_qos_map_set %d",
++					dut->ap_qos_map_set);
++		}
++
++		if (dut->ap_qos_map_set == 1)
++			run_hostapd_cli(dut, "set_qos_map_set " QOS_MAP_SET_1);
++		else if (dut->ap_qos_map_set == 2)
++			run_hostapd_cli(dut, "set_qos_map_set " QOS_MAP_SET_2);
++
++		snprintf(buf, sizeof(buf), "send_qos_map_conf %s", dest);
++		if (run_hostapd_cli(dut, buf) != 0)
++			return -1;
++	} else {
++
++		val = get_param(cmd, "QoS_MAP_SET");
++		if (val) {
++			dut->ap_qos_map_set = atoi(val);
++			sigma_dut_print(dut, DUT_MSG_INFO, "ap_qos_map_set %d",
++					dut->ap_qos_map_set);
++		}
++	}
++
++	return SUCCESS_SEND_STATUS;
++}
++
+ void ap_register_cmds(void)
+ {
+ 	sigma_dut_reg_cmd("ap_ca_version", NULL, cmd_ap_ca_version);
+@@ -20779,4 +21013,5 @@ void ap_register_cmds(void)
+ 	sigma_dut_reg_cmd("AccessPoint", NULL, cmd_accesspoint);
+ 	sigma_dut_reg_cmd("ap_preset_testparameters", NULL,
+ 			  cmd_ap_preset_testparameters);
++	sigma_dut_reg_cmd("ap_set_qos", NULL, cmd_ap_set_qos);
+ }
+Index: sigma-dut-20250224/sigma_dut.h
+===================================================================
+--- sigma-dut-20250224.orig/sigma_dut.h
++++ sigma-dut-20250224/sigma_dut.h
+@@ -1491,6 +1491,7 @@ struct sigma_dut {
+ 	unsigned int security_links;
+ 	int num_users_ofdma;
+ 	enum value_not_set_enabled_disabled ap_trigsubfb;
++	enum value_not_set_enabled_disabled ap_dscp_cap;
+ };
+ 
+ #ifdef NL80211_SUPPORT

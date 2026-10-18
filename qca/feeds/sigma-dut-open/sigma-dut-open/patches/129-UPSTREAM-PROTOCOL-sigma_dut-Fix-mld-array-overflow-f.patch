@@ -1,0 +1,33 @@
+From a1cf5f4d36d671794b8dc0e12c746bc2c425cdb7 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+Date: Tue, 8 Sep 2026 11:21:22 -0700
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Fix mld[] array overflow for
+ WLAN_TAG 4
+
+Fix by raising NUM_OF_LINKS to 4 in sigma_dut.h so dut->mld[] is
+sized to match MAX_WLAN_TAGS and link_id=3 for WLAN_TAG=4 stays
+in bounds.
+
+Patch-dependency: 121-QSDK-OCE-Add-OCE-certification-support.patch
+
+Signed-off-by: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+---
+ sigma_dut.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/sigma_dut.h b/sigma_dut.h
+index 61ad7d7..25cea4f 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -787,7 +787,7 @@ enum sae_pwe {
+ 	SAE_PWE_LOOP,
+ 	SAE_PWE_H2E
+ };
+-#define NUM_OF_LINKS 3
++#define NUM_OF_LINKS 4
+ 
+ struct mld_ap {
+ 	int ap_channel;
+-- 
+2.34.1
+

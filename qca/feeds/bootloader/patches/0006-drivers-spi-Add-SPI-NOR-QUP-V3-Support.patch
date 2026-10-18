@@ -1,0 +1,142 @@
+From 349264d45d82189838829050c95aa20b555c2e55 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <quic_timple@quicinc.com>
+Date: Thu, 27 Feb 2025 22:56:47 +0530
+Subject: [PATCH] drivers: spi: Add SPI-NOR QUP V3 Support
+
+Change-Id: Ia48b4b1a3d3ba92976bed9dfcac78d73decd40b7
+Signed-off-by: Timple Raj M <quic_timple@quicinc.com>
+---
+ drivers/misc/Kconfig           | 17 +++++++++++++++++
+ drivers/misc/Makefile          |  3 +++
+ drivers/mtd/spi/spi-nor-core.c | 11 ++++++++++-
+ drivers/spi/Kconfig            |  9 +++++++++
+ drivers/spi/Makefile           |  2 ++
+ 5 files changed, 41 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 6009d55f400..5de302a0442 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -538,6 +538,13 @@ config WINBOND_W83627
+ 	  legacy UART or other devices in the Winbond Super IO chips
+ 	  on X86 platforms.
+ 
++config QCOM_GENI_SE
++	bool "Qualcomm GENI Serial Engine Driver"
++	depends on ARCH_IPQ
++	help
++	  The driver manages Generic Interface (GENI) firmware based
++	  Qualcomm Technologies, Inc. Universal Peripheral (QUP) Wrapper.
++
+ config QFW
+ 	bool
+ 	help
+@@ -707,4 +714,14 @@ config SPL_SOCFPGA_DT_REG
+ 	  Enable register setting from device tree. This also
+ 	  provides user a clean interface and all register settings are
+ 	  centralized in one place, device tree.
++
++config NOR_BLK
++	bool "Qualcomm Nor block wrapper driver"
++	select BLK
++	select EFI_PARTITION
++	depends on IPQ_SPI_NOR
++	help
++	  The driver manages the SPI-Nor device as a block device
++	  that supports the GPT (EFI) partition table.
++
+ endmenu
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index dac805e4cdd..9834eb325f4 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -2,6 +2,7 @@
+ #
+ # (C) Copyright 2000-2007
+ # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++# Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ 
+ obj-$(CONFIG_$(PHASE_)MISC) += misc-uclass.o
+ obj-$(CONFIG_$(PHASE_)NVMEM) += nvmem.o
+@@ -92,3 +93,5 @@ obj-$(CONFIG_ESM_K3) += k3_esm.o
+ obj-$(CONFIG_ESM_PMIC) += esm_pmic.o
+ obj-$(CONFIG_SL28CPLD) += sl28cpld.o
+ obj-$(CONFIG_SPL_SOCFPGA_DT_REG) += socfpga_dtreg.o
++obj-$(CONFIG_QCOM_GENI_SE) += qcom-geni-se.o
++obj-$(CONFIG_NOR_BLK) += qti_nor_blk.o
+diff --git a/drivers/mtd/spi/spi-nor-core.c b/drivers/mtd/spi/spi-nor-core.c
+index 6f352c5c0e2..d247e874841 100644
+--- a/drivers/mtd/spi/spi-nor-core.c
++++ b/drivers/mtd/spi/spi-nor-core.c
+@@ -5,6 +5,7 @@
+  *
+  * Copyright (C) 2005, Intec Automation Inc.
+  * Copyright (C) 2014, Freescale Semiconductor, Inc.
++ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+  *
+  * Synced from Linux v4.19
+  */
+@@ -188,6 +189,12 @@ struct sfdp_header {
+ /* Status, Control and Configuration Register Map(SCCR) */
+ #define SCCR_DWORD22_OCTAL_DTR_EN_VOLATILE      BIT(31)
+ 
++#ifdef CONFIG_MSM_GENI_SPI
++#define SPI_NOR_READ_MAX_BYTES 0xFFFFFF
++#else
++#define SPI_NOR_READ_MAX_BYTES UINT_MAX
++#endif
++
+ struct sfdp_bfpt {
+ 	u32	dwords[BFPT_DWORD_MAX];
+ };
+@@ -398,7 +405,9 @@ static ssize_t spi_nor_read_data(struct spi_nor *nor, loff_t from, size_t len,
+ 		op.dummy.nbytes *= 2;
+ 
+ 	while (remaining) {
+-		op.data.nbytes = remaining < UINT_MAX ? remaining : UINT_MAX;
++
++		op.data.nbytes = remaining < SPI_NOR_READ_MAX_BYTES ?
++					remaining : SPI_NOR_READ_MAX_BYTES;
+ 
+ 		if (CONFIG_IS_ENABLED(SPI_DIRMAP) && nor->dirmap.rdesc) {
+ 			/*
+diff --git a/drivers/spi/Kconfig b/drivers/spi/Kconfig
+index 19b9c33ec93..f67d1f3025b 100644
+--- a/drivers/spi/Kconfig
++++ b/drivers/spi/Kconfig
+@@ -414,6 +414,15 @@ config SPI_QUP
+ 	  mode supports up to 50MHz, up to four chip selects, programmable
+ 	  data path from 4 bits to 32 bits and numerous protocol variants.
+ 
++config MSM_GENI_SPI
++	bool "Qualcomm SPI controller with QUPv3 interface"
++	depends on ARCH_IPQ
++	help
++	  This driver supports GENI serial engine based SPI controller in
++	  master mode on the Qualcomm Technologies Inc.'s SoCs. If you say
++	  yes to this option, support will be included for the built-in SPI
++	  interface on the Qualcomm Technologies Inc.'s SoCs.
++
+ config RENESAS_RPC_SPI
+ 	bool "Renesas RPC SPI driver"
+ 	depends on RCAR_64 || RZA1
+diff --git a/drivers/spi/Makefile b/drivers/spi/Makefile
+index 7051e2a00c6..e66af992f2b 100644
+--- a/drivers/spi/Makefile
++++ b/drivers/spi/Makefile
+@@ -2,6 +2,7 @@
+ #
+ # (C) Copyright 2000-2007
+ # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++# Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ 
+ # There are many options which enable SPI, so make this library available
+ ifdef CONFIG_$(PHASE_)DM_SPI
+@@ -84,3 +85,4 @@ obj-$(CONFIG_XILINX_SPI) += xilinx_spi.o
+ obj-$(CONFIG_ZYNQ_SPI) += zynq_spi.o
+ obj-$(CONFIG_ZYNQ_QSPI) += zynq_qspi.o
+ obj-$(CONFIG_ZYNQMP_GQSPI) += zynqmp_gqspi.o
++obj-$(CONFIG_MSM_GENI_SPI) += spi-geni-qcom.o
+-- 
+2.34.1
+

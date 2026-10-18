@@ -1,0 +1,52 @@
+From 7556616f04b1b4d7b325fdee7b074ffc0d68efd2 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Fri, 2 Feb 2024 00:55:53 +0530
+Subject: [PATCH] sigma_dut: Add fwtest commands for DL/UL MUMIMO cases
+
+In case of 4*4 boards,MU MIMO feature has been
+enabled by default. But for 2*2 boards low throughput
+issues were seen with MUMIMO enabled. Hence MUMIMO
+feature was kept disabled for 2*2 boards.
+
+Enabling the required fwtest command for DL/UL
+MUMIMO cases in case 2x2 boards and it is required
+for certification purposes.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -9324,6 +9324,11 @@ static void fwtest_set_he_params(struct
+ 	if (dut->eht_txemlomn == VALUE_DISABLED)
+ 		fwtest_cmd_wrapper(dut, "-m 0xD -v 0 7 1", ifname);
+ 
++	if (dut->ap_he_mimo == MIMO_UL || dut->ap_he_mimo == MIMO_DL ||
++	    dut->ap_mu_txBF == VALUE_ENABLED) {
++		/* Enable MU MIMO for 2x2*/
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 641 1", ifname);
++	}
+ }
+ 
+ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+@@ -9440,6 +9445,18 @@ static void fwtest_set_eht_params(struct
+ 
+ 	if (dut->eht_txemlomn == VALUE_DISABLED)
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0xD -v 0 7 1", ifname, link_id);
++
++	if (dut->ap_mu_txBF) {
++		if (dut->ap_mbssid == VALUE_DISABLED) {
++			/* disable partial sounding sequence */
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 112 0", ifname, link_id);
++		}
++
++		if (dut->ap_punct_bitmap) {
++			/*enable puncturing for MU cases*/
++			fwtest_linkid_cmd_wrapper(dut, "-m 0xA -v 0 85 1", ifname, link_id);
++		}
++	}
+ }
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))

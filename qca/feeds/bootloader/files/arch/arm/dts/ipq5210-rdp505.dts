@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include "ipq5210-u-boot.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. IPQ5210 RDP505";
+	compatible = "qcom,ipq5210-rdp505", "qcom,ipq5210";
+
+	soc@0 {
+		mdio_ahb: mdio-ahb@1400000 {
+			phy3: phy@29 {
+				reg = <29 0>;
+				phy_addr = <29>;
+				phy_type = <INTERNAL_PHY_TYPE>;
+				id = <4>;
+				uniphy_id = <0xFF>;
+				uniphy_type = <1>;
+
+				clocks = <&nsscc NSS_CC_EPHY_RX_CLK>,
+					 <&nsscc NSS_CC_EPHY_TX_CLK>,
+					 <&gcc GCC_GEPHY_SYS_CLK>;
+				clock-names = "ephy_rx_clk",
+					      "ephy_tx_clk",
+					      "sys_clk";
+
+				resets = <&nsscc NSS_CC_EPHY_RX_CLK_ARES>,
+					 <&nsscc NSS_CC_EPHY_TX_CLK_ARES>,
+					 <&gcc GCC_GEPHY_SYS_CLK_ARES>;
+				reset-names = "ephy_rx_reset",
+					      "ephy_tx_reset",
+					      "sys_clk_reset";
+
+				qcom,ldo-bias-reg = <0x1961000>;
+				qcom,pll-src-sel-reg = <0x9B42c>;
+				qcom,ephy-rx-mux-reg = <0x39B00610 0x0>;
+				qcom,ephy-tx-mux-reg = <0x39B00614 0x0>;
+			};
+		};
+
+		ess_instance: ess-instance {
+			phy-handle3 = <&phy3>;
+			status = "okay";
+		};
+	};
+};
+
+/ {
+	aliases {
+		serial0 = &uart1;
+	};
+};
+
+&tmel_qmp {
+	status = "okay";
+};
+
+&tmelcom {
+	status = "okay";
+};

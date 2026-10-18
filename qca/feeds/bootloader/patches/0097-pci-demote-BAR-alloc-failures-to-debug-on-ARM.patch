@@ -1,0 +1,38 @@
+From 1580828c01e7986b261e609a6835905d9575b91e Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Thu, 9 Apr 2026 00:47:18 +0530
+Subject: [PATCH] pci: demote BAR alloc failures to debug on ARM
+
+PCI I/O BAR allocation failures are expected on ARM platforms,
+where I/O space is legacy and often unused. Demote the BAR
+allocation failure message to debug level on ARM and ARM64,
+while keeping existing behaviour on other architectures.
+
+Change-Id: Ib0bc06cf334afc3ce5a78cd18eab822d49265cc3
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/pci/pci_auto.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/pci/pci_auto.c b/drivers/pci/pci_auto.c
+index 90f81886445..20de13f5636 100644
+--- a/drivers/pci/pci_auto.c
++++ b/drivers/pci/pci_auto.c
+@@ -120,8 +120,13 @@ static void dm_pciauto_setup_device(struct udevice *dev,
+ 
+ 		ret = pciauto_region_allocate(bar_res, bar_size,
+ 					      &bar_value, found_mem64);
+-		if (ret)
++		if (ret) {
++#if IS_ENABLED(CONFIG_ARM) || IS_ENABLED(CONFIG_ARM64)
++			debug("PCI: Failed autoconfig bar %x\n", bar);
++#else
+ 			printf("PCI: Failed autoconfig bar %x\n", bar);
++#endif
++		}
+ 
+ 		if (!ret) {
+ 			/* Write it out and update our limit */
+-- 
+2.34.1
+

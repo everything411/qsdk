@@ -1,0 +1,165 @@
+From 0eb75750db6366f471d2ebe52ecdc30dec99865f Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Fri, 28 Jun 2024 20:23:59 +0530
+Subject: [PATCH] sigma_dut: Add support for ML reconfigure
+
+Add support for link addition and removal to an
+existing MLD via CLI which aids in the addition of
+Non Tx BSS after Tx BSS is brought up and also helps
+in the removal of a link from an existing MLD.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -12370,6 +12370,7 @@ static void ath_reset_vht_defaults(struc
+ 
+ #define IEEE80211_HT_AMPDU_PARAM_FACTOR        0x3
+ #define IEEE80211_HT_AMPDU_PARAM_DENSITY_SHIFT	2
++#define PHY_NAME_SIZE				10
+ 
+ static void phy_info_ht_capa(struct dut_hw_modes *mode, struct nlattr *capa,
+ 			     struct nlattr *ampdu_factor,
+@@ -12614,6 +12615,89 @@ void get_wiphy_capabilities(struct sigma
+ 	}
+ }
+ 
++static int wiphy_name_handler(struct nl_msg *msg, void *arg)
++{
++	struct nlattr *tb[NL80211_ATTR_MAX + 1];
++	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
++	char phy_name_local[PHY_NAME_SIZE], *phy_name = arg;
++
++	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
++		  genlmsg_attrlen(gnlh, 0), NULL);
++
++	if (tb[NL80211_ATTR_WIPHY_NAME])
++		snprintf(phy_name_local, PHY_NAME_SIZE, "%s",
++			 nla_get_string(tb[NL80211_ATTR_WIPHY_NAME]));
++	else
++		return -1;
++
++	/*
++	 * the phyname expected is of phyX format and
++	 * phy name received is of phy0X format
++	 */
++	snprintf(phy_name, PHY_NAME_SIZE, "phy%c", phy_name_local[4]);
++
++	return 0;
++}
++
++static int mac80211_get_wiphy_name(struct sigma_dut *dut,
++				   const char *ifname,
++				   char *phy_name)
++{
++	struct nl_msg *msg;
++	u32 feat;
++	int flags = 0;
++	int ret = 0;
++	int ifindex;
++
++	if (!ifname)
++		return -1;
++
++	ifindex = if_nametoindex(ifname);
++	if (ifindex == 0) {
++		sigma_dut_print(dut, DUT_MSG_DEBUG,
++				"%s: Index for interface %s failed",
++				__func__, ifname);
++		return -1;
++	}
++
++	feat = get_nl80211_protocol_features(dut, ifindex);
++	if (feat & NL80211_PROTOCOL_FEATURE_SPLIT_WIPHY_DUMP)
++		flags = NLM_F_DUMP;
++
++	if (!(msg = nl80211_drv_msg(dut, dut->nl_ctx, ifindex, flags,
++				    NL80211_CMD_GET_WIPHY)) ||
++	    nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex) ||
++	    nla_put_flag(msg, NL80211_ATTR_SPLIT_WIPHY_DUMP)) {
++		sigma_dut_print(dut, DUT_MSG_DEBUG,
++				"%s: could not build get wiphy cmd", __func__);
++		nlmsg_free(msg);
++		return -1;
++	}
++
++	ret = send_and_recv_msgs(dut, dut->nl_ctx, msg, wiphy_name_handler,
++				 phy_name);
++	if (ret)
++		sigma_dut_print(dut, DUT_MSG_DEBUG,
++				"%s: err in send_and_recv_msgs, ret=%d",
++				__func__, ret);
++
++	return ret;
++}
++
++void get_wiphy_name(struct sigma_dut *dut,
++		    const char *ifname,
++		    char *phy_name)
++{
++	if (get_driver_type(dut) == DRIVER_MAC80211 ||
++	    get_driver_type(dut) == DRIVER_LINUX_WCN) {
++		if (mac80211_get_wiphy_name(dut, ifname, phy_name)) {
++			sigma_dut_print(dut, DUT_MSG_DEBUG,
++					"Failed to get wiphy name from the driver");
++			phy_name = NULL;
++		}
++	}
++}
++
+ #endif /* NL80211_SUPPORT */
+ 
+ static enum sigma_cmd_result cmd_ap_reset_default(struct sigma_dut *dut,
+@@ -18933,7 +19017,10 @@ static enum sigma_cmd_result mac80211_ap
+ 	char link_param[10];
+ 	bool link_set = false;
+ 	char ifname2[50];
+-
++	char file[20];
++#ifdef NL80211_SUPPORT
++	char phy_name[PHY_NAME_SIZE];
++#endif /* NL80211_SUPPORT */
+ 	ifname = get_main_ifname(dut);
+ 
+ 	val = get_param(cmd, "Interface");
+@@ -19495,6 +19582,37 @@ static enum sigma_cmd_result mac80211_ap
+ 			return res;
+ 	}
+ 
++	val = get_param(cmd, "AffiliatedAP_Action");
++	if (val) {
++		if (dut->program == PROGRAM_EHT) {
++			if (strcasecmp(val, "Remove") == 0) {
++				val = get_param(cmd, "AffiliatedAP_RemovalTimer");
++				if (val) {
++					int removal_timer = atoi(val) * 10;
++					snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s link_remove %d", ifname,
++						 link_param, removal_timer);
++					run_system(dut, buf);
++				}
++			} else if (strcasecmp(val, "Add") == 0) {
++				snprintf(file, sizeof(file), "sigma_dut-ap_%d.conf", link_id);
++
++#ifdef NL80211_SUPPORT
++				get_wiphy_name(dut, ifname, phy_name);
++				snprintf(buf, sizeof(buf), "hostapd_cli -i %s mld_add_link bss_config=%s:%s/%s",
++					 ifname, phy_name, dut->sigma_tmpdir, file);
++#else /* NL80211_SUPPORT */
++				snprintf(buf, sizeof(buf), "hostapd_cli -i %s mld_add_link bss_config=phy0:%s/%s",
++					 ifname, dut->sigma_tmpdir, file);
++#endif /* NL80211_SUPPORT */
++				run_system(dut, buf);
++			}
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported program for AffiliatedAP_Action");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 

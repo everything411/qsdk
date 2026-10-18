@@ -1,0 +1,50 @@
+From cfaf859f4b082f98b820ba493206280381a523c7 Mon Sep 17 00:00:00 2001
+From: Amith A <amitajit@qti.qualcomm.com>
+Date: Fri, 5 Dec 2025 16:21:23 +0530
+Subject: [PATCH] QSDK:HOSTAPD:hostapd-extn: Add support of extn vendor subcmd
+ and wpa events
+
+Invoke hostapd_wpa_event() and nl80211_vendor_event_qca_extn() to add
+support for handling extension vendor subcmds and wpa events.
+
+Patch-dependency:
+I38f8efc9f23 ("QSDK:HOSTAPD:hostapd-extn: Add QCN extn hooks for vendor
+	      evt and WPA callbacks")
+
+Signed-off-by: Amith A <amitajit@qti.qualcomm.com>
+---
+ src/ap/drv_callbacks.c             | 3 +++
+ src/drivers/driver_nl80211_event.c | 3 +++
+ 2 files changed, 6 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 2a3d629..2a391d7 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -3686,6 +3686,9 @@ void hostapd_wpa_event(void *ctx, enum wpa_event_type event,
+ 				data->tclas_flow_event.addr, data->tclas_flow_event.tid);
+ 		break;
+ 	default:
++		if (!hostapd_wpa_event_extn(ctx, event, data))
++			break;
++
+ 		wpa_printf(MSG_DEBUG, "Unknown event %d", event);
+ 		break;
+ 	}
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 6ae0460..cb59eb1 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -4475,6 +4475,9 @@ static void nl80211_vendor_event_qca(struct i802_bss *bss,
+ 		qca_nl80211_iface_reload(bss, data, len);
+ 		break;
+ 	default:
++		if (!nl80211_vendor_event_qca_extn(bss, subcmd, data, len))
++			break;
++
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: Ignore unsupported QCA vendor event %u",
+ 			   subcmd);
+-- 
+2.34.1
+

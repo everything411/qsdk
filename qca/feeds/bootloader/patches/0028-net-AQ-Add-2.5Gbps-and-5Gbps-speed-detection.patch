@@ -1,0 +1,104 @@
+From 4354f0081771b6b6ba9bc7a9e5bafdd079be82ce Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Thu, 22 May 2025 22:59:30 +0530
+Subject: [PATCH] net: AQ: Add 2.5Gbps and 5Gbps speed detection
+
+Change-Id: Ic00e40b8505fd4f9171594b43c59a3a9d471f1db
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/net/phy/aquantia.c | 44 +++++++++++++++++++++++++++-----------
+ include/linux/ethtool.h    |  2 ++
+ 2 files changed, 34 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/net/phy/aquantia.c b/drivers/net/phy/aquantia.c
+index d2db8d9f792..879361e1e34 100644
+--- a/drivers/net/phy/aquantia.c
++++ b/drivers/net/phy/aquantia.c
+@@ -19,6 +19,13 @@
+ 
+ #define AQUNTIA_10G_CTL		0x20
+ #define AQUNTIA_VENDOR_P1	0xc400
++#define AQUNTIA_LINK_STATUS		0xc800
++#define AQUNTIA_SPEED_5G		5
++#define AQUNTIA_SPEED_2_5G		4
++#define AQUNTIA_SPEED_10G		3
++#define AQUNTIA_SPEED_1G		2
++#define AQUNTIA_SPEED_100M		1
++#define AQUNTIA_SPEED_10M		0
+ 
+ #define AQUNTIA_SPEED_LSB_MASK	0x2000
+ #define AQUNTIA_SPEED_MSB_MASK	0x40
+@@ -551,7 +558,6 @@ int aquantia_config(struct phy_device *phydev)
+ 
+ int aquantia_startup(struct phy_device *phydev)
+ {
+-	u32 speed;
+ 	int i = 0;
+ 	int reg;
+ 
+@@ -581,17 +587,31 @@ int aquantia_startup(struct phy_device *phydev)
+ 	else
+ 		phydev->link = 1;
+ 
+-	speed = phy_read(phydev, MDIO_MMD_PMAPMD, MII_BMCR);
+-	if (speed & AQUNTIA_SPEED_MSB_MASK) {
+-		if (speed & AQUNTIA_SPEED_LSB_MASK)
+-			phydev->speed = SPEED_10000;
+-		else
+-			phydev->speed = SPEED_1000;
+-	} else {
+-		if (speed & AQUNTIA_SPEED_LSB_MASK)
+-			phydev->speed = SPEED_100;
+-		else
+-			phydev->speed = SPEED_10;
++	reg = phy_read(phydev, MDIO_MMD_AN, AQUNTIA_LINK_STATUS);
++	if (reg & BIT(0))
++		phydev->duplex = DUPLEX_FULL;
++	else
++		phydev->duplex = DUPLEX_HALF;
++
++	switch ((reg >> 1) & 0x7) {
++	case AQUNTIA_SPEED_10G:
++		phydev->speed = SPEED_10000;
++		break;
++	case AQUNTIA_SPEED_5G:
++		phydev->speed = SPEED_5000;
++		break;
++	case AQUNTIA_SPEED_2_5G:
++		phydev->speed = SPEED_2500;
++		break;
++	case AQUNTIA_SPEED_1G:
++		phydev->speed = SPEED_1000;
++		break;
++	case AQUNTIA_SPEED_100M:
++		phydev->speed = SPEED_100;
++		break;
++	default:
++		phydev->speed = SPEED_10;
++		break;
+ 	}
+ 
+ 	return 0;
+diff --git a/include/linux/ethtool.h b/include/linux/ethtool.h
+index 1b0736c97e6..166fbf88720 100644
+--- a/include/linux/ethtool.h
++++ b/include/linux/ethtool.h
+@@ -8,6 +8,7 @@
+  *                                christopher.leech@intel.com,
+  *                                scott.feldman@intel.com)
+  * Portions Copyright (C) Sun Microsystems 2008
++ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+  */
+ 
+ #ifndef _LINUX_ETHTOOL_H
+@@ -618,6 +619,7 @@ enum ethtool_sfeatures_retval_bits {
+ #define SPEED_100		100
+ #define SPEED_1000		1000
+ #define SPEED_2500		2500
++#define SPEED_5000		5000
+ #define SPEED_10000		10000
+ #define SPEED_14000		14000
+ #define SPEED_20000		20000
+-- 
+2.34.1
+

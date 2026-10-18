@@ -1,0 +1,188 @@
+From 3e704e0295071f10426a327f4dafdcd07dcd6888 Mon Sep 17 00:00:00 2001
+From: Manish Dharanenthiran <quic_mdharane@quicinc.com>
+Date: Thu, 25 Jan 2024 00:01:16 +0530
+Subject: [PATCH] sigma_dut: Fix mismatched channel width update during MLD
+ bringup
+
+On trying to bring up MLD vdev with 2 link, channel width gets
+saved in ap_chwidth and ap_chwidth_1. Here, ap_chwidth_1 is assumed
+to be channel width of the second link, but this works only when
+the order of the bring up is in following sequence
+ #1 - 2 GHz
+ #2 - 5 GHz
+ #3 = 6 GHz
+
+So, if we are going to bring up 6 GHz link, then it should be
+in the last but if we change the order of bring up other than the
+above, channel width is getting swapped which leads to wrong
+channel width getting updated in the hostapd conf created by
+sigma_dut.
+
+Fix this by having a new array element to store channel width
+of the link brought up and access the array through the link_id
+instead of saving it based on the order.
+
+Signed-off-by: Manish Dharanenthiran <quic_mdharane@quicinc.com>
+---
+ ap.c        | 77 +++++++++++------------------------------------------
+ sigma_dut.h |  2 ++
+ 2 files changed, 18 insertions(+), 61 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -1129,6 +1129,11 @@ static enum sigma_cmd_result cmd_ap_set_
+ 							"errorCode,Unsupported WIDTH");
+ 					return STATUS_SENT;
+ 				}
++				/*
++				 * TODO: Need to understand whether similar
++				 * logic to save chwidth based on link_id here
++				 * as well
++				 */
+ 				if (wlan_tag > 1)
+ 					dut->ap_chwidth_1 = chwidth;
+ 				else
+@@ -1186,58 +1191,10 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		if ((strcasecmp(val, "5G") == 0) && (!dut->ap_interface_5g)) {
+ 			iface_check = 1;
+ 			dut->ap_interface_5g = 1;
+-			if (dut->ap_interface_2g) {
+-				dut->ap_chwidth_1 = dut->ap_chwidth;
+-				val = get_param(cmd, "WIDTH");
+-				if (val) {
+-				chwidth_check = 1;
+-				if (strcasecmp(val, "20") == 0)
+-					dut->ap_chwidth = AP_20;
+-				else if (strcasecmp(val, "40") == 0)
+-					dut->ap_chwidth = AP_40;
+-				else if (strcasecmp(val, "80") == 0)
+-					dut->ap_chwidth = AP_80;
+-				else if (strcasecmp(val, "160") == 0)
+-					dut->ap_chwidth = AP_160;
+-				else if (strcasecmp(val, "320") == 0)
+-					dut->ap_chwidth = AP_320;
+-				}
+-				if (dut->dtim)
+-					dut->dtim_1 = dut->dtim;
+-				val = get_param(cmd, "DTIM");
+-				if (val) {
+-					dtim_check = 1;
+-					dut->dtim = atoi(val);
+-				}
+-			}
+ 		} else if ((strcasecmp(val, "6G") == 0) && (!dut->ap_interface_6g)) {
+ 			iface_check = 1;
+ 			dut->ap_interface_6g = 1;
+ 			dut->ap_pmf = AP_PMF_REQUIRED;
+-			if (dut->ap_interface_2g || dut->ap_interface_5g) {
+-				dut->ap_chwidth_1 = dut->ap_chwidth;
+-				val = get_param(cmd, "WIDTH");
+-				if (val) {
+-				chwidth_check = 1;
+-				if (strcasecmp(val, "20") == 0)
+-					dut->ap_chwidth = AP_20;
+-				else if (strcasecmp(val, "40") == 0)
+-					dut->ap_chwidth = AP_40;
+-				else if (strcasecmp(val, "80") == 0)
+-					dut->ap_chwidth = AP_80;
+-				else if (strcasecmp(val, "160") == 0)
+-					dut->ap_chwidth = AP_160;
+-				else if (strcasecmp(val, "320") == 0)
+-					dut->ap_chwidth = AP_320;
+-				}
+-				if (dut->dtim)
+-					dut->dtim_1 = dut->dtim;
+-				val = get_param(cmd, "DTIM");
+-				if (val) {
+-					dtim_check = 1;
+-					dut->dtim = atoi(val);
+-				}
+-			}
+ 		} else if ((strcasecmp(val, "24G") == 0) && (!dut->ap_interface_2g)) {
+ 			iface_check = 1;
+ 			dut->ap_interface_2g = 1;
+@@ -1276,11 +1233,6 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		if (!dut->dual_ap_ifname) {
+ 			dut->ap_is_mld = 1;
+ 			dut->num_links++;
+-			/* CH width values need to be swapped in
+-			 * order to correspond to correct config */
+-			chwidth = dut->ap_chwidth;
+-			dut->ap_chwidth = dut->ap_chwidth_1;
+-			dut->ap_chwidth_1 = chwidth;
+ 
+ 			if (dut->ap_mode)
+ 				dut->ap_mode_1 = dut->ap_mode;
+@@ -1798,7 +1750,6 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			dut->ap_tx_stbc = VALUE_DISABLED;
+ 	}
+ 
+-	if (!chwidth_check) {
+ 	val = get_param(cmd, "WIDTH");
+ 	if (val) {
+ 		if (strcasecmp(val, "20") == 0)
+@@ -1821,12 +1772,10 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				  "errorCode,Unsupported WIDTH");
+ 			return STATUS_SENT;
+ 		}
+-		if (wlan_tag > 1)
+-			dut->ap_chwidth_1 = chwidth;
+-		else
+-			dut->ap_chwidth = chwidth;
+ 
+-	}
++		if (dut->num_links <= MAX_MLD_SUPPORTED)
++			dut->ap_link_chwidth[dut->num_links-1] = chwidth;
++
+ 	}
+ 	/* TODO: WIDTH_SCAN */
+ 
+@@ -9900,7 +9849,11 @@ write_conf:
+ 			sigma_dut_print(dut, DUT_MSG_INFO,
+ 					"Failed to copy %s to %s", f1, f2);
+ 		mode = dut->ap_mode_1;
+-		chwidth = dut->ap_chwidth_1;
++		if (dut->ap_link_chwidth[conf_counter] != -1)
++			chwidth = dut->ap_link_chwidth[conf_counter];
++		else
++			chwidth = dut->ap_chwidth_1;
++
+ 		dtim = dut->dtim;
+ 		chan = dut->ap_tag_channel[0];
+ 		offset = dut->ap_chwidth_offset_1;
+@@ -9917,7 +9870,15 @@ write_conf:
+ 	} else {
+ 		ap_conf_path_1[0] = '\0';
+ 		mode = dut->ap_mode;
+-		chwidth = dut->ap_chwidth;
++		/* ap_link_chwidth will be set in MLO/SLO case where WIDTH
++		 * param is specified, use the default param if the WIDTH is
++		 * not specified in test case
++		 */
++		if (dut->ap_link_chwidth[0] != -1)
++			chwidth = dut->ap_link_chwidth[0];
++		else
++			chwidth = dut->ap_chwidth;
++
+ 		dtim = dut->dtim_1;
+ 		chan = dut->ap_channel;
+ 		offset = dut->ap_chwidth_offset;
+@@ -12245,6 +12206,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_su_txBF = 1;
+ 	dut->ap_channel = -1;
+ 	dut->ap_chwidth = AP_AUTO;
++	memset(dut->ap_link_chwidth, -1, sizeof(dut->ap_link_chwidth));
+ 	dut->ap_ampdu_exp = 0;
+ 	dut->ap_max_mpdu_len = 0;
+ 	dut->ap_band_6g = 0;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1332,6 +1332,8 @@ struct sigma_dut {
+ 	int nebor_cnt;
+ 	struct btm_ap btm[NUM_NEIGHBORS];
+ 	int btm_ml_link;
++#define MAX_MLD_SUPPORTED 2
++	enum ap_chwidth ap_link_chwidth[MAX_MLD_SUPPORTED];
+ };
+ 
+ 

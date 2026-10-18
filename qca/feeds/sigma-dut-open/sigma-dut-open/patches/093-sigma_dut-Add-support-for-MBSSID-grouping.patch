@@ -1,0 +1,618 @@
+From 56fc02cb33e6fa37adf499cbc2f5b7f3eced237a Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Mon, 7 Oct 2024 10:36:19 +0530
+Subject: [PATCH] sigma_dut: Add support for MBSSID grouping
+
+Add the required support for MBSSID grouping in the config
+files which includes "mbssid_group_size" and "mbssid=3".
+
+We are capturing the mbssid set count and non tx bss index length
+paramters and updating the config files accordingly.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c        | 341 +++++++++++++++++++++++++++++++++++++++++++++++-----
+ sigma_dut.h |  21 ++++
+ 2 files changed, 335 insertions(+), 27 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -1009,6 +1009,116 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	if (val)
+ 		dut->program = sigma_program_to_enum(val);
+ 
++	val = get_param(cmd, "MultiMBSSID");
++	if (val) {
++		if (strcasecmp(val, "Enable") == 0) {
++			dut->ap_mbssid = VALUE_ENABLED;
++			dut->multi_mbssid = VALUE_ENABLED;
++		} else if (strcasecmp(val, "disable") == 0)
++			dut->ap_mbssid = VALUE_DISABLED;
++		else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported BTMsupt Value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
++	val = get_param(cmd, "CoHostedBSS");
++	if (val) {
++		if (strcasecmp(val, "Enable") == 0) {
++			dut->ap_cohosted_bss = VALUE_ENABLED;
++		} else if (strcasecmp(val, "Disable") == 0) {
++			dut->ap_cohosted_bss = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,Unsupported CoHostedBSS Value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
++	if ((dut->multi_mbssid == VALUE_ENABLED) && (val = get_param(cmd, "MBSSIDSet"))) {
++		if (dut->ap_cohosted_bss != VALUE_ENABLED) {
++			int mbssid_set_idx = 0;
++			int mbss_conf_idx = 0;
++
++			if (val)
++				mbssid_set_idx = atoi(val) - 1;
++
++			if (dut->no_of_mbssid_groups < mbssid_set_idx + 1)
++				dut->no_of_mbssid_groups = mbssid_set_idx + 1;
++
++			val = get_param(cmd, "NumNonTxBSS");
++			if (val) {
++				dut->mbss_set[mbssid_set_idx].num_non_tx_bss = atoi(val);
++				mbss_conf_idx = 0; // TX vap
++			}
++
++			val = get_param(cmd, "NonTxBSSIndex");
++			if (val)
++				mbss_conf_idx = atoi(val);
++
++			val = get_param(cmd, "Channel");
++			if(val) {
++				dut->ap_channel = atoi(val);
++				dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].channel = atoi(val);
++			}
++
++			val = get_param(cmd, "width");
++			if (val) {
++				if (strcasecmp(val, "20") == 0)
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].chwidth = AP_20;
++				else if (strcasecmp(val, "40") == 0)
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].chwidth = AP_40;
++				else if (strcasecmp(val, "80") == 0)
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].chwidth = AP_80;
++				else if (strcasecmp(val, "160") == 0)
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].chwidth = AP_160;
++				else if (strcasecmp(val, "320") == 0)
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].chwidth = AP_320;
++				else if (strcasecmp(val, "80plus80") == 0) {
++					dut->ap_80plus80 = 1;
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].chwidth = AP_80_80;
++				} else if (strcasecmp(val, "Auto") == 0)
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].chwidth = AP_AUTO;
++				else {
++					send_resp(dut, conn, SIGMA_INVALID,
++						  "errorCode,Unsupported WIDTH");
++					return STATUS_SENT_ERROR;
++				}
++				dut->ap_chwidth_offset = dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].chwidth;
++			}
++
++			val = get_param(cmd, "Interface");
++			if (val) {
++				if (strcasecmp(val, "5G") == 0) {
++					dut->ap_interface_5g = 1;
++					dut->ap_band = BAND_5G;
++				} else if (strcasecmp(val, "6G") == 0) {
++					dut->ap_interface_6g = 1;
++					dut->ap_band = BAND_6G;
++				} else if (strcasecmp(val, "24G") == 0) {
++					dut->ap_interface_2g = 1;
++					dut->ap_band = BAND_2G;
++				}
++			}
++
++			val = get_param(cmd, "SSID");
++			if (val) {
++				if (strlen(val) > MAX_SSID_LEN)
++					return INVALID_SEND_STATUS;
++
++				snprintf(dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].ssid,
++					 MAX_SSID_LEN, "%s", val);
++			}
++
++			val = get_param(cmd, "MLD_ID");
++			if (val)
++				dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].mld_id = atoi(val);
++
++			return SUCCESS_SEND_STATUS;
++		}
++	}
++
+ 	val = get_param(cmd, "NonTxBSSIndex");
+ 	if (val) {
+ 		int non_tx_bss_idx;
+@@ -1039,19 +1149,6 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		return SUCCESS_SEND_STATUS;
+ 	}
+ 
+-	val = get_param(cmd, "CoHostedBSS");
+-	if (val) {
+-		if (strcasecmp(val, "Enable") == 0) {
+-			dut->ap_cohosted_bss = VALUE_ENABLED;
+-		} else if (strcasecmp(val, "Disable") == 0) {
+-			dut->ap_cohosted_bss = VALUE_DISABLED;
+-		} else {
+-			send_resp(dut, conn, SIGMA_ERROR,
+-					"errorCode,Unsupported CoHostedBSS Value");
+-			return STATUS_SENT_ERROR;
+-		}
+-	}
+-
+ 	val = get_param(cmd, "NumCoHostedBSS");
+ 	if (val) {
+ 		int num_cohosted_bss;
+@@ -3242,6 +3339,51 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		return 1;
+ 	}
+ 
++	if ((dut->multi_mbssid == VALUE_ENABLED) && (val = get_param(cmd, "MBSSIDSet"))) {
++		if (dut->ap_cohosted_bss != VALUE_ENABLED) {
++			int mbssid_set_idx = atoi(val) - 1;
++			int mbss_conf_idx;
++
++			val = get_param(cmd, "NonTxBSSIndex");
++			if (val)
++				mbss_conf_idx = atoi(val);
++			else
++				mbss_conf_idx = 0; // TX vap
++
++			val = get_param(cmd, "KEYMGNT");
++			if (!val)
++				val = get_param(cmd, "KeyMgmtType");
++			if (val) {
++				if (strcasecmp(val, "SAE") == 0) {
++					if (dut->ap_mode == AP_11be)
++						dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].key_mgmt = AP_WPA3_SAE_EXT;
++					else
++						dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].key_mgmt = AP_WPA2_SAE;
++				} else {
++					if (check_band(dut, BAND_6G, 0)) {
++						send_resp(dut, conn, SIGMA_INVALID,
++							  "errorCode,Unsupported 6GHz KeyMgmtType");
++						return 0;
++					} else if (strcasecmp(val, "WPA2-PSK") == 0 ||
++						(security && strcasecmp(security, "PSK") == 0 &&
++						 strcasecmp(val, "WPA2") == 0)) {
++						dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].key_mgmt = AP_WPA2_PSK;
++					}
++				}
++			}
++
++			val = get_param(cmd, "PSK");
++			if (val) {
++				if (strlen(val) > MAX_PSK_LEN - 1)
++					return INVALID_SEND_STATUS;
++				snprintf(dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].psk,
++					 MAX_PSK_LEN, "%s", val);
++			}
++
++			return SUCCESS_SEND_STATUS;
++		}
++	}
++
+ 	val = get_param(cmd, "NonTxBSSIndex");
+ 	if (val) {
+ 		int non_tx_bss_idx;
+@@ -10223,7 +10365,7 @@ write_conf:
+ 		} else {
+ 			fprintf(f, "interface=%s\n", ifname2);
+ 		}
+-	} else {
++	} else if (!(dut->multi_mbssid && !conf_counter)) {
+ 		fprintf(f, "interface=%s\n", ifname);
+ 	}
+ 	if (dut->bridge)
+@@ -10233,7 +10375,7 @@ write_conf:
+ 
+ 	if (sigma_hapd_ctrl)
+ 		fprintf(f, "ctrl_interface=%s\n", sigma_hapd_ctrl);
+-	else
++	else if (!(dut->multi_mbssid && !conf_counter))
+ 		fprintf(f, "ctrl_interface=/var/run/hostapd\n");
+ 
+ 	if ((dut->ap_ssid[0] && conf_counter == 0) ||
+@@ -10243,7 +10385,9 @@ write_conf:
+ 		fprintf(f, "ssid=%s\n", dut->ap_tag_ssid[0]);
+ 	else if (dut->ap_ssid[0] && conf_counter == 1)
+ 		fprintf(f, "ssid=%s\n", dut->ap_ssid);
+-	else
++	else if (dut->multi_mbssid && conf_counter)
++		fprintf(f, "ssid=%s\n", dut->mbss_set[0].conf[0].ssid);
++	else if (!(dut->multi_mbssid && !conf_counter))
+ 		fprintf(f, "ssid=QCA AP OOB\n");
+ 
+ 	if (dut->ap_bcnint)
+@@ -11237,6 +11381,118 @@ skip_vht_parameters_set:
+ 	}
+ 
+ 	if ((dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) &&
++	    dut->ap_mbssid == VALUE_ENABLED && !conf_counter &&
++	    dut->multi_mbssid) {
++		uint8_t num_bss, bssid_mask, max_bss_count;
++		uint8_t init_val, base_val;
++		uint8_t max_bssid_ind = 0;
++		unsigned char bssid[6];
++		char ifname2[50];
++		int i, count = 0;
++
++		if (get_hwaddr(ifname, bssid)) {
++			fclose(f);
++			return -2;
++		}
++
++		for (int j = 0; j < dut->no_of_mbssid_groups; j++) {
++			if (!dut->mbss_set[j].num_non_tx_bss)
++				return -2;
++
++			fprintf(f, "\nmbssid=3\n");
++			fprintf(f, "mbssid_group_size=%d\n", (dut->mbss_set[j].num_non_tx_bss + 1));
++
++			/* Sanity check to indicate below logic holds good
++			 * for upto 256 bss(including tx,non-tx bss) support in sigma-dut
++			 * Can be extended if really required
++			 */
++			if (dut->mbss_set[j].num_non_tx_bss > 255)
++				return -2;
++
++			num_bss = dut->mbss_set[j].num_non_tx_bss;
++
++			do {
++				max_bssid_ind++;
++				num_bss = num_bss >> 1;
++			} while (num_bss);
++
++			max_bss_count = 1 << max_bssid_ind;
++			bssid_mask = max_bss_count - 1;
++
++			base_val = bssid[5] & ~bssid_mask;
++			init_val = bssid[5] & bssid_mask;
++
++			for (i = 0; i < dut->mbss_set[j].num_non_tx_bss + 1; i++) {
++				fprintf(f, "\n");
++
++				/* start from 1 for non tx bssid */
++				bssid[5] = base_val + ((init_val + count + 1) % max_bss_count);
++
++				if ((i == 0) && (j == 0)) {
++					fprintf(f, "interface=%s\n", ifname);
++				} else {
++					snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, count);
++					fprintf(f, "bss=%s\n", ifname2);
++				}
++				if (sigma_hapd_ctrl)
++					fprintf(f, "ctrl_interface=%s\n", sigma_hapd_ctrl);
++				else
++					fprintf(f, "ctrl_interface=/var/run/hostapd\n");
++				fprintf(f, "ssid=%s\n", dut->mbss_set[j].conf[i].ssid);
++				if (dut->bridge)
++					fprintf(f, "bridge=%s\n", dut->bridge);
++
++				strlcpy(dut->mbss_set[j].conf[i].ifname, ifname2, IFNAMSIZ);
++
++				if (dut->ap_wme)
++					fprintf(f, "wmm_enabled=1\n");
++
++				if (dut->ap_wmmps == AP_WMMPS_ON)
++					fprintf(f, "uapsd_advertisement_enabled=1\n");
++
++				fprintf(f, "bssid=%02x:%02x:%02x:%02x:%02x:%02x\n",
++					bssid[0], bssid[1], bssid[2], bssid[3],
++					bssid[4] - j, bssid[5]);
++
++				memcpy(dut->mbss_set[j].conf[i].non_tx_bssid, bssid, 6);
++
++				if (dut->mbss_set[j].conf[i].key_mgmt == AP_WPA2_SAE) {
++					fprintf(f, "wpa=2\n");
++					fprintf(f, "wpa_key_mgmt=SAE\n");
++					fprintf(f, "wpa_pairwise=CCMP\n");
++					fprintf(f, "ieee80211w=2\n");
++					fprintf(f, "sae_password=%s\n", dut->mbss_set[j].conf[i].psk);
++					fprintf(f, "sae_pwe=1\n");
++				}
++
++				if (dut->mbss_set[j].conf[i].key_mgmt == AP_WPA3_SAE_EXT) {
++					fprintf(f, "wpa=2\n");
++					fprintf(f, "wpa_key_mgmt=SAE-EXT-KEY\n");
++					if (dut->program == PROGRAM_EHT) {
++						fprintf(f, "wpa_pairwise=GCMP-256\n");
++						fprintf(f, "group_mgmt_cipher=BIP-GMAC-256\n");
++					} else
++						fprintf(f, "wpa_pairwise=CCMP\n");
++					fprintf(f, "ieee80211w=2\n");
++					fprintf(f, "sae_password=%s\n", dut->mbss_set[j].conf[i].psk);
++					if (check_band(dut, BAND_6G, conf_counter))
++						fprintf(f, "sae_pwe=1\n");
++				}
++
++				if (dut->mbss_set[j].conf[i].key_mgmt == AP_WPA2_PSK) {
++					fprintf(f, "wpa=2\n");
++					fprintf(f, "wpa_key_mgmt=WPA-PSK\n");
++					fprintf(f, "wpa_pairwise=CCMP\n");
++					fprintf(f, "wpa_passphrase=%s\n", dut->mbss_set[j].conf[i].psk);
++				}
++
++				if (dut->program == PROGRAM_EHT || dut->ap_mode == AP_11be)
++					fprintf(f, "mld_ap=1\n");
++
++				count = count + 1;
++			}
++		}
++	} else if ((dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) &&
+ 	    dut->ap_mbssid == VALUE_ENABLED && !conf_counter) {
+ 		uint8_t num_bss, bssid_mask, max_bss_count;
+ 		uint8_t init_val, base_val;
+@@ -11335,7 +11591,9 @@ skip_vht_parameters_set:
+ 				fprintf(f, "wpa_pairwise=CCMP\n");
+ 				fprintf(f, "wpa_passphrase=%s\n", dut->mbss.conf[i].psk);
+ 			}
+-			fprintf(f, "mld_ap=1\n");
++
++			if (dut->program == PROGRAM_EHT || dut->ap_mode == AP_11be)
++				fprintf(f, "mld_ap=1\n");
+ 		}
+ 	}
+ 
+@@ -11435,7 +11693,9 @@ skip_vht_parameters_set:
+ 				fprintf(f, "wpa_passphrase=%s\n",
+ 					dut->cohosted[dut->cohost_iface].conf[i].psk);
+ 			}
+-			fprintf(f, "mld_ap=1\n");
++
++			if (dut->program == PROGRAM_EHT || dut->ap_mode == AP_11be)
++				fprintf(f, "mld_ap=1\n");
+ 		}
+ 	}
+ 
+@@ -12728,6 +12988,9 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->nss_mcs_set = 0;
+ 	dut->he_srctrl_allow = -1;
+ 	dut->ap_mbssid_mu = VALUE_NOT_SET;
++	dut->multi_mbssid = VALUE_NOT_SET;
++	dut->no_of_mbssid_groups = 0;
++	memset(dut->mbss_set, 0, sizeof(struct mbssid_set) * MAX_MBSSID_SET);
+ 
+ 	dut->eht_txmcs = 0;
+ 	dut->ap_ehtmcs_map = 0;
+@@ -14804,29 +15067,74 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	val = get_param(cmd, "MLD_ID");
+ 	if (val) {
+ 		mld_id = atoi(val);
+-		if (mld_id == 2)
+-			strlcat(ifname, "-1", sizeof(ifname));
++		if (mld_id > 1) {
++			char idx[4];
++			snprintf(idx, sizeof(idx), "-%d", mld_id-1);
++			strlcat(ifname, idx, sizeof(ifname));
++		}
+ 	}
+ 
+-	val = get_param(cmd, "NonTxBSSIndex");
++	val = get_param(cmd, "MBSSIDSet");
+ 	if (val) {
++		int mbssid_set_idx = atoi(val) - 1;
++		int ifname_idx = -1;
++		int iter;
+ 		char idx[4];
+ 
+-		if (dut->ap_mbssid != VALUE_ENABLED) {
++		if (dut->multi_mbssid != VALUE_ENABLED) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+-				  "errorCode,MBSSID Not enabled");
++				  "errorCode,Multi MBSSID Not enabled");
+ 			return STATUS_SENT_ERROR;
+ 		}
+ 
+-		non_tx_bss_idx = atoi(val);
+-
+-		if (non_tx_bss_idx > dut->mbss.num_non_tx_bss) {
++		if (mbssid_set_idx > dut->no_of_mbssid_groups) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+-				  "errorCode,Invalid NonTxBSSIndex");
++				  "errorCode, invalid MBSSIDSet value");
+ 			return STATUS_SENT_ERROR;
+ 		}
+-		snprintf(idx, sizeof(idx), "-%d", non_tx_bss_idx);
+-		strlcat(ifname, idx, sizeof(ifname));
++
++		for (iter = 0; iter <= mbssid_set_idx; iter++) {
++			ifname_idx += 1; /*increment for tx vap */
++
++			if (iter != mbssid_set_idx)
++				ifname_idx += dut->mbss_set[iter].num_non_tx_bss;
++		}
++
++		val = get_param(cmd, "NonTxBSSIndex");
++		if (val) {
++			if (atoi(val) > dut->mbss_set[mbssid_set_idx].num_non_tx_bss) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Invalid NonTxBSSIndex");
++				return STATUS_SENT_ERROR;
++			}
++			ifname_idx += atoi(val);
++		}
++
++		if (ifname_idx) {
++			snprintf(idx, sizeof(idx), "-%d", ifname_idx);
++			strlcat(ifname, idx, sizeof(ifname));
++		}
++	} else {
++		val = get_param(cmd, "NonTxBSSIndex");
++		if (val) {
++			char idx[4];
++
++			if (dut->ap_mbssid != VALUE_ENABLED) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,MBSSID Not enabled");
++				return STATUS_SENT_ERROR;
++			}
++
++			non_tx_bss_idx = atoi(val);
++
++			if (non_tx_bss_idx > dut->mbss.num_non_tx_bss) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Invalid NonTxBSSIndex");
++				return STATUS_SENT_ERROR;
++			}
++			snprintf(idx, sizeof(idx), "-%d", non_tx_bss_idx);
++			strlcat(ifname, idx, sizeof(ifname));
++		}
+ 	}
+ 
+ 	val = get_param(cmd, "CoHostedBSSIndex");
+@@ -18617,30 +18925,74 @@ static enum sigma_cmd_result mac80211_ap
+ 			link_id = dut->band_to_link[2];
+ 	}
+ 
+-	val = get_param(cmd, "NonTxBSSIndex");
++	val = get_param(cmd, "MBSSIDSet");
+ 	if (val) {
+-		int non_tx_bss_idx, ret;
++		int mbssid_set_idx = atoi(val) - 1, ifname_idx = -1, iter, ret;
+ 
+-		if (dut->ap_mbssid != VALUE_ENABLED) {
++		if (dut->multi_mbssid != VALUE_ENABLED) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+-				  "errorCode,MBSSID Not enabled");
++				  "errorCode,Multi MBSSID Not enabled");
+ 			return STATUS_SENT_ERROR;
+ 		}
+ 
+-		non_tx_bss_idx = atoi(val);
+-
+-		if (non_tx_bss_idx > dut->mbss.num_non_tx_bss) {
++		if (mbssid_set_idx > dut->no_of_mbssid_groups) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+-				  "errorCode,Invalid NonTxBSSIndex");
++				  "errorCode, invalid MBSSIDSet value");
+ 			return STATUS_SENT_ERROR;
+ 		}
+-		ret = snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, non_tx_bss_idx);
+-		if(ret < 0) {
+-			send_resp(dut, conn, SIGMA_ERROR,
+-				  "errorCode,Invalid interface name");
+-			return STATUS_SENT_ERROR;
++
++		for (iter = 0; iter <= mbssid_set_idx; iter++) {
++			ifname_idx += 1; /*increment for tx vap */
++
++			if (iter != mbssid_set_idx)
++				ifname_idx += dut->mbss_set[iter].num_non_tx_bss;
++		}
++
++		val = get_param(cmd, "NonTxBSSIndex");
++		if (val) {
++			if (atoi(val) > dut->mbss_set[mbssid_set_idx].num_non_tx_bss) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Invalid NonTxBSSIndex");
++				return STATUS_SENT_ERROR;
++			}
++			ifname_idx += atoi(val);
++		}
++
++		if (ifname_idx) {
++			ret = snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, ifname_idx);
++			if(ret < 0) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Invalid interface name");
++				return STATUS_SENT_ERROR;
++			}
++			ifname = ifname2;
++		}
++	} else {
++		val = get_param(cmd, "NonTxBSSIndex");
++		if (val) {
++			int non_tx_bss_idx, ret;
++
++			if (dut->ap_mbssid != VALUE_ENABLED) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,MBSSID Not enabled");
++				return STATUS_SENT_ERROR;
++			}
++
++			non_tx_bss_idx = atoi(val);
++
++			if (non_tx_bss_idx > dut->mbss.num_non_tx_bss) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Invalid NonTxBSSIndex");
++				return STATUS_SENT_ERROR;
++			}
++			ret = snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, non_tx_bss_idx);
++			if(ret < 0) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Invalid interface name");
++				return STATUS_SENT_ERROR;
++			}
++			ifname = ifname2;
+ 		}
+-		ifname = ifname2;
+ 	}
+ 
+ 	val = get_param(cmd, "CoHostedBSSIndex");
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -607,6 +607,8 @@ enum cohosted_bands {
+ /* Update this macro for supporting multiple mbss vaps */
+ #define MAX_NON_TX_BSS_COUNT	2
+ #define MAX_PSK_LEN		20
++#define MAX_MBSSID_SET		8
++#define MAX_COHOSTED_BSS_COUNT	4
+ 
+ struct mbss_config {
+ 	int non_tx_bss_idx;
+@@ -617,6 +619,18 @@ struct mbss_config {
+ 	char ifname[IFNAMSIZ];
+ };
+ 
++struct multi_mbss_config {
++	int non_tx_bss_idx;
++	int channel;
++	int chwidth;
++	int mld_id;
++	char ssid[MAX_SSID_LEN];
++	enum ap_key_mgmt key_mgmt;
++	char psk[MAX_PSK_LEN];
++	unsigned char non_tx_bssid[6];
++	char ifname[IFNAMSIZ];
++};
++
+ struct mbss_support {
+ 	int num_non_tx_bss;
+ 	struct mbss_config conf[MAX_NON_TX_BSS_COUNT];
+@@ -624,7 +638,12 @@ struct mbss_support {
+ 
+ struct cohosted_support {
+ 	int num_co_hosted_bss;
+-	struct mbss_config conf[MAX_NON_TX_BSS_COUNT];
++	struct mbss_config conf[MAX_COHOSTED_BSS_COUNT];
++};
++
++struct mbssid_set {
++	int num_non_tx_bss;
++	struct multi_mbss_config conf[MAX_NON_TX_BSS_COUNT + 1]; /* +1 for TX */
+ };
+ 
+ struct sigma_dut {
+@@ -1354,6 +1373,9 @@ struct sigma_dut {
+ 	/*Use ap_pmf_link for interface specific cases*/
+ 	enum ap_pmf ap_pmf_link[MAX_MLD_SUPPORTED];
+ 	enum value_not_set_enabled_disabled ap_scs;
++	int multi_mbssid;
++	int no_of_mbssid_groups;
++	struct mbssid_set mbss_set[MAX_MBSSID_SET];
+ };
+ 
+ #ifdef NL80211_SUPPORT

@@ -1,0 +1,31 @@
+From 723806500c362c767453dc501d6e9d8870ccc01d Mon Sep 17 00:00:00 2001
+From: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+Date: Tue, 30 May 2023 17:43:52 +0530
+Subject: [PATCH] sigma-dut: MCS rate in HE is varying on trigger frames
+
+HE trigger frames are having variation till zero mcs index for trigger frames,
+this affecting the peak TP, it should not vary and it should have appropriate
+high MCS index
+
+Set ul duration to 1200 usec and enable a fw war for not dropping mcs to fix
+this issue
+
+Signed-off-by: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+---
+ ap.c        | 23 +++++++++++++++++++++--
+ sigma_dut.h |  1 +
+ 2 files changed, 22 insertions(+), 2 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -15690,6 +15690,10 @@ static void mac80211_set_trigger_type_0(
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 302 0", ifname);
+ 	}
+ 
++	/* set ul duration to 1200 usec and enable a fw war for not dropping mcs
++	 * (the new parameter with value 1 will do this) */
++	if (dut->ap_he_ulofdma == VALUE_ENABLED && dut->program == PROGRAM_HE)
++		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 63 1200 1", ifname);
+ }
+ 
+ static void mac80211_set_trigger_type_0_eht(struct sigma_dut *dut, const char *ifname, int link_id)

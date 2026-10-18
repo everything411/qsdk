@@ -1,0 +1,57 @@
+From 8e938de1a203bbf00bff60b59e5e6a65dbcfbc07 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Wed, 14 May 2025 14:46:53 +0530
+Subject: [PATCH] serial: Add support for loading Serial Engine firmware
+
+Introduce functionality to load peripheral-specific firmware required for initializing and enabling the UART interface via the Serial Engine (SE).
+
+This support is essential for platforms that rely on firmware-assisted UART initialization, ensuring proper operation of serial communication.
+
+Change-Id: I86445696b29dd68db74d1bd1779163fd02ffba9d
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/serial/serial_msm_geni.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/serial/serial_msm_geni.c b/drivers/serial/serial_msm_geni.c
+index c940adac006..bbc38cb38d4 100644
+--- a/drivers/serial/serial_msm_geni.c
++++ b/drivers/serial/serial_msm_geni.c
+@@ -12,6 +12,7 @@
+ #include <clk.h>
+ #include <dm.h>
+ #include <errno.h>
++#include <dm/device_compat.h>
+ #include <linux/delay.h>
+ #include <linux/time.h>
+ #include <misc.h>
+@@ -561,6 +562,8 @@ static inline void geni_serial_init(struct udevice *dev)
+ static int msm_serial_probe(struct udevice *dev)
+ {
+ 	struct msm_serial_data *priv = dev_get_priv(dev);
++	struct ofnode_phandle_args args;
++	struct udevice *config = NULL;
+ 	int ret;
+ 
+ 	ret = geni_set_oversampling(dev);
+@@ -571,6 +574,17 @@ static int msm_serial_probe(struct udevice *dev)
+ 	if (gd->flags & GD_FLG_RELOC)
+ 		return 0;
+ 
++	ret = dev_read_phandle_with_args(dev, "qup-se-fw-load", NULL, 0, 0,
++					 &args);
++	if (!ret) {
++		ret = uclass_get_device_by_ofnode(UCLASS_NOP, args.node,
++						  &config);
++		if (ret)
++			dev_err(dev,
++				"Failed to write SE(UART) Firmware: %d\n",
++				ret);
++	}
++
+ 	geni_serial_init(dev);
+ 	msm_geni_serial_setup_rx(dev);
+ 	qcom_geni_serial_start_rx(dev);
+-- 
+2.34.1
+

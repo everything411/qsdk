@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include "ipq5332-rdp441-ub.dts"
+
+/ {
+	model = "Qualcomm Technologies, Inc. IPQ5332 RDP472";
+	compatible = "qcom,ipq5332-rdp472", "qcom,ipq5332";
+};
+
+&pcie0 {
+	status = "disabled";
+};

@@ -1,0 +1,31 @@
+From 3a3d29a10babd943c0fc35ad6d5fe8ac7fafaed9 Mon Sep 17 00:00:00 2001
+From: Amith A <amitajit@qti.qualcomm.com>
+Date: Mon, 8 Dec 2025 15:08:02 +0530
+Subject: [PATCH] QSDK:HOSTAPD:hostapd-extn: Add iface_extn structure to add
+ extension configs
+
+Add iface_extn structure to hostapd_iface to support extension configs
+
+Patch-dependency: None
+
+Signed-off-by: Amith A <amitajit@qti.qualcomm.com>
+---
+ src/ap/hostapd.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index a6c70cf..e6bf5e5 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -919,6 +919,8 @@ struct hostapd_iface {
+ 	 */
+ 	bool is_afc_channel_change_pending;
+ 
++	struct hostapd_iface_extn iface_extn;
++
+ 	struct hostapd_multi_hw_info *multi_hw_info;
+ 	unsigned int num_multi_hws;
+ 	struct hostapd_multi_hw_info *current_hw_info;
+-- 
+2.34.1
+

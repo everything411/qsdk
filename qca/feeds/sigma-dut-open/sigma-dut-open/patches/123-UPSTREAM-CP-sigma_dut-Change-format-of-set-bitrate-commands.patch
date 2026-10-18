@@ -1,0 +1,90 @@
+From c78c800044cfe9f705299b9de1ebc2e95fcbdf40 Mon Sep 17 00:00:00 2001
+From: Roopni Devanathan <rdevanat@qti.qualcomm.com>
+Date: Tue, 16 Jun 2026 12:34:10 +0530
+Subject: [PATCH] UPSTREAM:CP: sigma-dut: Change format of set bitrate commands
+
+Recently, the set bitrates command format changed. With this change, only
+when all the programs, i.e., EHT, HE, VHT, etc., are mentioned, the
+command will pass on to firmware as fixed rate command, otherwise it will
+be passed on as auto rate command.
+
+The commands used in sigma DUT code are attempting to set GI and LTF only.
+But as per the new command format, when the program is not mentioned, 
+auto rate command is passed twice, first for HE and then for EHT. This is
+failing sigma DUT certification testcases, because the intended GI and LTF
+values for HE are not reflected and are always over-written by EHT's GI
+and LTF(default).
+
+Resolve this by specifying the program (EHT/HE) and leaving it empty,
+i.e., when the program is EHT, specify HE MCS in the comamnd and leave the
+value field empty and vice versa. This will ensure that when the program
+is EHT, the nunmber of rates for HE is 0 and vice versa.
+
+Patch-dependency: None
+Patch-work: None
+
+Signed-off-by: Roopni Devanathan <rdevanat@qti.qualcomm.com>
+---
+ ap.c | 24 ++++++++++++------------
+ 1 file changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 212a4e2..a212688 100644
+--- a/ap.c
++++ b/ap.c
+@@ -20418,40 +20418,40 @@ static enum sigma_cmd_result mac80211_he_gi(struct sigma_dut *dut,
+ 			if (val) {
+ 				ret = run_system_wrapper(
+ 					dut,
+-					"iw %s set bitrates -l %d %s-gi-%s %s %s-ltf-%s %u",
+-					ifname, link_id, program, mode, val, program, mode,
++					"iw %s set bitrates -l %d he-mcs-%s %s-gi-%s %s %s-ltf-%s %u",
++					ifname, link_id, mode, program, mode, val, program, mode,
+ 					he_ltf);
+ 			} else {
+ 				ret = run_system_wrapper(
+ 					dut,
+-					"iw %s set bitrates -l %d %s-ltf-%s %u",
+-					ifname, link_id, program, mode, he_ltf);
++					"iw %s set bitrates -l %d he-mcs-%s %s-ltf-%s %u",
++					ifname, link_id, mode, program, mode, he_ltf);
+ 			}
+ 		} else {
+ 			if (val) {
+ 				ret = run_system_wrapper(
+ 					dut,
+-					"iw %s set bitrates %s-gi-%s %s %s-ltf-%s %u",
+-					ifname, program, mode, val, program, mode,
++					"iw %s set bitrates eht-mcs-%s %s-gi-%s %s %s-ltf-%s %u",
++					ifname, mode, program, mode, val, program, mode,
+ 					he_ltf);
+ 			} else {
+ 				ret = run_system_wrapper(
+ 					dut,
+-					"iw %s set bitrates %s-ltf-%s %u",
+-					ifname, program, mode, he_ltf);
++					"iw %s set bitrates eht-mcs-%s %s-ltf-%s %u",
++					ifname, mode, program, mode, he_ltf);
+ 			}
+ 		}
+ 	} else if (val) {
+ 		if (dut->program == PROGRAM_EHT) {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates -l %d %s-gi-%s %s",
+-				ifname, link_id, program, mode, val);
++				"iw %s set bitrates -l %d he-mcs-%s %s-gi-%s %s",
++				ifname, link_id, mode, program, mode, val);
+ 		} else {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates %s-gi-%s %s",
+-				ifname, program, mode, val);
++				"iw %s set bitrates eht-mcs-%s %s-gi-%s %s",
++				ifname, mode, program, mode, val);
+ 		}
+ 	}
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,36 @@
+config PINCTRL_IPQ5332
+	depends on DM && PINCTRL_QTI && TARGET_IPQ5332
+	default y
+	select PINCONF
+	bool "QTI IPQ5332 pin control driver"
+	help
+	  Supports pin multiplexing control on IPQ5332 SoCs.
+
+	  The driver is controlled by a device tree node which contains both
+	  the GPIO definitions and pin control functions for each available
+	  multiplex function.
+
+config PINCTRL_IPQ9574
+	depends on DM && PINCTRL_QTI && TARGET_IPQ9574
+	default y
+	select PINCONF
+	bool "QTI IPQ9574 pin control driver"
+	help
+	  Supports pin multiplexing control on IPQ9574 SoCs.
+
+	  The driver is controlled by a device tree node which contains both
+	  the GPIO definitions and pin control functions for each available
+	  multiplex function.
+
+config PINCTRL_IPQ5424
+	depends on DM && PINCTRL_QTI && TARGET_IPQ5424
+	default y
+	select PINCONF
+	bool "QTI IPQ5424 pin control driver"
+	help
+	  Supports pin multiplexing control on IPQ5424 SoCs.
+
+	  The driver is controlled by a device tree node which contains both
+	  the GPIO definitions and pin control functions for each available
+	  multiplex function.
+

@@ -1,0 +1,54 @@
+From 30205ec64eaa797d72f4e8c8cbc3780510d2c4fe Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Mon, 13 Jan 2025 12:39:33 +0530
+Subject: [PATCH] QSDK:PROTOCOL: control-app: Add MBO OCE support
+
+Currently while configuring the AP, the config for MBO has been added
+generically like other configs using the tlv id TLV_MBO and used its value
+in the format "mbo=tlv->value", resulting in the failure of
+`CT_Optimization_Wi-FiAgileMultiband_AP_MBOAssociation_10372_1` testcase
+But while enabling mbo, the config oce must also be set to 4, while
+handling mbo generically this is not possible.
+
+Add a special conditional block for tlv id TLV_MBO to set mbo and oce
+configs as per the expectation.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+Signed-off-by: Paulson Raja L <quic_lraja@quicinc.com>
+---
+ indigo_api_callback_dut.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/indigo_api_callback_dut.c b/indigo_api_callback_dut.c
+index 09c73cf..7d3d73b 100644
+--- a/indigo_api_callback_dut.c
++++ b/indigo_api_callback_dut.c
+@@ -314,6 +314,7 @@ static int generate_hostapd_config(char *output, int output_size, struct packet_
+     int semicolon_list_size = sizeof(semicolon_list) / sizeof(struct tlv_to_config_name);
+     int hs20_icons_attached = 0;
+     int is_multiple_bssid = 0;
++    int mbo = 0;
+ 
+ #if HOSTAPD_SUPPORT_MBSSID
+     if ((wlanp->mbssid_enable && !wlanp->transmitter) || (band_first_wlan[wlanp->band])) {
+@@ -365,6 +366,17 @@ static int generate_hostapd_config(char *output, int output_size, struct packet_
+             continue;
+         }
+ 
++        if (tlv->id == TLV_MBO) {
++            memset(value, 0, sizeof(value));
++            memcpy(value, tlv->value, tlv->len);
++            mbo = atoi(value);
++            if (mbo) {
++                strlcat(output, "mbo=1\n", output_size);
++                strlcat(output, "oce=4\n", output_size);
++            }
++            continue;
++        }
++
+         /* This is used when hostapd will use multiple lines to 
+          * configure multiple items in the same configuration parameter
+          * (use semicolon to separate multiple configurations) */
+-- 
+2.34.1
+

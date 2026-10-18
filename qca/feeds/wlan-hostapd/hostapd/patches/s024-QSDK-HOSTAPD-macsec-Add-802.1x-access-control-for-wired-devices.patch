@@ -1,0 +1,188 @@
+From fef8bbebb490309bd59b183aa48b993c09db0961 Mon Sep 17 00:00:00 2001
+From: Lei Wei <leiwei@qti.qualcomm.com>
+Date: Wed, 15 Oct 2025 16:59:39 +0800
+Subject: [PATCH] QSDK:HOSTAPD:macsec: Add-802.1x-access-control-for-wired-devices
+
+Signed-off-by: Lei Wei <leiwei@qti.qualcomm.com>
+---
+ src/drivers/driver_macsec_qca.c | 120 +++++++++++++++++++++++++++++++-
+ 1 file changed, 119 insertions(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_macsec_qca.c b/src/drivers/driver_macsec_qca.c
+index 58c48c2f5..e60758662 100644
+--- a/src/drivers/driver_macsec_qca.c
++++ b/src/drivers/driver_macsec_qca.c
+@@ -77,10 +77,85 @@ struct macsec_qca_data {
+ 	bool replay_protect;
+ 	u32 replay_window;
+ 
++	/* ioctl sock */
++	int ioctl_sock;
++
++	/* authorize_policy: 0 port-based authorize, 1 mac-based authorize
++	 * used to backward compatibility with the macsec case where is wired
++	 * point to point connection and once MKA success, the whole port is
++	 * opened and all src mac traffic are encrypted. */
++	u8 authorize_policy;
++
+ 	struct channel_map receive_channel_map[MAXSC];
+ 	struct channel_map transmit_channel_map[MAXSC];
+ };
+ 
++#define SW_SWITCH_IOCTL_DEV_NAME "/dev/switch_ssdk"
++#define SW_API_ACL_MAC_ENTRY_SET 428
++typedef struct
++{
++	u8 addr[ETH_ALEN];
++	char ifname[IFNAMSIZ];
++	u8 acl_policy; /* 0 deny, 1 accept */
++} swMacEntry;
++
++static int switch_command_excute(void *priv, u32 api_id, int nrParam, ...)
++{
++	unsigned long nValue[12] = { 0 };
++	unsigned long nRtn = 0;
++	int idx;
++	va_list vaArgs;
++	struct macsec_qca_data *drv = priv;
++
++	if (drv->ioctl_sock < 0) {
++		wpa_printf(MSG_ERROR, "IOCTL interface is not opened");
++		return -1;
++	}
++	nValue[0] = (unsigned long)api_id;
++	nValue[1] = (unsigned long)&nRtn;
++
++	if (nrParam > sizeof(nValue)/sizeof(unsigned long) - 2)
++		nrParam = sizeof(nValue)/sizeof(unsigned long) - 2;
++
++	va_start(vaArgs, nrParam);
++
++	for (idx = 0; idx < nrParam; idx++) {
++		nValue[idx + 2] = va_arg(vaArgs, unsigned long);
++	}
++
++	va_end(vaArgs);
++
++	(void)ioctl(drv->ioctl_sock, SIOCDEVPRIVATE, nValue);
++
++	return nRtn;
++}
++
++static int switch_set_mac_rule(void *priv, swMacEntry *entry)
++{
++	return switch_command_excute(priv, SW_API_ACL_MAC_ENTRY_SET, 2, 0, entry);
++}
++
++static int
++macsec_qca_set_sta_acl_policy(void *priv, const u8 *addr, u8 acl_policy)
++{
++	struct macsec_qca_data *drv = priv;
++	swMacEntry entry = {0};
++	wpa_printf(MSG_DEBUG, "%s: addr=" MACSTR " acl_policy=%d",
++		   __func__, MAC2STR(addr), acl_policy);
++
++	if (drv->authorize_policy == 0) {
++		/* port-based authorize */
++		os_memset(entry.addr, 0xff, ETH_ALEN);
++	}
++	if (drv->authorize_policy == 1) {
++		/* mac-based authorize */
++		os_memcpy(entry.addr, addr, ETH_ALEN);
++	}
++	os_strlcpy(entry.ifname, drv->common.ifname, IFNAMSIZ);
++	entry.acl_policy = acl_policy;
++
++	return switch_set_mac_rule(drv, &entry);
++}
+ 
+ static void __macsec_drv_init(struct macsec_qca_data *drv)
+ {
+@@ -316,6 +391,21 @@ static void macsec_qca_deinit(void *priv)
+ 	os_free(drv);
+ }
+ 
++static int macsec_qca_set_param(struct macsec_qca_data *drv, const char *param)
++{
++	if (param == NULL)
++		return 0;
++	wpa_printf(MSG_DEBUG, "macsec_qca: driver param='%s'", param);
++
++	/* configurations in driver_params */
++	if (os_strstr(param, "authorize_policy=0")) {
++		drv->authorize_policy = 0;
++	}
++	if (os_strstr(param, "authorize_policy=1")) {
++		drv->authorize_policy = 1;
++	}
++	return 0;
++}
+ 
+ static void * macsec_qca_hapd_init(struct hostapd_data *hapd,
+ 				   struct wpa_init_params *params)
+@@ -342,11 +432,23 @@ static void * macsec_qca_hapd_init(struct hostapd_data *hapd,
+ 		   sizeof(drv->common.ifname));
+ 	drv->use_pae_group_addr = params->use_pae_group_addr;
+ 
++	if (macsec_qca_set_param(drv, params->driver_params) < 0) {
++		os_free(drv);
++		return NULL;
++	}
++
+ 	if (macsec_qca_init_sockets(drv, params->own_addr)) {
+ 		os_free(drv);
+ 		return NULL;
+ 	}
+ 
++	if ((drv->ioctl_sock = open(SW_SWITCH_IOCTL_DEV_NAME, O_RDWR)) < 0) {
++		os_free(drv);
++		return NULL;
++	}
++	/* deny all mac address and accept eapol */
++	u8 mac[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
++	macsec_qca_set_sta_acl_policy(drv, mac, 0);
+ 	return drv;
+ }
+ 
+@@ -359,7 +461,11 @@ static void macsec_qca_hapd_deinit(void *priv)
+ 		eloop_unregister_read_sock(drv->common.sock);
+ 		close(drv->common.sock);
+ 	}
+-
++	if (drv->ioctl_sock >= 0) {
++		u8 mac[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
++		macsec_qca_set_sta_acl_policy(drv, mac, 1);
++		close(drv->ioctl_sock);
++	}
+ 	os_free(drv);
+ }
+ 
+@@ -403,6 +509,17 @@ static int macsec_qca_send_eapol(void *priv, const u8 *addr,
+ 	return res;
+ }
+ 
++static int
++macsec_qca_sta_set_flags(void *priv, const u8 *addr,
++		      unsigned int total_flags, unsigned int flags_or,
++		      unsigned int flags_and)
++{
++	if (total_flags & WPA_STA_AUTHORIZED)
++		return macsec_qca_set_sta_acl_policy(priv, addr, 1);
++	if (!(total_flags & WPA_STA_AUTHORIZED))
++		return macsec_qca_set_sta_acl_policy(priv, addr, 0);
++	return 0;
++}
+ 
+ static int macsec_qca_macsec_init(void *priv, struct macsec_init_params *params)
+ {
+@@ -1047,6 +1164,7 @@ const struct wpa_driver_ops wpa_driver_macsec_qca_ops = {
+ 	.hapd_init = macsec_qca_hapd_init,
+ 	.hapd_deinit = macsec_qca_hapd_deinit,
+ 	.hapd_send_eapol = macsec_qca_send_eapol,
++	.sta_set_flags = macsec_qca_sta_set_flags,
+ 
+ 	.macsec_init = macsec_qca_macsec_init,
+ 	.macsec_deinit = macsec_qca_macsec_deinit,
+-- 
+2.34.1
+

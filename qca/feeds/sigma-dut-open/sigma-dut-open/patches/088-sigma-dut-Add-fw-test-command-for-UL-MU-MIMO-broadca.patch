@@ -1,0 +1,41 @@
+From ec537cdbec01666e380e243c7792855d1eaf219e Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Tue, 13 Aug 2024 11:26:35 +0530
+Subject: [PATCH] sigma-dut: Add firmware test command for UL-MU-MIMO broadcast
+ basic trigger fix
+
+Firmware change has been made to enable unregister_ul_tid_on_rx_inactivity.
+And that is causing AP to not send basic broadcast triggers while
+running UL-MU-MIMO. Fixing this by adding the Firmware test command to
+disable the same for WFA testcases.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 1bb9f9a..3d028a7 100644
+--- a/ap.c
++++ b/ap.c
+@@ -8995,6 +8995,8 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname)
+ 			he_param &= ~(1 << 4); /* Bit 4 for DL OFDMA */
+ 		if (dut->ap_he_ulofdma != VALUE_ENABLED)
+ 			he_param &= ~(1 << 5); /* Bit 5 for UL OFDMA */
++		/* Disable UL TID de-register feature for UL MIMO*/
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 330 0", ifname);
+ 		run_system_wrapper(dut, "ath11k-fwtest -t 1 -i %s -m 0x00 -v 0 32770 %d", ifname, he_param);
+ 	}
+ 	if (dut->ap_mbssid_mu == VALUE_ENABLED) {
+@@ -11529,6 +11531,8 @@ hapd_started:
+ 			    && (dut->ap_he_mimo == MIMO_UL)) {
+ 				if (dut->ap_punct_bitmap)
+ 					fwtest_linkid_cmd_wrapper(dut, "-m 10 -v 0 86 1", ifname, i);
++				/* Disable UL TID de-register feature for UL MIMO*/
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 330 0", ifname, i);
+ 				continue;
+ 			}
+ 			fwtest_set_eht_params(dut, ifname, i);
+-- 
+2.34.1
+

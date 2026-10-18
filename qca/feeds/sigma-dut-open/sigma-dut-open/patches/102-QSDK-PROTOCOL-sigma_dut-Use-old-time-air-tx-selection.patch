@@ -1,0 +1,73 @@
+From ef88c86ced6dbcb40e45a97bc6d961a3d7495712 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Mon, 17 Feb 2025 10:19:48 +0530
+Subject: [PATCH] sigma_dut: Disable new Latency Aware TX selection
+
+Firmware change has been made to use a new Latency aware tx mode
+selection mode by default. This is causing issues in sigma_dut 13.0
+testcases need old Air time tx mode selection. Hence, a fwtest command
+has been added to use the old air time tx mode selection. This command
+to be issued for interfaces and link ids.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -12279,6 +12279,54 @@ hapd_started:
+ 		}
+ 	}
+ 
++	/* Disable latency aware txmode selection */
++	if (drv == DRIVER_MAC80211) {
++		char ifname2[50];
++		int i;
++
++		if (mode == AP_11be) {
++			/* MLO */
++			int num_bss = 0;
++
++			for (i = 0; i < dut->num_links; i++)
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 329 0", ifname, i);
++
++			if (dut->ap_mbssid == VALUE_ENABLED ) {
++				if (dut->multi_mbssid == VALUE_ENABLED) {
++					/* MBSSID grouping */
++					for (i = 0; i < dut->no_of_mbssid_groups; i++) {
++						num_bss += 1; /*increment for tx vap */
++						num_bss += dut->mbss_set[i].num_non_tx_bss;
++					}
++				}
++				else {
++					/* MBSSID */
++					num_bss = dut->mbss.num_non_tx_bss;
++				}
++
++				for (int j = 1; j < num_bss; j++) {
++					snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, j);
++					for (i = 0; i < dut->num_links; i++) {
++						fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 329 0", ifname2, i);
++					}
++				}
++			}
++		} else {
++			/* Non - MLO */
++			fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 329 0", ifname);
++
++			if (dut->ap_is_dual && (dut->mbss.num_non_tx_bss == 0)) {
++				snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, 1);
++				fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 329 0", ifname2);
++			}
++
++			for (i = 0; i < dut->mbss.num_non_tx_bss; i++) {
++				snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, i+1);
++				fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 329 0", ifname2);
++			}
++		}
++	}
++
+ 	if (dut->bridge && dut->ap_is_dual) {
+ 		if (run_system_wrapper(dut, "ifconfig %s up", dut->bridge)
+ 		    != 0) {

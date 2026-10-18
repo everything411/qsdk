@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include "ipq5424.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. IPQ5424 RDP487-C3";
+	compatible = "qcom,ipq5424-rdp487-c3", "qcom,ipq5424";
+
+	aliases {
+		serial0 = &uart1;
+	};
+
+	soc@0 {
+		qusb2_phy_0: qusb2_0@7B000 {
+			status = "okay";
+		};
+
+		usb3_1: usb3_1@8af8800 {
+			status = "okay";
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&mdio_pinmux>;
+			status = "okay";
+
+			phy1: phy@12 {
+				phy-reset-gpio = <&tlmm 28 0>;
+				phy_addr = <12>;
+				phy_type = <QCA81xx_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <1>;
+				uniphy_type = <0>;
+				xgmac;
+			};
+
+			phy2: ethernet-switch@1 {
+				phy-reset-gpio = <&tlmm 18 0>;
+				dev-mode = <0x1>;
+				phy_addr = <1>;
+				phy_type = <QCA8x8x_SWITCH_TYPE>;
+				id = <3>;
+				uniphy_id = <2>;
+				uniphy_type = <0>;
+				max_speed = <2500>;
+				force-speed;
+				xgmac;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port0: port@0 {
+						phy_addr = <0>;
+						label = "cpu";
+						phy-mode = "2500base-x";
+						fixed-link {
+							speed = <2500>;
+							full-duplex;
+						};
+					};
+
+					port1: port@1 {
+						phy_addr = <1>;
+						label = "lan";
+					};
+
+					port2: port@2 {
+						phy_addr = <2>;
+						label = "lan";
+					};
+
+					port3: port@3 {
+						phy_addr = <3>;
+						label = "lan";
+					};
+
+					port4: port@4 {
+						phy_addr = <4>;
+						label = "lan";
+					};
+				};
+			};
+		};
+
+		ethernet: nss-switch {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle1 = <&phy1>;
+			phy-handle2 = <&phy2>;
+			status = "okay";
+		};
+
+		pcie2: pcie@50000000 {
+			pinctrl-0 = <&pcie2_default_state>;
+			pinctrl-names = "default";
+			status = "okay";
+			perst-gpios = <&tlmm 31 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+&tlmm {
+	mdio_pinmux: mdio {
+		mdc {
+			pins = "gpio22";
+			function = "mdc_mst";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		mdio {
+			pins = "gpio23";
+			function = "mdio_mst";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	phy_rst_pinmux: phy_rst {
+		qti_laguna1_rst {
+			pins = "gpio28";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+
+		qti_8x8x_rst {
+			pins = "gpio18";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	pcie2_default_state: pcie2-default-state {
+		perst-n-pins {
+			pins = "gpio31";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-up;
+			output-low;
+		};
+	};
+};

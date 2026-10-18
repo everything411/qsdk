@@ -1,0 +1,451 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <asm/arch/dt-bindings/clock/qcom,ipq5210-gcc.h>
+#include <asm/arch/dt-bindings/reset/qcom,ipq5210-gcc.h>
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	bootph-all;
+	compatible = "qcom,ipq5210";
+
+	#address-cells = <2>;
+	#size-cells = <2>;
+	interrupt-parent = <&intc>;
+
+	aliases {
+		serial0 = &uart1;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		smem_mem: smem_region@87C00000 {
+			bootph-all;
+			reg = <0x0 0x87C00000 0x0 0x40000>;
+			no-map;
+		};
+	};
+
+	smem {
+		bootph-all;
+		compatible = "qcom,smem";
+		memory-region = <&smem_mem>;
+	};
+
+	soc@0 {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges = <0 0 0 0 0x10 0>;
+
+		tlmm: pinctrl@1000000 {
+			bootph-all;
+			compatible = "qcom,ipq5210-tlmm";
+			reg = <0 0x01000000 0 0x300000>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			gpio-ranges = <&tlmm 0 0 53>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+
+			uart1_pins: uart1-state {
+				bootph-all;
+				rx-pins {
+					pins = "gpio38";
+					function = "qup_se1_l3";
+					drive-strength = <6>;
+					bias-pull-down;
+					bootph-all;
+				};
+
+				tx-pins {
+					pins = "gpio39";
+					function = "qup_se1_l2";
+					drive-strength = <6>;
+					bias-pull-down;
+					bootph-all;
+				};
+			};
+
+			sdc_default_state: sdc-default-state {
+				bootph-all;
+				clk-pins {
+					bootph-all;
+					pins = "gpio5";
+					function = "sdc_clk";
+					drive-strength = <8>;
+					bias-disable;
+				};
+
+				cmd-pins {
+					bootph-all;
+					pins = "gpio4";
+					function = "sdc_cmd";
+					drive-strength = <8>;
+					bias-pull-up;
+				};
+
+				data-pins {
+					bootph-all;
+					pins = "gpio0", "gpio1", "gpio2", "gpio3";
+					function = "sdc_data";
+					drive-strength = <8>;
+					bias-pull-up;
+				};
+			};
+
+			spi0_pinmux: spi0 {
+				bootph-all;
+				spi0_sclk {
+					bootph-all;
+					pins = "gpio6";
+					function = "qup_se0_l2";
+					drive-strength = <8>;
+					bias-pull-down;
+				};
+
+				spi0_cs0 {
+					bootph-all;
+					pins = "gpio7";
+					function = "qup_se0_l3";
+					drive-strength = <8>;
+					bias-pull-up;
+				};
+
+				spi0_miso {
+					bootph-all;
+					pins = "gpio8";
+					function = "qup_se0_l0";
+					drive-strength = <8>;
+					bias-pull-down;
+				};
+
+				spi0_mosi {
+					bootph-all;
+					pins = "gpio9";
+					function = "qup_se0_l1";
+					drive-strength = <8>;
+					bias-pull-down;
+				};
+			};
+
+			qspi_pinmux: nand {
+				bootph-all;
+				qspi_data {
+					bootph-all;
+					pins = "gpio0", "gpio1", "gpio2","gpio3";
+					function = "qspi_data";
+					drive-strength = <8>;
+					bias-pull-up;
+				};
+
+				qspi_cs_n {
+					bootph-all;
+					pins = "gpio4";
+					function = "qspi_cs";
+					drive-strength = <8>;
+					bias-pull-up;
+				};
+
+				qspi_clk {
+					bootph-all;
+					pins = "gpio5";
+					function = "qspi_clk";
+					drive-strength = <8>;
+					bias-disable;
+				};
+			};
+		};
+
+		intc: interrupt-controller@b000000 {
+			bootph-all;
+			compatible = "qcom,msm-qgic2";
+			interrupt-controller;
+			#interrupt-cells = <3>;
+			reg = <0 0xb000000 0 0x1000>,  /*GICD*/
+				<0 0xb002000 0 0x1000>,  /*GICC*/
+				<0 0xb001000 0 0x1000>,  /*GICH*/
+				<0 0xb004000 0 0x1000>;  /*GICV*/
+			interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		tmel_qmp: tmel-qmp@32090000 {
+			bootph-all;
+			compatible = "qcom,tmel-qmp-mbox-secure";
+			reg = <0x0 0x32090000 0x0 0x20>,
+				<0x0 0x32091000 0x0 0x20>;
+			reg-names = "mcore", "ucore";
+
+			interrupts = <GIC_SPI 68 IRQ_TYPE_EDGE_RISING>;
+			max_pkt_size = <0x18>;
+
+			#mbox-cells = <0>;
+			status = "okay";
+		};
+
+		tmelcom: qcom,tmelcom {
+			bootph-all;
+			compatible = "qcom,tmelcom";
+			mboxes = <&tmel_qmp>;
+			mbox-names = "tmel-qmp-mbox";
+			#clock-cells = <1>;
+			#power-domain-cells = <1>;
+			#reset-cells = <1>;
+			status = "okay";
+		};
+
+		gcc: clock-controller@1800000 {
+			bootph-all;
+			compatible = "qcom,ipq5210-gcc";
+			reg = <0 0x01800000 0 0x40000>;
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+			#power-domain-cells = <1>;
+		};
+
+		gpll0: pll@1820000 {
+			bootph-all;
+			compatible = "qcom,ipq5210-clk-pll",
+					"qcom,ipq-clk-pll";
+			reg = <0 0x01820000 0 0x1000>;
+			#clock-cells = <0>;
+			clock-output-names = "gpll0";
+			fsm-vote-addr = <0x0180B000>;
+			fsm-vote-mask = <0x1>;
+			status = "okay";
+		};
+
+		gpll2: pll@1821000 {
+			bootph-all;
+			compatible = "qcom,ipq5210-clk-pll",
+					"qcom,ipq-clk-pll";
+			reg = <0 0x01821000 0 0x1000>;
+			#clock-cells = <0>;
+			clock-output-names = "gpll2";
+			fsm-vote-addr = <0x0180B000>;
+			fsm-vote-mask = <0x2>;
+			status = "okay";
+		};
+
+		gpll4: pll@1822000 {
+			bootph-all;
+			compatible = "qcom,ipq5210-clk-pll",
+					"qcom,ipq-clk-pll";
+			reg = <0 0x01822000 0 0x1000>;
+			#clock-cells = <0>;
+			clock-output-names = "gpll4";
+			fsm-vote-addr = <0x0180B000>;
+			fsm-vote-mask = <0x4>;
+			status = "okay";
+		};
+
+		apsspll: pll@b116000 {
+			bootph-all;
+			compatible = "qcom,ipq5210-clk-pll",
+					"qcom,ipq-clk-pll";
+			reg = <0 0x0b116000 0 0x1000>;
+			clock-output-names = "apsspll";
+			status = "okay";
+		};
+
+		apss_cpu: apss-cpu-clock@b111000 {
+			bootph-all;
+			compatible = "qcom,ipq5210-apss";
+			reg = <0 0x0b111000 0 0x1000>;
+			#clock-cells = <1>;
+		};
+
+		pll_init: qcom,ipq-init-plls {
+			bootph-all;
+			compatible = "qcom,ipq-init-plls";
+			plls = <&gpll0 &gpll2 &gpll4 &apsspll>;
+			status = "okay";
+		};
+
+		board_init_clks: qcom,ipq-init-clks {
+			bootph-all;
+			compatible = "qcom,ipq-init-clks";
+
+			clocks = <&gcc GCC_APCS_CLOCK_BRANCH_ENA_VOTE>,
+				 <&gcc GCC_APSS_DBG_CLK>,
+				 <&gcc GCC_APSS_TS_CLK>,
+				 <&gcc GCC_SNOC_QOSGEN_EXTREF_CLK>,
+				 <&gcc GCC_SYS_NOC_AT_CLK>,
+				 <&gcc GCC_SNOC_XO_DCD_CLK>,
+				 <&gcc GCC_SNOC_TS_CLK>,
+				 <&gcc GCC_PCNOC_AT_CLK>,
+				 <&gcc GCC_PCNOC_TS_CLK>,
+				 <&gcc GCC_CNOC_QOSGEN_EXTREF_CLK>;
+
+			assigned-clocks = <&apss_cpu APCS_ALIAS0_CLK>,
+					  <&gcc GCC_PCNOC_BFDCD_CLK>,
+					  <&gcc GCC_SYSTEM_NOC_BFDCD_CLK>,
+					  <&gcc GCC_APSS_AXI_CLK>,
+					  <&gcc GCC_APSS_AHB_CLK>,
+					  <&gcc GCC_QDSS_TSCTR_CLK>,
+					  <&gcc GCC_QDSS_AT_CLK>;
+			assigned-clock-rates = <1600000000>,
+					       <100000000>,
+					       <266666666>,
+					       <800000000>,
+					       <100000000>,
+					       <600000000>,
+					       <240000000>;
+
+			clock-names = "apcs_branch_vote",
+					"pcnoc_bfdcd",
+					"sysnoc_bfdcd";
+
+			status = "okay";
+		};
+
+		qupv3: geniqup@1ac0000 {
+			bootph-all;
+			compatible = "qcom,geni-se-qup";
+			reg = <0 0x01ac0000 0 0x2000>;
+			ranges;
+			clocks = <&gcc GCC_QUPV3_2X_CORE_CLK>,
+				 <&gcc GCC_QUPV3_AHB_MST_CLK>,
+				 <&gcc GCC_QUPV3_AHB_SLV_CLK>,
+				 <&gcc GCC_QUPV3_CORE_CLK>,
+				 <&gcc GCC_QUPV3_SLEEP_CLK>;
+			clock-names = "2x-core", "m-ahb", "s-ahb",
+					"core", "sleep";
+
+			assigned-clocks = <&gcc GCC_QUPV3_2X_CORE_CLK>;
+			assigned-clock-rates = <200000000>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+
+			status = "okay";
+
+			uart1: serial@1a84000 {
+				bootph-all;
+				compatible = "qcom,geni-debug-uart";
+				reg = <0 0x1a84000 0 0x4000>;
+				clocks = <&gcc GCC_QUPV3_UART1_CLK>;
+				clock-names = "se";
+				pinctrl-0 = <&uart1_pins>;
+				pinctrl-names = "default";
+				qup-se-fw-load = <&uart1_fw>;
+				status = "okay";
+			};
+
+			uart1_fw: uart_firmware@0 {
+				bootph-all;
+				compatible = "qcom,ipq5210-geni-uart-fw-v1",
+					     "qcom,geni-uart-fw-v1";
+				reg = <0 0x01a84000 0 0x4000>;
+				status = "okay";
+			};
+
+			spi0: spi@1a80000 {
+				bootph-all;
+				compatible = "qcom-ipq5210-geni-spi";
+				reg = <0 0x1a80000 0 0x4000>;
+				reg-names = "se_phys";
+				clocks = <&gcc GCC_QUPV3_SPI0_CLK>;
+				clock-names = "se-spi-clk";
+				clock-frequency = <50000000>;
+				nor-blk-enable;
+				status = "okay";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				qup-se-fw-load = <&spi0_fw>;
+
+				pinctrl-0 = <&spi0_pinmux>;
+				pinctrl-names = "default";
+
+				nor-flash@0 {
+					bootph-all;
+					compatible = "jedec,spi-nor";
+					reg = <0 0 0 0>;
+					spi-max-frequency = <50000000>;
+				};
+			};
+
+			spi0_fw: spi_firmware@0 {
+				bootph-all;
+				compatible = "qcom,ipq5210-geni-spi-fw-v1",
+					     "qcom,geni-spi-fw-v1";
+				reg = <0 0x1a80000 0 0x4000>;
+				reg-names = "se_phys";
+			};
+		};
+
+		sdhc: mmc@7804000 {
+			bootph-all;
+			compatible = "qcom,ipq5210-sdhci", "qcom,sdhci-msm-v5";
+			reg = <0 0x07804000 0 0x1000>, <0 0x07805000 0 0x1000>;
+			reg-names = "hc", "cqhci";
+
+			clocks = <&gcc GCC_SDCC1_AHB_CLK>,
+				 <&gcc GCC_SDCC1_APPS_CLK>;
+			clock-names = "iface", "core";
+
+			bus-width = <4>;
+			max-frequency = <192000000>;
+			mmc-ddr-1_8v;
+			non-removable;
+			pinctrl-0 = <&sdc_default_state>;
+			pinctrl-names = "default";
+			sdhci-caps-mask = <0x0 0x04000000>;
+			sdhci-caps = <0x0 0x04000000>;
+			resets = <&gcc GCC_SDCC_BCR>;
+			reset-names = "bcr_rst";
+			status = "okay";
+		};
+
+		nand: nand-controller@79b0000 {
+			bootph-all;
+			compatible = "qti,spi-nand-v2.1.3";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			reg = <0x0 0x79B0000 0x0 0x10000>;
+			assigned-clocks = <&gcc GCC_QPIC_CLK>,
+					 <&gcc GCC_QPIC_IO_MACRO_CLK>;
+			assigned-clock-rates = <100000000>, <200000000>;
+			max_clk_feaquency = <400000000>;
+			clock-names = "qpic-clk",
+				      "qpic-io-macro-clk",
+				      "qpic-ahb-clk";
+			clocks = <&gcc GCC_QPIC_CLK>,
+				<&gcc GCC_QPIC_IO_MACRO_CLK>,
+				<&gcc GCC_QPIC_AHB_CLK>;
+			resets = <&gcc GCC_QPIC_BCR>;
+			reset-names = "bcr_rst";
+
+			bam_reg = <0x07984000>;
+			status_pipe = <3>;
+			status_pipe_grp = <0>;
+			read_pipe = <1>;
+			read_pipe_grp = <0>;
+			write_pipe = <0>;
+			write_pipe_grp = <0>;
+			cmd_pipe = <2>;
+			cmd_pipe_grp = <1>;
+			pinctrl-0 = <&qspi_pinmux>;
+			pinctrl-names = "default";
+			status = "okay";
+		};
+
+		restart@4ab000 {
+			bootph-all;
+			compatible = "qcom,pshold";
+			reg = <0x0 0x4AB000 0x0 0x4>;
+			status = "okay";
+		};
+	};
+};

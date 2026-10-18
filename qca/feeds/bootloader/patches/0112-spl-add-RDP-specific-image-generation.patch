@@ -1,0 +1,324 @@
+From 9fb4e7eca1c4823d57d8ada546cb9832913e7693 Mon Sep 17 00:00:00 2001
+From: M A Priyanka <priyma@qti.qualcomm.com>
+Date: Thu, 16 Jul 2026 10:33:11 +0530
+Subject: [PATCH] spl: add RDP-specific image generation
+
+Add SPL RDP image generation rules for building RDP-specific DTBs,
+images and ELF wrappers from the active device-tree profile.
+
+Derive the RDP profile from CONFIG_DEFAULT_DEVICE_TREE, search the
+active DTS directory for matching <profile>-rdp*.dts files and use
+fdtgrep to produce SPL-only DTBs containing the bootph-tagged nodes
+required before DRAM.
+
+For each discovered RDP variant, append the pruned DTB to
+u-boot-spl-nodtb.bin with the configured DTB pad and wrap the image as
+u-boot-spl-<rdp>.elf. This lets one SPL build emit board-specific
+artifacts consumed by the IPQ RDP packaging flow.
+
+Signed-off-by: M A Priyanka <priyma@qti.qualcomm.com>
+Change-Id: I2ae9c465189383b329e214653a037bac33e65570
+(cherry picked from commit c80f9448e80028cc3e6b0be37e53ee8a26d0bc82)
+---
+ scripts/Makefile.xpl | 267 ++++++++++++++++++++++++++++++-------------
+ 1 file changed, 186 insertions(+), 81 deletions(-)
+
+diff --git a/scripts/Makefile.xpl b/scripts/Makefile.xpl
+index 102d71efa38..b734a3e14bc 100644
+--- a/scripts/Makefile.xpl
++++ b/scripts/Makefile.xpl
+@@ -271,6 +271,59 @@ INPUTS-y	+= $(obj)/$(SPL_BIN).bin $(obj)/$(SPL_BIN).sym
+ # identically for SPL, TPL and VPL.
+ INPUTS-$(CONFIG_$(PHASE_)REMAKE_ELF) += $(obj)/$(SPL_BIN).elf
+ 
++ifeq ($(CONFIG_OF_UPSTREAM),y)
++ifeq ($(CONFIG_ARM64),y)
++dt_dir := dts/upstream/src/arm64
++else
++dt_dir := dts/upstream/src/$(ARCH)
++endif
++else
++dt_dir := arch/$(ARCH)/dts
++endif
++
++# SPL RDP variant outputs, enabled by CONFIG_SPL_RDP_IMAGE_GENERATION:
++#   - discover <profile>-rdp*.dts under the active DTS directory/profile
++#   - fdtgrep each one down to bootph-tagged nodes only -> <profile>-rdp*-spl.dtb
++#   - append the pad and pruned DTB to u-boot-spl-nodtb.bin -> <profile>-rdp*.img
++#   - wrap each .img into an ELF -> u-boot-spl-<profile>-rdp*.elf
++#
++# Keep this SPL-only since the flow is defined around u-boot-spl-nodtb.bin.
++ifeq ($(CONFIG_SPL_BUILD)$(CONFIG_SPL_RDP_IMAGE_GENERATION),yy)
++SPL_DEFAULT_DTB := $(patsubst "%",%,$(CONFIG_DEFAULT_DEVICE_TREE))
++SPL_RDP_PROFILE := $(patsubst %-u-boot-spl,%,$(SPL_DEFAULT_DTB))
++SPL_RDP_PROFILE := $(word 1,$(subst -rdp, ,$(SPL_RDP_PROFILE)))
++SPL_RDP_DTB_GLOB := $(if $(SPL_RDP_PROFILE),\
++	$(srctree)/$(dt_dir)/$(SPL_RDP_PROFILE)-rdp*.dts)
++SPL_RDP_DTB_SEARCH := $(if $(SPL_RDP_DTB_GLOB),$(SPL_RDP_DTB_GLOB),\
++	(empty - SPL_RDP_PROFILE not derived from CONFIG_DEFAULT_DEVICE_TREE))
++SPL_RDP_DTB_SRCS := $(wildcard $(SPL_RDP_DTB_GLOB))
++SPL_RDP_VARIANTS := $(basename $(notdir $(SPL_RDP_DTB_SRCS)))
++ifeq ($(strip $(SPL_RDP_VARIANTS)),)
++$(warning CONFIG_SPL_RDP_IMAGE_GENERATION=y but no SPL RDP variants were found: \
++	CONFIG_DEFAULT_DEVICE_TREE=$(SPL_DEFAULT_DTB), profile=$(SPL_RDP_PROFILE), \
++	searched=$(SPL_RDP_DTB_SEARCH))
++endif
++SPL_RDP_ELFS := $(addprefix $(obj)/$(SPL_BIN)-,$(addsuffix .elf,$(SPL_RDP_VARIANTS)))
++SPL_RDP_IMGS := $(addprefix $(obj)/,$(addsuffix .img,$(SPL_RDP_VARIANTS)))
++SPL_RDP_ELF_OBJS := $(addprefix $(obj)/,$(addsuffix -elf.o,$(SPL_RDP_VARIANTS)))
++SPL_RDP_FULL_DTBS := $(addprefix $(obj)/,$(addsuffix -spl-full.dtb,$(SPL_RDP_VARIANTS)))
++SPL_RDP_PRUNED_DTBS := $(addprefix $(obj)/,$(addsuffix -spl.dtb,$(SPL_RDP_VARIANTS)))
++
++INPUTS-y += $(SPL_RDP_ELFS)
++targets += $(SPL_RDP_FULL_DTBS) $(SPL_RDP_PRUNED_DTBS) \
++	$(SPL_RDP_ELFS) $(SPL_RDP_IMGS) $(SPL_RDP_ELF_OBJS)
++endif
++
++SPL_ELF_WRAPPER_NEEDED := $(strip $(CONFIG_$(PHASE_)REMAKE_ELF)$(SPL_RDP_VARIANTS))
++
++ifneq ($(SPL_ELF_WRAPPER_NEEDED),)
++targets += $(obj)/$(SPL_BIN)-elf.lds
++endif
++
++ifeq ($(CONFIG_$(PHASE_)REMAKE_ELF),y)
++targets += $(obj)/$(SPL_BIN).elf $(obj)/$(SPL_BIN)-elf.o
++endif
++
+ ifneq ($(CONFIG_ARCH_EXYNOS)$(CONFIG_ARCH_S5PC1XX),)
+ INPUTS-y	+= $(obj)/$(BOARD)-spl.bin
+ endif
+@@ -486,77 +539,6 @@ quiet_cmd_sym ?= SYM     $@
+       cmd_sym ?= $(OBJDUMP) -t $< > $@
+ $(obj)/$(SPL_BIN).sym: $(obj)/$(SPL_BIN) FORCE
+ 	$(call if_changed,sym)
+-
+-# ---------------------------------------------------------------------------
+-# ELF wrapping for xPL binary  (CONFIG_SPL_REMAKE_ELF / TPL / VPL)
+-#
+-# Mirrors CONFIG_REMAKE_ELF in the top-level Makefile and the manual steps
+-# performed by scripts/jobs/QSDK_2.0_DAILY_BUILD.sh:
+-#
+-#   1. A minimal linker script is generated from the phase-specific text-base
+-#      (CONFIG_SPL_TEXT_BASE / TPL / VPL) and text-size
+-#      (CONFIG_SPL_TEXT_SIZE / TPL / VPL).  The script defines a single SRAM
+-#      MEMORY region, a PT_LOAD program header and a .data section so that the
+-#      resulting ELF carries the correct load address.
+-#
+-#   2. objcopy converts the raw binary to a relocatable ELF object, stamping
+-#      the load/start address with --change-addresses / --set-start.
+-#      PLATFORM_ELFFLAGS (set in arch/$(ARCH)/config.mk, e.g.
+-#      "-B aarch64 -O elf64-littleaarch64" for ARM64) selects the correct
+-#      output BFD target, making the rule generic across architectures.
+-#
+-#   3. ld links the object with the generated linker script to produce the
+-#      final ELF with a correct PT_LOAD segment.
+-#
+-# The output is $(obj)/$(SPL_BIN).elf  (e.g. spl/u-boot-spl.elf).
+-# ---------------------------------------------------------------------------
+-
+-# Phase-specific text base and size.
+-# SPL_ELF_TEXT_SIZE falls back to 0x100000 (1 MiB) when not configured.
+-SPL_ELF_TEXT_BASE := $(CONFIG_$(PHASE_)TEXT_BASE)
+-SPL_ELF_TEXT_SIZE := $(if $(CONFIG_$(PHASE_)TEXT_SIZE),$(CONFIG_$(PHASE_)TEXT_SIZE),0x100000)
+-
+-# Generate the minimal ELF linker script for the xPL binary.
+-quiet_cmd_spl_elf_lds = GEN     $@
+-define cmd_spl_elf_lds
+-	( \
+-	printf 'MEMORY {\n'; \
+-	printf '\tSRAM (rxw) : ORIGIN = %s, LENGTH = %s\n' \
+-		"$(SPL_ELF_TEXT_BASE)" "$(SPL_ELF_TEXT_SIZE)"; \
+-	printf '}\n'; \
+-	printf 'PHDRS {\n\tptype PT_LOAD FLAGS(5);\n}\n'; \
+-	printf 'ENTRY(_entry)\n'; \
+-	printf 'SECTIONS {\n'; \
+-	printf '\t. = %s;\n' "$(SPL_ELF_TEXT_BASE)"; \
+-	printf '\t_entry = . ;\n'; \
+-	printf '\t.data : { *(.data) . = ALIGN(4); } > SRAM :ptype\n'; \
+-	printf '\t_end = .;\n'; \
+-	printf '}\n'; \
+-	) > $@
+-endef
+-
+-$(obj)/$(SPL_BIN)-elf.lds: FORCE
+-	$(call if_changed,spl_elf_lds)
+-
+-# Wrap the xPL binary into an ELF file.
+-# Step 1: objcopy converts the raw binary to a relocatable ELF object and
+-#         sets the load/start address to SPL_ELF_TEXT_BASE.
+-# Step 2: ld links the object with the generated linker script to produce
+-#         a final ELF with a correct PT_LOAD program header.
+-quiet_cmd_spl_remake_elf = LD      $@
+-define cmd_spl_remake_elf
+-	$(OBJCOPY) -I binary $(PLATFORM_ELFFLAGS) \
+-		--change-addresses $(SPL_ELF_TEXT_BASE) \
+-		--set-start $(SPL_ELF_TEXT_BASE) \
+-		$< $(obj)/$(SPL_BIN)-elf.o && \
+-	$(LD) $(obj)/$(SPL_BIN)-elf.o \
+-		-T $(obj)/$(SPL_BIN)-elf.lds \
+-		-o $@
+-endef
+-
+-$(obj)/$(SPL_BIN).elf: $(obj)/$(SPL_BIN).bin $(obj)/$(SPL_BIN)-elf.lds FORCE
+-	$(call if_changed,spl_remake_elf)
+-
+ # Generate linker list symbols references to force compiler to not optimize
+ # them away when compiling with LTO
+ ifdef CONFIG_LTO
+@@ -653,16 +635,6 @@ FORCE:
+ $(obj)/dts/dt-$(SPL_NAME).dtb: dts/dt.dtb
+ 	$(Q)$(MAKE) $(build)=$(obj)/dts spl_dtbs
+ 
+-ifeq ($(CONFIG_OF_UPSTREAM),y)
+-ifeq ($(CONFIG_ARM64),y)
+-dt_dir := dts/upstream/src/arm64
+-else
+-dt_dir := dts/upstream/src/$(ARCH)
+-endif
+-else
+-dt_dir := arch/$(ARCH)/dts
+-endif
+-
+ # Declare the contents of the .PHONY variable as phony.  We keep that
+ # information in a variable so we can use it in if_changed and friends.
+ .PHONY: $(PHONY)
+@@ -699,3 +671,136 @@ ifdef CONFIG_ARCH_K3
+ tispl.bin: $(obj)/u-boot-spl-nodtb.bin $(SHRUNK_ARCH_DTB) $(SPL_ITS) FORCE
+ 	$(call if_changed,mkfitimage)
+ endif
++
++
++# ---------------------------------------------------------------------------
++# ELF wrapping for xPL binary  (CONFIG_SPL_REMAKE_ELF / TPL / VPL)
++#
++# Mirrors CONFIG_REMAKE_ELF in the top-level Makefile and the manual steps
++# performed by scripts/jobs/QSDK_2.0_DAILY_BUILD.sh:
++#
++#   1. A minimal linker script is generated from the phase-specific text-base
++#      (CONFIG_SPL_TEXT_BASE / TPL / VPL) and text-size
++#      (CONFIG_SPL_TEXT_SIZE / TPL / VPL).  The script defines a single SRAM
++#      MEMORY region, a PT_LOAD program header and a .data section so that the
++#      resulting ELF carries the correct load address.
++#
++#   2. objcopy converts the raw binary to a relocatable ELF object, stamping
++#      the load/start address with --change-addresses / --set-start.
++#      PLATFORM_ELFFLAGS (set in arch/$(ARCH)/config.mk, e.g.
++#      "-B aarch64 -O elf64-littleaarch64" for ARM64) selects the correct
++#      output BFD target, making the rule generic across architectures.
++#
++#   3. ld links the object with the generated linker script to produce the
++#      final ELF with a correct PT_LOAD segment.
++#
++# The output is $(obj)/$(SPL_BIN).elf  (e.g. spl/u-boot-spl.elf).
++# ---------------------------------------------------------------------------
++
++# Phase-specific text base and size.
++# SPL_ELF_TEXT_SIZE falls back to 0x100000 (1 MiB) when not configured.
++ifneq ($(SPL_ELF_WRAPPER_NEEDED),)
++SPL_ELF_TEXT_BASE := $(CONFIG_$(PHASE_)TEXT_BASE)
++SPL_ELF_TEXT_SIZE := $(if $(CONFIG_$(PHASE_)TEXT_SIZE),$(CONFIG_$(PHASE_)TEXT_SIZE),0x100000)
++
++ifeq ($(SPL_ELF_TEXT_BASE),)
++$(error CONFIG_$(PHASE_)TEXT_BASE must be set to use the ELF-wrapping or \
++	RDP image generation rules)
++endif
++
++# Generate the minimal ELF linker script for the xPL binary.
++quiet_cmd_spl_elf_lds = GEN     $@
++define cmd_spl_elf_lds
++	( \
++	printf 'MEMORY {\n'; \
++	printf '\tSRAM (rxw) : ORIGIN = %s, LENGTH = %s\n' \
++		"$(SPL_ELF_TEXT_BASE)" "$(SPL_ELF_TEXT_SIZE)"; \
++	printf '}\n'; \
++	printf 'PHDRS {\n\tptype PT_LOAD FLAGS(5);\n}\n'; \
++	printf 'ENTRY(_entry)\n'; \
++	printf 'SECTIONS {\n'; \
++	printf '\t. = %s;\n' "$(SPL_ELF_TEXT_BASE)"; \
++	printf '\t_entry = . ;\n'; \
++	printf '\t.data : { *(.data) . = ALIGN(4); } > SRAM :ptype\n'; \
++	printf '\t_end = .;\n'; \
++	printf '}\n'; \
++	) > $@
++endef
++
++$(obj)/$(SPL_BIN)-elf.lds: FORCE
++	$(call if_changed,spl_elf_lds)
++
++# Wrap the xPL binary into an ELF file.
++# Step 1: objcopy converts the raw binary to a relocatable ELF object and
++#         sets the load/start address to SPL_ELF_TEXT_BASE.
++# Step 2: ld links the object with the generated linker script to produce
++#         a final ELF with a correct PT_LOAD program header.
++quiet_cmd_spl_remake_elf_objcopy = OBJCOPY $@
++cmd_spl_remake_elf_objcopy = $(OBJCOPY) -I binary $(PLATFORM_ELFFLAGS) \
++		--change-addresses $(SPL_ELF_TEXT_BASE) \
++		--set-start $(SPL_ELF_TEXT_BASE) \
++		$< $@
++
++quiet_cmd_spl_remake_elf = LD      $@
++cmd_spl_remake_elf = $(LD) $< -T $(obj)/$(SPL_BIN)-elf.lds -o $@
++
++$(obj)/$(SPL_BIN)-elf.o: $(obj)/$(SPL_BIN).bin FORCE
++	$(call if_changed,spl_remake_elf_objcopy)
++
++$(obj)/$(SPL_BIN).elf: $(obj)/$(SPL_BIN)-elf.o $(obj)/$(SPL_BIN)-elf.lds FORCE
++	$(call if_changed,spl_remake_elf)
++endif
++
++ifeq ($(CONFIG_SPL_BUILD)$(CONFIG_SPL_RDP_IMAGE_GENERATION),yy)
++ifneq ($(strip $(SPL_RDP_VARIANTS)),)
++quiet_cmd_spl_rdp_img = CAT     $@
++cmd_spl_rdp_img = cat $< \
++	$(if $(CONFIG_$(PHASE_)SEPARATE_BSS),,$(obj)/$(SPL_BIN)-pad.bin) \
++	$(filter %.dtb,$^) > $@
++
++quiet_cmd_spl_rdp_objcopy = OBJCOPY $@
++cmd_spl_rdp_objcopy = $(OBJCOPY) -I binary $(PLATFORM_ELFFLAGS) \
++	--change-addresses $(SPL_ELF_TEXT_BASE) \
++	--set-start $(SPL_ELF_TEXT_BASE) \
++	$< $@
++
++quiet_cmd_spl_rdp_ld = LD      $@
++cmd_spl_rdp_ld = $(LD) $< -T $(obj)/$(SPL_BIN)-elf.lds -o $@
++
++# Build each RDP DTS in the SPL make context so DTS preprocessing sees
++# CONFIG_SPL_BUILD, then prune it down to the bootph-tagged nodes SPL needs,
++# exactly like $(obj)/dts/dt-$(SPL_NAME).dtb does for the default SPL device
++# tree (see cmd_fdtgrep in Makefile.lib).
++define spl_rdp_full_dtb_template
++$(obj)/$(1)-spl-full.dtb: $(srctree)/$(dt_dir)/$(1).dts $(DTC) $(dtsi_include_list_deps) $(DT_TMP_SCHEMA) FORCE
++	$$(call if_changed_dep,dtb)
++endef
++
++$(foreach spl_rdp_variant,$(SPL_RDP_VARIANTS), \
++	$(eval $(call spl_rdp_full_dtb_template,$(spl_rdp_variant))))
++
++define spl_rdp_pruned_dtb_template
++$(obj)/$(1)-spl.dtb: $(obj)/$(1)-spl-full.dtb $(objtree)/tools/fdtgrep FORCE
++	$$(call if_changed,fdtgrep)
++endef
++
++$(foreach spl_rdp_variant,$(SPL_RDP_VARIANTS), \
++	$(eval $(call spl_rdp_pruned_dtb_template,$(spl_rdp_variant))))
++
++define spl_rdp_elf_template
++$(obj)/$(1).img: $(obj)/$(SPL_BIN)-nodtb.bin \
++		$(if $(CONFIG_$(PHASE_)SEPARATE_BSS),,$(obj)/$(SPL_BIN)-pad.bin) \
++		$(obj)/$(1)-spl.dtb FORCE
++	$$(call if_changed,spl_rdp_img)
++
++$(obj)/$(1)-elf.o: $(obj)/$(1).img FORCE
++	$$(call if_changed,spl_rdp_objcopy)
++
++$(obj)/$(SPL_BIN)-$(1).elf: $(obj)/$(1)-elf.o $(obj)/$(SPL_BIN)-elf.lds FORCE
++	$$(call if_changed,spl_rdp_ld)
++endef
++
++$(foreach spl_rdp_variant,$(SPL_RDP_VARIANTS), \
++	$(eval $(call spl_rdp_elf_template,$(spl_rdp_variant))))
++endif
++endif
+-- 
+2.34.1
+

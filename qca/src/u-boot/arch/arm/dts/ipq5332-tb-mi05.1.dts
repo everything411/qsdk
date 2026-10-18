@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+#include "ipq5332-default.dts"
+
+/ {
+	config_name = "config@tb-mi05.1", "config-tb-mi05.1";
+
+	soc: soc {
+		tlmm: pinctrl@1000000 {
+			mdio_pinmux: mdio {
+				mdc {
+					pins = "GPIO_27";
+					function = "mdc_1";
+					drive-strength = <DRIVE_STRENGTH_2MA>;
+					bias-disable;
+				};
+
+				mdio {
+					pins = "GPIO_28";
+					function = "mdio_1";
+					drive-strength = <DRIVE_STRENGTH_2MA>;
+					bias-pull-up;
+				};
+			};
+
+			phy_rst_pinmux: phy_rst {
+				qti_8081_lan_rst {
+					pins = "GPIO_51";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qti_8081_wan_rst {
+					pins = "GPIO_22";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			blsp1_i2c_pinmux: blsp1_i2c_pins {
+				blsp1_scl {
+					pins = "GPIO_29";
+					function = "blsp1_i2c_scl0";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				blsp1_sda {
+					pins = "GPIO_30";
+					function = "blsp1_i2c_sda0";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie1_x2_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_47";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+		};
+
+		blsp1_i2c: i2c@78B6000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&blsp1_i2c_pinmux>;
+			status = "okay";
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&mdio_pinmux>;
+			status = "okay";
+
+			phy0: phy@24 {
+				phy-reset-gpio = <&tlmm 51 0>;
+				reg = <24>;
+				phy_id = <QCA8081_PHY_TYPE>;
+				id = <1>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+				max_speed = <2500>;
+				xgmac;
+			};
+
+			phy1: phy@28 {
+				phy-reset-gpio = <&tlmm 22 0>;
+				reg = <28>;
+				phy_id = <QCA8081_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <1>;
+				uniphy_type = <0>;
+				max_speed = <2500>;
+				xgmac;
+			};
+		};
+
+		ethernet: nss-switch {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			status = "okay";
+		};
+
+		pcie1_x2: pci@18000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie1_x2_pinmux>;
+			num-lanes = <2>;
+			perst_gpio = <&tlmm 47 0>;
+			status = "okay";
+		};
+	};
+};

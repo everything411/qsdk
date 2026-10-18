@@ -1,0 +1,49 @@
+From e8e45609f75a2bbc1552753917da23c5a28698f3 Mon Sep 17 00:00:00 2001
+From: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+Date: Thu, 19 Feb 2026 02:49:58 +0530
+Subject: [PATCH] clk: qcom: add alpha PLL support
+
+Enable generic Qualcomm PLL support by introducing the
+CLK_QCOM_PLL Kconfig option and building the common
+alpha PLL implementation. This allows IPQ platforms
+to register and use PLL clock providers
+
+Change-Id: I7a25486619e41faa6dbd8338f9826aadf6e356cd
+Signed-off-by: Khaja Abdul Nabil M <kkhajaab@qti.qualcomm.com>
+---
+ drivers/clk/qcom/Kconfig  | 6 ++++++
+ drivers/clk/qcom/Makefile | 1 +
+ 2 files changed, 7 insertions(+)
+
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index 69eef58a8d2..d0edada87a7 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -5,6 +5,12 @@ config CLK_QCOM
+ 	depends on CLK && DM_RESET && POWER_DOMAIN
+ 	def_bool n
+ 
++config CLK_QCOM_PLL
++	bool "Qualcomm generic PLL clock support"
++	depends on CLK && DM
++	help
++	  Enable a generic PLL clock framework for IPQ platforms.
++
+ menu "Qualcomm clock drivers"
+ 
+ config CLK_QCOM_APQ8016
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index 59b04a67b47..dcccc1d1cde 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -3,6 +3,7 @@
+ # (C) Copyright 2023 Linaro
+ 
+ obj-y += clock-qcom.o
++obj-$(CONFIG_CLK_QCOM_PLL) += clk-alpha-pll.o
+ obj-$(CONFIG_CLK_QCOM_SDM845) += clock-sdm845.o
+ obj-$(CONFIG_CLK_QCOM_APQ8016) += clock-apq8016.o
+ obj-$(CONFIG_CLK_QCOM_APQ8096) += clock-apq8096.o
+-- 
+2.34.1
+

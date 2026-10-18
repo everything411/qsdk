@@ -1,0 +1,55 @@
+From b35510251f66a2293b76368e15795889ce9f3548 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Wed, 3 Sep 2025 10:23:52 +0530
+Subject: [PATCH] usb: dwc3: Configure GUCTL and GFLADJ for QCOM
+
+Add support for platform-specific configuration
+of the DWC3 controller on QCOM SoCs. The
+GUCTL register is programmed to adjust global
+USB control settings, including reference clock
+behavior. The GFLADJ register is updated to tune
+frame length alignment for proper USB timing.
+
+These adjustments ensure stable operation of the
+USB PHY and controller on QCOM platforms.
+
+Change-Id: I6abda1b22a8f2c1ca4134a851903dfea5ab19a0a
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/usb/dwc3/dwc3-generic.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/drivers/usb/dwc3/dwc3-generic.c b/drivers/usb/dwc3/dwc3-generic.c
+index 21452ad1569..c2a5b8d85a2 100644
+--- a/drivers/usb/dwc3/dwc3-generic.c
++++ b/drivers/usb/dwc3/dwc3-generic.c
+@@ -120,6 +120,26 @@ static int dwc3_generic_probe(struct udevice *dev,
+ 	priv->base = map_physmem(plat->base, DWC3_OTG_REGS_END, MAP_NOCACHE);
+ 	dwc3->regs = priv->base + DWC3_GLOBALS_REGS_START;
+ 
++	 if (device_is_compatible(dev->parent, "qcom,dwc3")) {
++		uint32_t cfg_val;
++
++		rc = dev_read_u32u(dev->parent, "qcom,quirk-ref-clk-per",
++				   &cfg_val);
++		if (!rc) {
++			dwc3_writel(dwc3->regs, DWC3_GUCTL, cfg_val);
++			if (dwc3_readl(dwc3->regs, DWC3_GUCTL) != cfg_val)
++				debug("Failed to set GUCTL register\n");
++		}
++
++		rc = dev_read_u32u(dev->parent, "qcom,quirk-ref-clk-adj",
++				   &cfg_val);
++		if (!rc) {
++			dwc3_writel(dwc3->regs, DWC3_GFLADJ, cfg_val);
++			if (dwc3_readl(dwc3->regs, DWC3_GFLADJ) != cfg_val)
++				debug("Failed to set GFLADJ register\n");
++		}
++	}
++
+ 	rc =  dwc3_init(dwc3);
+ 	if (rc) {
+ 		unmap_physmem(priv->base, MAP_NOCACHE);
+-- 
+2.34.1
+

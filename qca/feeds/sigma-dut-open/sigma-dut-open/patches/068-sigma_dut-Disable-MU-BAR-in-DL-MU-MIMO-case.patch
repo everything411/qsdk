@@ -1,0 +1,55 @@
+From eea68d6427b518f386f9e3b6eb8b307f4b99ca26 Mon Sep 17 00:00:00 2001
+From: Manish Dharanenthiran <quic_mdharane@quicinc.com>
+Date: Thu, 16 Mar 2023 12:25:47 +0530
+Subject: [PATCH] sigma_dut: Disable MU BAR in DL MU MIMO case
+
+For some WFA stations, if MU BAR is enabled in DL MU MIMO
+case, PER is increased hence the MCS gets reduced. Because
+of this, most of the packets are sent in SU PPDU instead of
+MU PPDU.
+
+Since Waikiki aP does MUBAR by default,
+fix this by disabling MU_BAR for all DL MU MIMO case to
+do SU BAR.
+
+Signed-off-by: Manish Dharanenthiran <quic_mdharane@quicinc.com>
+---
+ ap.c | 20 +++++++++++++-------
+ 1 file changed, 13 insertions(+), 7 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -8462,6 +8462,19 @@ static void fwtest_set_he_params(struct
+ 		fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 21 0", ifname);
+ 	}
+ 
++	if (dut->ap_band != BAND_2G && dut->ap_he_mimo == MIMO_DL) {
++		mac80211_set_mu_brp_commands(dut, ifname);
++		/* Increase MU traffic */
++		run_system_wrapper(dut,
++				   "ath11k-fwtest -i %s -m 0x48 -v 0 100 2",
++				   ifname);
++	}
++
++	/* Disable MU_BAR for DL MU MIMO */
++	if (dut->ap_he_ppdu == PPDU_MU && dut->ap_he_mimo == MIMO_DL)
++		run_system_wrapper(dut,
++				   "ath11k-fwtest -i %s -m 0x47 -v 2 166 1",
++				   ifname);
+ }
+ 
+ static void fwtest_set_he_params_link_id(struct sigma_dut *dut, const char *ifname, int link_id)
+@@ -9915,13 +9928,6 @@ skip_key_mgmt:
+ 			fclose(f);
+ 			return 0;
+ 		}
+-		 if (dut->ap_he_mimo == MIMO_DL) {
+-			mac80211_set_mu_brp_commands(dut, ifname);
+-			/* Increase MU traffic */
+-			run_system_wrapper(dut,
+-					   "ath11k-fwtest -i %s -m 0x48 -v 0 100 2",
+-					   ifname);
+-		}
+ 
+ 		switch (chwidth) {
+ 		case AP_20:

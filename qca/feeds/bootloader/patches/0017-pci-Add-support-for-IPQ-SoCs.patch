@@ -1,0 +1,247 @@
+From b8b5035a5af66e4ba74df71a0718bb7e0484e4a1 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Thu, 15 May 2025 15:46:19 +0530
+Subject: [PATCH] pci: Add support for IPQ SoCs
+
+This update adds support for IPQ9574, IPQ5332,
+and IPQ5424 SoCs, including SKU validation.
+
+Change-Id: Ic05ea65e0b28f54616c4be6954f8f0541376308a
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/pci/pcie_dw_qcom.c | 147 ++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 146 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/pci/pcie_dw_qcom.c b/drivers/pci/pcie_dw_qcom.c
+index 39b4cd4efe2..e140bc91570 100644
+--- a/drivers/pci/pcie_dw_qcom.c
++++ b/drivers/pci/pcie_dw_qcom.c
+@@ -23,10 +23,24 @@
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
++#define MAX_PCIE				6
++
+ struct qcom_pcie;
+ 
++struct pcie_info {
++	phys_addr_t reg;
++	uint8_t sts_bit;
++};
++
++struct pcie_sku {
++	int max_pcie;
++	struct pcie_info sku_info[MAX_PCIE];
++};
++
+ struct qcom_pcie_ops {
+ 	int (*config_sid)(struct qcom_pcie *priv);
++	int (*clear_sid)(struct qcom_pcie *priv);
++	const struct pcie_sku *sku;
+ };
+ 
+ #define NUM_SUPPLIES	2
+@@ -41,6 +55,7 @@ struct qcom_pcie {
+ 	struct gpio_desc rst_gpio;
+ 	struct qcom_pcie_ops *ops;
+ 	struct udevice *vregs[NUM_SUPPLIES];
++	int id;
+ };
+ 
+ /* PARF registers */
+@@ -289,6 +304,37 @@ static int qcom_pcie_config_sid_1_9_0(struct qcom_pcie *priv)
+ 	return 0;
+ }
+ 
++static bool is_pcie_available(struct qcom_pcie *priv,
++				const struct pcie_sku *sku)
++{
++	int id = priv->id;
++
++	if (sku == NULL)
++		return true;;
++
++	if (id > sku->max_pcie) {
++		dev_err(priv->dw.dev, "PCIE%d invalid id\n", id);
++		return false;
++	}
++
++
++	if (readl(sku->sku_info[id].reg) & (1 << sku->sku_info[id].sts_bit)) {
++		dev_err(priv->dw.dev, "PCIE%d disabled\n", id);
++		return false;
++	}
++
++	return true;
++}
++
++static int qcom_pcie_clear_sidtable(struct qcom_pcie *priv)
++{
++	void *bdf_to_sid_base = priv->parf + PARF_BDF_TO_SID_TABLE_N;
++
++	memset_io(bdf_to_sid_base, 0, CRC8_TABLE_SIZE * sizeof(u32));
++
++	return 0;
++}
++
+ static void qcom_pcie_configure(struct qcom_pcie *priv)
+ {
+ 	u32 val;
+@@ -486,6 +532,8 @@ static int qcom_pcie_parse_dt(struct udevice *dev)
+ 			dev_warn(dev, "failed to get regulator %d (%d)\n", vreg, ret);
+ 	}
+ 
++	priv->id = dev_read_u32_default(dev, "id", 0);
++
+ 	return 0;
+ }
+ 
+@@ -504,26 +552,37 @@ static int qcom_pcie_probe(struct udevice *dev)
+ 	struct qcom_pcie *priv = dev_get_priv(dev);
+ 	struct udevice *ctlr = pci_get_controller(dev);
+ 	struct pci_controller *hose = dev_get_uclass_priv(ctlr);
++	struct qcom_pcie_ops *ops =
++			(struct qcom_pcie_ops *)dev_get_driver_data(dev);
+ 	int ret = 0;
+ 
+ 	priv->dw.first_busno = dev_seq(dev);
+ 	priv->dw.dev = dev;
++	priv->ops = ops;
+ 
+ 	ret = qcom_pcie_parse_dt(dev);
+ 	if (ret)
+ 		return ret;
+ 
++	if (ops->sku && !(is_pcie_available(priv, ops->sku)))
++		return -ENXIO;
++
+ 	ret = qcom_pcie_init_port(dev);
+ 	if (ret) {
+ 		dm_gpio_free(dev, &priv->rst_gpio);
+ 		return ret;
+ 	}
+ 
+-	if (qcom_pcie_wait_link_up(priv))
++	if (qcom_pcie_wait_link_up(priv)) {
+ 		printf("PCIE-%d: Link up (Gen%d-x%d, Bus%d)\n",
+ 		       dev_seq(dev), pcie_dw_get_link_speed(&priv->dw),
+ 		       pcie_dw_get_link_width(&priv->dw),
+ 		       hose->first_busno);
++
++		if (priv->ops && priv->ops->clear_sid)
++			priv->ops->clear_sid(priv);
++	}
++
+ 	else
+ 		printf("PCIE-%d: Link up timeout\n", dev_seq(dev));
+ 
+@@ -535,6 +594,69 @@ static int qcom_pcie_probe(struct udevice *dev)
+ 						priv->dw.mem.size);
+ }
+ 
++static const struct pcie_sku ipq9574 = {
++	.max_pcie = 4,
++	.sku_info = {
++		{
++			.reg = 0xA401C,
++			.sts_bit = 2,
++		},
++		{
++			.reg = 0xA401C,
++			.sts_bit = 3,
++		},
++		{
++			.reg = 0xA401C,
++			.sts_bit = 4,
++		},
++		{
++			.reg = 0xA401C,
++			.sts_bit = 5,
++		},
++	},
++};
++
++static const struct pcie_sku ipq5332 = {
++	.max_pcie = 3,
++	.sku_info = {
++		{
++			.reg = 0xA4024,
++			.sts_bit = 11,
++		},
++		{
++			.reg = 0xA4024,
++			.sts_bit = 12,
++		},
++		{
++			.reg = 0xA4024,
++			.sts_bit = 10,
++		},
++	},
++};
++
++static const struct pcie_sku ipq5424 = {
++	.max_pcie = 4,
++	.sku_info = {
++		{
++			.reg = 0xA6244,
++			.sts_bit = 0,
++		},
++		{
++			.reg = 0xA624C,
++			.sts_bit = 0,
++		},
++		{
++			.reg = 0xA6254,
++			.sts_bit = 0,
++		},
++		{
++			.reg = 0xA625C,
++			.sts_bit = 0,
++		},
++	},
++};
++
++
+ static const struct dm_pci_ops qcom_pcie_ops = {
+ 	.read_config	= pcie_dw_read_config,
+ 	.write_config	= pcie_dw_write_config,
+@@ -542,6 +664,26 @@ static const struct dm_pci_ops qcom_pcie_ops = {
+ 
+ static const struct qcom_pcie_ops ops_1_9_0 = {
+ 	.config_sid = qcom_pcie_config_sid_1_9_0,
++	.sku = NULL,
++	.clear_sid = NULL,
++};
++
++static const struct qcom_pcie_ops ops_ipq9574 = {
++	.config_sid = NULL,
++	.sku = &ipq9574,
++	.clear_sid = qcom_pcie_clear_sidtable,
++};
++
++static const struct qcom_pcie_ops ops_ipq5332 = {
++	.config_sid = NULL,
++	.sku = &ipq5332,
++	.clear_sid = qcom_pcie_clear_sidtable,
++};
++
++static const struct qcom_pcie_ops ops_ipq5424 = {
++	.config_sid = NULL,
++	.sku = &ipq5424,
++	.clear_sid = qcom_pcie_clear_sidtable,
+ };
+ 
+ static const struct udevice_id qcom_pcie_ids[] = {
+@@ -558,6 +700,9 @@ static const struct udevice_id qcom_pcie_ids[] = {
+ 	{ .compatible = "qcom,pcie-sm8450-pcie1", .data = (ulong)&ops_1_9_0 },
+ 	{ .compatible = "qcom,pcie-sm8550", .data = (ulong)&ops_1_9_0 },
+ 	{ .compatible = "qcom,pcie-x1e80100", .data = (ulong)&ops_1_9_0 },
++	{ .compatible = "qcom,pcie-ipq9574", .data = (ulong) &ops_ipq9574},
++	{ .compatible = "qcom,pcie-ipq5332", .data = (ulong) &ops_ipq5332},
++	{ .compatible = "qcom,pcie-ipq5424", .data = (ulong) &ops_ipq5424},
+ 	{ }
+ };
+ 
+-- 
+2.34.1
+

@@ -1,0 +1,36 @@
+From be46c435305547df9252525d422173c03b466e26 Mon Sep 17 00:00:00 2001
+From: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+Date: Wed, 27 May 2026 15:11:56 +0530
+Subject: [PATCH] arch: dts: add support for IPQ9650 RDP490 and RDP491
+
+Enable support for new RDPs (RDP490 and RDP491) on IPQ96xx
+platform by adding respective DTBs to the build.
+
+Change-Id: I5fd5ba881fbcc73c0b23588ecd33567614c28245
+Signed-off-by: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 2172501d0fd..f5152504a49 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -28,9 +28,11 @@ dtb-$(CONFIG_TARGET_IPQ5210) += ipq5210-emulation.dtb \
+ 
+ endif
+ dtb-$(CONFIG_TARGET_IPQ9650) += ipq9650-emulation.dtb \
+-                                ipq9650-rdp488.dtb \
+-                                ipq9650-rdp489.dtb \
+-                                ipq9650-rdp506.dtb \
++				ipq9650-rdp488.dtb \
++				ipq9650-rdp489.dtb \
++				ipq9650-rdp506.dtb \
++				ipq9650-rdp490.dtb \
++				ipq9650-rdp491.dtb \
+ 				ipq9650-db-ju01.dtb \
+ 				ipq9650-db-ju01-c1.dtb \
+ 				ipq9650-db-ju02.dtb
+-- 
+2.34.1
+

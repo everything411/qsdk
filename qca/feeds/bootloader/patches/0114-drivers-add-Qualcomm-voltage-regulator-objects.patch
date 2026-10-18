@@ -1,0 +1,40 @@
+From da01514a7162d08e80d7f17ce0e70903e71d7ff7 Mon Sep 17 00:00:00 2001
+From: priyma <priyma@qti.qualcomm.com>
+Date: Tue, 8 Sep 2026 15:28:56 +0530
+Subject: [PATCH] drivers: add Qualcomm voltage regulator objects
+
+Change-Id: If24f94b48df95b69158fbe1964e096fa731d8455
+Signed-off-by: priyma <priyma@qti.qualcomm.com>
+(cherry picked from commit edd7e68fe8292c9426eed03cce089b1e096289fc)
+---
+ drivers/misc/Makefile            | 1 +
+ drivers/power/regulator/Makefile | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index 359303cfb6b..a506d8bb747 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -94,5 +94,6 @@ obj-$(CONFIG_ESM_PMIC) += esm_pmic.o
+ obj-$(CONFIG_SL28CPLD) += sl28cpld.o
+ obj-$(CONFIG_SPL_SOCFPGA_DT_REG) += socfpga_dtreg.o
+ obj-$(CONFIG_QCOM_GENI_SE) += qcom-geni-se.o
++obj-$(CONFIG_SPL_QCOM_FUSE_VOLTAGE_CONTROL) += qcom_voltage_control.o
+ obj-$(CONFIG_NOR_BLK) += qti_nor_blk.o
+ obj-$(CONFIG_QCOM_TMELCOM) += tmelcom.o
+diff --git a/drivers/power/regulator/Makefile b/drivers/power/regulator/Makefile
+index ca6c89d13b5..fe184be279f 100644
+--- a/drivers/power/regulator/Makefile
++++ b/drivers/power/regulator/Makefile
+@@ -22,6 +22,8 @@ obj-$(CONFIG_$(XPL_)DM_REGULATOR_COMMON) += regulator_common.o
+ obj-$(CONFIG_$(XPL_)DM_REGULATOR_FIXED) += fixed.o
+ obj-$(CONFIG_$(XPL_)DM_REGULATOR_GPIO) += gpio-regulator.o
+ obj-$(CONFIG_DM_REGULATOR_QCOM_RPMH) += qcom-rpmh-regulator.o
++obj-$(CONFIG_SPL_QCOM_FUSE_VOLTAGE_CONTROL) += qcom_gpio_regulator.o
++obj-$(CONFIG_SPL_MP8899_REGULATOR) += mp8899_regulator.o
+ obj-$(CONFIG_$(PHASE_)REGULATOR_RK8XX) += rk8xx.o
+ obj-$(CONFIG_DM_REGULATOR_S2MPS11) += s2mps11_regulator.o
+ obj-$(CONFIG_REGULATOR_S5M8767) += s5m8767.o
+-- 
+2.34.1
+

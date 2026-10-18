@@ -1,0 +1,43 @@
+From 035a34fecaf9677d043b7ce811e639ee81a64de1 Mon Sep 17 00:00:00 2001
+From: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+Date: Wed, 19 Aug 2026 22:48:45 -0700
+Subject: [PATCH] UPSTREAM:PROTOCOL: sigma_dut: Fix missing ieee80211w for 6G
+ PMF-optional AKMs
+
+The common PMF-handling switch in cmd_ap_config_commit() (ap.c),
+reached via the skip_key_mgmt label as well as by falling through
+the AKM switch, special-cases AP_WPA2_EAP_SHA256 under
+AP_PMF_OPTIONAL to emit ieee80211w=2 on the 6 GHz band, where PMF is
+mandatory, and ieee80211w=1 elsewhere. The else branch covering every
+other AKM reaching AP_PMF_OPTIONAL unconditionally wrote
+ieee80211w=1 regardless of band, which disables PMF on 6 GHz and
+violates the 6E mandatory-PMF requirement for those AKMs. Add the
+same check_band(dut, BAND_6G, link_id) check already used for
+AP_WPA2_EAP_SHA256 so the else branch also emits ieee80211w=2 on
+6 GHz.
+
+Patch-dependency: 119-UPSTREAM-PROTOCOL-sigma_dut-CAPI-support-for-EPPKE-SAE-key-mgmt.patch
+
+Signed-off-by: Priyadharshini Gowthaman <pgowtham@qti.qualcomm.com>
+---
+ ap.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index c3ba943..3e1338b 100644
+--- a/ap.c
++++ b/ap.c
+@@ -12217,7 +12217,10 @@ skip_key_mgmt:
+ 				else
+ 					fprintf(f, "ieee80211w=1\n");
+ 			} else {
+-				fprintf(f, "ieee80211w=1\n");
++				if (check_band(dut, BAND_6G, link_id))
++					fprintf(f, "ieee80211w=2\n");
++				else
++					fprintf(f, "ieee80211w=1\n");
+ 			}
+ 			if (dut->ap_key_mgmt == AP_WPA2_PSK_SAE ||
+ 			    (akm_values & (AKM_SAE | AKM_WPA_PSK)) ==
+-- 
+2.34.1

@@ -1,0 +1,1033 @@
+From b3358cc40e689f6188f542606b6df07b5625a810 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Fri, 5 Apr 2024 10:58:49 +0530
+Subject: [PATCH] sigma_dut: Add support for EHT changes
+
+Add the following required support for EHT changes
+in sigma_dut.
+
+1. CodingType - Provide support for BCC and LDPC coding type.
+2. NonTrigger_TxBF support is enabled.
+3. DTIM - upadte dtim_period in hostapd conf.
+4. TxEMLOMN support is enabled.
+5. MRUAllocTones - enable support for large and small mru.
+6. MUBeamFormerMode - mapped the txbf and mutxbf varaible when
+MUBeamformerMode is enabled.
+7. Trigger_Variant - enabling the fwtest commands.
+8. WMM Parameters - provide support for wmm parameters via hostapd_cli
+commands.
+9. Trig_UsrInfo_MRUAlloc
+10. Trig_ComInfo_GI-LTF
+
+When ap_set_wireles() is called, it will increase the count of
+num_links when ap_is_dual variable is set. As a result, the num_links
+will increase when ap_set_wirless() is called everytime after second
+link is set.
+
+To fix this, included a variable "iface_check" when Interface is set.
+The num_links will increase only when "iface_check" variable  and
+ap_is_dual is set which fixes the num_links incremetation when
+ap_set_wireless() is called everytime.
+
+v1: Add validation for EHT trigger variant, so that when HE or EHT
+trigger variant is configured, appropriate commands are called.
+
+v2: Add link ID in firmware HE trigger command and in PPDU format type
+set command when AP is configured in EHT mode.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Signed-off-by: Arunpandi Kannan <quic_arunpand@quicinc.com>
+---
+ ap.c        | 701 ++++++++++++++++++++++++++++++++++++++++++++++++++--
+ sigma_dut.h |  26 ++
+ 2 files changed, 709 insertions(+), 18 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -983,6 +983,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	int is_6g = 0;
+ 	enum ap_chwidth chwidth;
+ 	int subeamformermode = 0;
++	int dtim_check = 0;
++	int iface_check = 0;
+ 
+ 	/* Allow program to be overridden if specified in the ap_set_wireless
+ 	 * to support some 60 GHz test scripts where the program may be 60 GHz
+@@ -1039,7 +1041,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 
+ 	val = get_param(cmd, "Interface");
+ 	if (val) {
+-		if (strcasecmp(val, "5G") == 0) {
++		if ((strcasecmp(val, "5G") == 0) && (!dut->ap_interface_5g)) {
++			iface_check = 1;
+ 			dut->ap_interface_5g = 1;
+ 			if (dut->ap_interface_2g) {
+ 				dut->ap_chwidth_1 = dut->ap_chwidth;
+@@ -1057,9 +1060,18 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				else if (strcasecmp(val, "320") == 0)
+ 					dut->ap_chwidth = AP_320;
+ 				}
++				if (dut->dtim)
++					dut->dtim_1 = dut->dtim;
++				val = get_param(cmd, "DTIM");
++				if (val) {
++					dtim_check = 1;
++					dut->dtim = atoi(val);
++				}
+ 			}
+-		} else if (strcasecmp(val, "6G") == 0) {
++		} else if ((strcasecmp(val, "6G") == 0) && (!dut->ap_interface_6g)) {
++			iface_check = 1;
+ 			dut->ap_interface_6g = 1;
++			dut->ap_pmf = AP_PMF_REQUIRED;
+ 			if (dut->ap_interface_2g || dut->ap_interface_5g) {
+ 				dut->ap_chwidth_1 = dut->ap_chwidth;
+ 				val = get_param(cmd, "WIDTH");
+@@ -1076,9 +1088,24 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				else if (strcasecmp(val, "320") == 0)
+ 					dut->ap_chwidth = AP_320;
+ 				}
++				if (dut->dtim)
++					dut->dtim_1 = dut->dtim;
++				val = get_param(cmd, "DTIM");
++				if (val) {
++					dtim_check = 1;
++					dut->dtim = atoi(val);
++				}
+ 			}
+-		} else
++		} else if ((strcasecmp(val, "24G") == 0) && (!dut->ap_interface_2g)) {
++			iface_check = 1;
+ 			dut->ap_interface_2g = 1;
++		}
++	}
++
++	if (!dtim_check) {
++		val = get_param(cmd, "DTIM");
++	if (val)
++		dut->dtim = atoi(val);
+ 	}
+ 
+ 	val = get_param(cmd, "ChnlFreq");
+@@ -1093,13 +1120,17 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	if (dut->program == PROGRAM_EHT) {
+ 		dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		dut->ap_beacon_prot = 1;
+-		if (dut->ap_interface_5g && dut->ap_interface_6g)
++		if (dut->ap_interface_5g && dut->ap_interface_6g) {
+ 			dut->ap_is_dual = 1;
+-		if (dut->ap_interface_2g && dut->ap_interface_6g)
++			dut->ap_pmf = AP_PMF_REQUIRED;
++		}
++		if (dut->ap_interface_2g && dut->ap_interface_6g) {
+ 			dut->ap_is_dual = 1;
++			dut->ap_pmf = AP_PMF_REQUIRED;
++		}
+ 	}
+ 
+-	if (dut->ap_is_dual) {
++	if (dut->ap_is_dual && iface_check) {
+ 		if (!dut->dual_ap_ifname) {
+ 			dut->ap_is_mld = 1;
+ 			dut->num_links++;
+@@ -2635,10 +2666,23 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	if (val) {
+ 		if (strcasecmp(val, "Disable") == 0)
+ 			dut->eht_txemlomn = VALUE_DISABLED;
+-		else if (strcasecmp(val, "enable") == 0)
++		else if (strcasecmp(val, "Enable") == 0)
+ 			dut->eht_txemlomn = VALUE_ENABLED;
++		else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported TxEMLMON Value");
++			return STATUS_SENT_ERROR;
++		}
++
++	}
++
++	val = get_param(cmd, "MUBeamformerMode");
++	if (val) {
++		dut->ap_txBF = 1;
++		dut->ap_mu_txBF = 1;
+ 	}
+ 
++
+ 	val = get_param(cmd, "PunctChannel");
+ 	if (val) {
+ 	dut->ap_punct_bitmap = get_bitmap_from_punct_chlist(dut, val);
+@@ -8915,6 +8959,9 @@ static void fwtest_set_he_params(struct
+ 		fwtest_cmd_wrapper(dut, "-t 1 -m 0x0 -v 0 0x1D 0", ifname);
+ 	}
+ 
++	if (dut->ap_ldpc == VALUE_ENABLED)
++		fwtest_cmd_wrapper(dut, "-t 1 -m 0x0 -v 0 0x1D 3", ifname);
++
+ 	if (dut->ap_he_mimo == MIMO_UL) {
+ 		uint8_t he_param = 0x7F; /* Bit 7 is reserved, Bit 6 for UL MIMO */
+ 		/* Update HE Params for UL MIMO */
+@@ -8945,6 +8992,9 @@ static void fwtest_set_he_params(struct
+ 		run_system_wrapper(dut,
+ 				   "ath11k-fwtest -i %s -m 0x47 -v 2 166 1",
+ 				   ifname);
++	if (dut->eht_txemlomn == VALUE_DISABLED)
++		fwtest_cmd_wrapper(dut, "-m 0xD -v 0 7 1", ifname);
++
+ }
+ 
+ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+@@ -9042,6 +9092,9 @@ static void fwtest_set_eht_params(struct
+ 		fwtest_linkid_cmd_wrapper(dut, "-t 1 -m 0x0 -v 0 0x1D 0", ifname, link_id);
+ 	}
+ 
++	if (dut->ap_ldpc == VALUE_ENABLED)
++		fwtest_linkid_cmd_wrapper(dut, "-t 1 -m 0x0 -v 0 0x1D 3", ifname, link_id);
++
+ 	if (dut->ap_he_mimo == MIMO_UL) {
+ 		uint8_t he_param = 0x7F; /* Bit 7 is reserved, Bit 6 for UL MIMO */
+ 		/* Update HE Params for UL MIMO */
+@@ -9055,6 +9108,9 @@ static void fwtest_set_eht_params(struct
+ 				   "ath11k-fwtest -t 1 -i %s -l %d -m 0x00 -v 0 32770 %d",
+ 				   ifname, link_id, he_param);
+ 	}
++
++	if (dut->eht_txemlomn == VALUE_DISABLED)
++		fwtest_linkid_cmd_wrapper(dut, "-m 0xD -v 0 7 1", ifname, link_id);
+ }
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))
+@@ -9386,11 +9442,12 @@ enum sigma_cmd_result cmd_ap_config_comm
+ #endif /* ANDROID */
+ 	enum ap_chwidth chwidth;
+ 	enum sec_ch_offset offset;
+-	int chan, link_id;
++	int chan, link_id, dtim;
+ 	unsigned char addr[6];
+ 	unsigned char main_bssid[6];
+ 	char ifname2[50];
+ 	bool mld_sae_set = false;
++	int chwidth_temp;
+ 
+ 	drv = get_driver_type(dut);
+ 	mode = dut->ap_mode;
+@@ -9450,6 +9507,7 @@ write_conf:
+ 					"Failed to copy %s to %s", f1, f2);
+ 		mode = dut->ap_mode_1;
+ 		chwidth = dut->ap_chwidth_1;
++		dtim = dut->dtim;
+ 		chan = dut->ap_tag_channel[0];
+ 		offset = dut->ap_chwidth_offset_1;
+ #ifdef ANDROID
+@@ -9466,6 +9524,7 @@ write_conf:
+ 		ap_conf_path_1[0] = '\0';
+ 		mode = dut->ap_mode;
+ 		chwidth = dut->ap_chwidth;
++		dtim = dut->dtim_1;
+ 		chan = dut->ap_channel;
+ 		offset = dut->ap_chwidth_offset;
+ 	}
+@@ -10704,6 +10763,9 @@ skip_vht_parameters_set:
+ 		}
+ 	}
+ 
++	if (dtim)
++		fprintf(f, "dtim_period=%d\n", dtim);
++
+ 	fclose(f);
+ 
+ 	if (dut->ap_is_dual && conf_counter == 0) {
+@@ -10714,6 +10776,15 @@ skip_vht_parameters_set:
+ 		goto write_conf;
+ 	}
+ 
++	/*As link_id is getting swapped in the ap_config_commit() function,
++	 * swapping the variables which are related to link_id
++	 */
++	if (dut->num_links > 1) {
++		chwidth_temp = dut->ap_link_chwidth[0];
++		dut->ap_link_chwidth[0] = dut->ap_link_chwidth[1];
++		dut->ap_link_chwidth[1] = chwidth_temp;
++	}
++
+ 	if (dut->use_hostapd_pid_file)
+ 		kill_hostapd_process_pid(dut);
+ #ifdef __QNXNTO__
+@@ -11070,8 +11141,12 @@ hapd_started:
+ 	} else if (drv == DRIVER_MAC80211 && dut->program == PROGRAM_EHT) {
+ 		int i;
+ 
+-		for(i = 0; i < dut->num_links; i++)
++		for (i = 0; i < dut->num_links; i++) {
++			if ((dut->device_type == AP_dut) && (dut->ap_mode == AP_11be)
++			    && (dut->ap_he_mimo == MIMO_UL))
++				continue;
+ 			fwtest_set_eht_params(dut, ifname, i);
++		}
+ 	}
+ 
+ 	if (dut->bridge && dut->ap_is_dual) {
+@@ -11083,7 +11158,6 @@ hapd_started:
+ 		}
+ 		sigma_dut_print(dut, DUT_MSG_INFO, "Started bridge");
+ 	}
+-
+ 	dut->hostapd_running = 1;
+ 	return 1;
+ }
+@@ -11649,6 +11723,10 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->eap_fragment = 0;
+ 	dut->wps_forced_version = 0;
+ 
++	dut->dtim = 0;
++	dut->dtim_1 = 0;
++	dut->eht_txemlomn = VALUE_NOT_SET;
++
+ 	if (dut->program == PROGRAM_HT || dut->program == PROGRAM_VHT ||
+ 	    dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+ 		dut->ap_wme = AP_WME_ON;
+@@ -11976,7 +12054,6 @@ static enum sigma_cmd_result cmd_ap_rese
+ 		dut->ap_assoc_delay = 0;
+ 	}
+ 
+-
+ 	dut->ap_oper_chn = 0;
+ 
+ 	dut->ap_pmksa = 0;
+@@ -12012,6 +12089,8 @@ static enum sigma_cmd_result cmd_ap_rese
+ 		dut->ap_group_mgmt_cipher = AP_BIP_GMAC_256;
+ 		dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		dut->ap_beacon_prot = 1;
++		dut->nontrigger_txbf = VALUE_NOT_SET;
++		dut->switch_he_eht = 0;
+ 	}
+ 
+ 	dut->dpp_conf_id = -1;
+@@ -16668,13 +16747,15 @@ static enum sigma_cmd_result mac80211_he
+ 
+ 
+ static enum sigma_cmd_result mac80211_he_gi(struct sigma_dut *dut,
++					    struct sigma_conn *conn,
+ 					    const char *ifname,
+-					    const char *val)
++					    const char *val, int link_id)
+ {
+ 	int16_t he_ltf = 0xFF;
+ 	char *mode = dut->ap_band_6g ? "6" : dut->use_5g ? "5" : "2.4";
+ 	char program[10];
+ 	int ret = -1;
++	int ltf = -1, gi = -1;
+ 
+ 	if (dut->program == PROGRAM_EHT)
+ 		snprintf(program, sizeof(program), "eht");
+@@ -16683,8 +16764,37 @@ static enum sigma_cmd_result mac80211_he
+ 	else
+ 		return STATUS_SENT_ERROR;
+ 
++	if (dut->nontrigger_txbf == VALUE_ENABLED) {
++		if (strcmp(val, "0.4") == 0)
++			gi = 1;
++		else if (strcmp(val, "0.8") == 0)
++			gi = 0;
++		else if (strcmp(val, "1.6") == 0)
++			gi = 2;
++		else if (strcmp(val, "3.2") == 0)
++			gi = 3;
++		else {
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,Unsupported shortGI");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	if (dut->ar_ltf) {
+ 		he_ltf = mac80211_he_ltf_mapping(dut, dut->ar_ltf);
++		if (dut->nontrigger_txbf == VALUE_ENABLED) {
++			if (he_ltf == 0x01)
++				ltf = 0;
++			else if (he_ltf == 0x02)
++				ltf = 1;
++			else if (he_ltf == 0x04)
++				ltf = 2;
++			else {
++				send_resp(dut, conn, SIGMA_ERROR,
++						"errorCode,Unsupported LTF");
++				return STATUS_SENT_ERROR;
++			}
++		}
+ 		free(dut->ar_ltf);
+ 		dut->ar_ltf = NULL;
+ 
+@@ -16694,25 +16804,312 @@ static enum sigma_cmd_result mac80211_he
+ 		if (val) {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates %s-gi-%s %s %s-ltf-%s %u",
+-				ifname, program, mode, val, program, mode,
++				"iw %s set bitrates -l %d %s-gi-%s %s %s-ltf-%s %u",
++				ifname, link_id, program, mode, val, program, mode,
+ 				he_ltf);
+ 		} else {
+ 			ret = run_system_wrapper(
+ 				dut,
+-				"iw %s set bitrates %s-ltf-%s %u",
++				"iw %s set bitrates -l %d %s-ltf-%s %u",
+ 				ifname, program, mode, he_ltf);
+ 		}
+ 	} else if (val) {
+ 		ret = run_system_wrapper(dut,
+-					 "iw %s set bitrates %s-gi-%s %s",
++					 "iw %s set bitrates -l %d %s-gi-%s %s",
+ 					 ifname, program, mode, val);
+ 	}
++
++	if ((dut->program == PROGRAM_EHT) && (dut->nontrigger_txbf == VALUE_ENABLED))
++		run_system_wrapper(dut, "ath11k-fwtest -i %s -m 0x48 -v 0 620 %d %d ",
++				   ifname, ltf, gi);
++
+ 	if (ret < 0)
+ 		return ERROR_SEND_STATUS;
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
++static enum sigma_cmd_result mac80211_eht_rualloc_fwtest(struct sigma_dut *dut,
++						struct sigma_conn *conn,
++						const char *ifname,
++						int val_bw,
++						int value, int linkid)
++{
++	enum sigma_cmd_result ret = SUCCESS_SEND_STATUS;
++
++	if (value == EHT_RU_ALLOC_106) {
++		if (val_bw == AP_40) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 106 1 106 2 106 3 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 106 1 106 2 106 3 106",
++						  ifname, linkid);
++		} else if (val_bw == AP_80 || val_bw == AP_160) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 106 2 106 4 106 6 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 106 2 106 4 106 6 106",
++						  ifname, linkid);
++		} else if (val_bw == AP_20) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 106 1 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 106 1 106",
++						  ifname, linkid);
++		} else {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 106 1 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 106 1 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 44 0 106 1 106",
++						  ifname, linkid);
++		}
++	} else if (value == EHT_RU_ALLOC_242) {
++		if (val_bw == AP_80) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 242 1 242 2 242 3 242",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 242 1 242 2 242 3 242",
++						  ifname, linkid);
++
++		} else {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 242 1 242 2 242 3 242",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 242 1 242 2 242 3 242",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 44 0 242 1 242 2 242 3 242",
++						  ifname, linkid);
++		}
++	} else if (value == EHT_RU_ALLOC_26) {
++		if (val_bw == AP_20) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 26 2 26 5 26 7 26",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 26 2 26 5 26 7 26",
++						  ifname, linkid);
++		} else if (val_bw == AP_40) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 26 5 26 9 26 14 26",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 26 5 26 9 26 14 26",
++						  ifname, linkid);
++		} else {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 26 1 26 2 26 3 26",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 26 1 26 2 26 3 26",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 44 0 26 1 26 2 26 3 26",
++						  ifname, linkid);
++		}
++	} else if (value == EHT_RU_ALLOC_52) {
++		if (val_bw == AP_20) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 52 1 52 2 52 3 52",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 52 1 52 2 52 3 52",
++						  ifname, linkid);
++		} else if (val_bw == AP_40) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 52 2 52 4 52 6 52",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 52 2 52 4 52 6 52",
++						  ifname, linkid);
++		} else {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 52 1 52 2 52 3 52",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 52 1 52 2 52 3 52",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 44 0 52 1 52 2 52 3 52",
++						  ifname, linkid);
++		}
++	} else if (value == EHT_RU_ALLOC_484) {
++		if (val_bw == AP_80) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 484 1 484", ifname,
++						  linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 484 1 484", ifname,
++						  linkid);
++		} else if (val_bw == AP_160) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 484 1 484 2 484 3 484",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 484 1 484 2 484 3 484",
++						  ifname, linkid);
++		} else {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 484 1 484", ifname,
++						  linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 484 1 484", ifname,
++						  linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 44 0 484 1 484", ifname,
++						  linkid);
++		}
++	} else if (value == EHT_RU_ALLOC_996) {
++		if (val_bw == AP_80) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 996", ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 996", ifname, linkid);
++		} else if (val_bw >= AP_160) {
++			if (dut->ap_chwidth == AP_320) {
++				fwtest_linkid_cmd_wrapper(dut,
++							  "-m 0x4b -v 0 40 0 996 1 996 2 996 3 996",
++							  ifname, linkid);
++				fwtest_linkid_cmd_wrapper(dut,
++							  "-m 0x4b -v 0 41 0 996 1 996 2 996 3 996",
++							  ifname, linkid);
++			} else {
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 996 1 996",
++							  ifname, linkid);
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 996 1 996",
++							  ifname, linkid);
++			}
++		} else {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 996", ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 996", ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 44 0 996", ifname, linkid);
++		}
++	} else if (value == EHT_RU_ALLOC_2) {
++		if (val_bw == AP_160) {
++			if (dut->ap_chwidth == AP_320) {
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 1992 1 1992",
++							  ifname, linkid);
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 1992 1 1992",
++							  ifname, linkid);
++			} else {
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 996", ifname,
++							  linkid);
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 996", ifname,
++							  linkid);
++			}
++		}
++	} else {
++		send_resp(dut, conn, SIGMA_ERROR,
++			  "errorCode,Unsupported RUAllocTones");
++		ret = STATUS_SENT_ERROR;
++	}
++
++	return ret;
++}
++
++static enum sigma_cmd_result mac80211_eht_mrualloc_fwtest(struct sigma_dut *dut,
++						struct sigma_conn *conn,
++						const char *ifname,
++						int val_bw,
++						int value, int linkid)
++{
++	enum sigma_cmd_result ret = SUCCESS_SEND_STATUS;
++
++	if (value == EHT_MRU_ALLOC_484) {
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 726 0 242", ifname, linkid);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 726 0 242", ifname, linkid);
++	} else if (value == EHT_MRU_ALLOC_996) {
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 1480 0 484", ifname, linkid);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 1480 0 484", ifname, linkid);
++	} else if (value == EHT_MRU_ALLOC_3) {
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 3472 0 484", ifname, linkid);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 3472 0 484", ifname, linkid);
++	} else if (value == EHT_MRU_ALLOC_2) {
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 2476 0 484", ifname, linkid);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 2476 0 484", ifname, linkid);
++	} else if (value == EHT_MRU_ALLOC_2988) {
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 2988 0 996", ifname, linkid);
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 2988 0 996", ifname, linkid);
++	} else if (value == EHT_MRU_ALLOC_52) {
++		if (val_bw == AP_20) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 78 2 52", ifname,
++						  linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 78 2 52", ifname,
++						  linkid);
++		} else if (val_bw == AP_40) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 78 1 106 2 106 3 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 78 1 106 2 106 3 106",
++						  ifname, linkid);
++		} else {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 78 1 106 2 106 3 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 78 1 106 2 106 3 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 44 0 78 1 106 2 106 3 106",
++						  ifname, linkid);
++		}
++	} else if (value == EHT_MRU_ALLOC_106) {
++		if (val_bw == AP_20) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 132 1 106", ifname,
++						  linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 132 1 106", ifname,
++						  linkid);
++		} else if (val_bw == AP_40) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 132 1 106 2 106 3 106",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 132 1 106 2 106 3 106",
++						  ifname, linkid);
++		} else if (val_bw == AP_80) {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 132 1 106 1 242 1 484",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 132 1 106 1 242 1 484",
++						  ifname, linkid);
++		} else {
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 132 1 106 1 242 1 484",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 41 0 132 1 106 1 242 1 484",
++						  ifname, linkid);
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 44 0 132 1 106 1 242 1 484",
++						  ifname, linkid);
++		}
++	} else {
++		send_resp(dut, conn, SIGMA_ERROR,
++			  "errorCode,Unsupported RUAllocTones");
++		ret = STATUS_SENT_ERROR;
++	}
++
++	return ret;
++}
++
++static enum sigma_cmd_result mac80211_eht_ru_mru_alloctones(struct sigma_dut *dut,
++							struct sigma_conn *conn,
++							const char *ifname,
++							int val_bw,
++							const char *val, int linkid)
++{
++	char *token, *result;
++	int value = 0, i, alloc = -1;
++	char *saveptr;
++	enum sigma_cmd_result ret = SUCCESS_SEND_STATUS;
++	char delimiter[] = ":+";
++	char *mru[2] = {NULL, NULL};
++
++	token = strdup(val);
++	if (!token)
++		return -1;
++
++	if (strncmp(token, "2x996", strlen(token)) == 0) {
++		value = 2;
++		alloc = 0;
++		goto fwtest;
++	} else {
++		result = strtok_r(token, delimiter, &saveptr);
++		while (result != NULL) {
++			for (i = 0; result && i < 2; i++) {
++				mru[i] = result;
++				result = strtok_r(NULL, delimiter, &saveptr);
++			}
++		}
++	}
++
++	if (mru[0] != NULL && mru[1] != NULL) {
++		if (strncmp(mru[0], mru[1], strlen(mru[1])) == 0) {
++			value = atoi(mru[0]);
++			alloc = 0;
++			goto fwtest;
++		} else {
++			value = atoi(mru[0]);
++			alloc = 1;
++			goto fwtest;
++		}
++	} else {
++		send_resp(dut, conn, SIGMA_ERROR,
++				"errorCode,Unsupported RUAllocTones");
++		ret = STATUS_SENT_ERROR;
++		free(token);
++		return ret;
++	}
++fwtest:
++	if (alloc == 0)
++		ret = mac80211_eht_rualloc_fwtest(dut, conn, ifname, val_bw, value, linkid);
++	else if (alloc == 1)
++		ret = mac80211_eht_mrualloc_fwtest(dut, conn, ifname, val_bw, value, linkid);
++
++	free(token);
++	return ret;
++}
+ 
+ static void mac80211_set_ackpolicy_0(struct sigma_dut *dut, const char *ifname,
+ 				     unsigned char *mac_addr)
+@@ -16764,6 +17161,13 @@ static enum sigma_cmd_result mac80211_ap
+ 	int he_ackpolicymac = 0;
+ 	int ap_he_ackpolicy;
+ 	int link_id = 0;
++	int param;
++	char buf[100];
++	int val_bw = -1;
++	const char *value_bw;
++	char link_param[10];
++	bool link_set = false;
++	char ifname2[50];
+ 
+ 	ifname = get_main_ifname(dut);
+ 
+@@ -16777,6 +17181,32 @@ static enum sigma_cmd_result mac80211_ap
+ 			link_id = dut->band_to_link[2];
+ 	}
+ 
++	val = get_param(cmd, "NonTxBSSIndex");
++	if (val) {
++		int non_tx_bss_idx, ret;
++
++		if (dut->ap_mbssid != VALUE_ENABLED) {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,MBSSID Not enabled");
++			return STATUS_SENT_ERROR;
++		}
++
++		non_tx_bss_idx = atoi(val);
++
++		if (non_tx_bss_idx > dut->mbss.num_non_tx_bss) {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Invalid NonTxBSSIndex");
++			return STATUS_SENT_ERROR;
++		}
++		ret = snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, non_tx_bss_idx);
++		if(ret < 0) {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Invalid interface name");
++			return STATUS_SENT_ERROR;
++		}
++		ifname = ifname2;
++	}
++
+ 	val = get_param(cmd, "RTS_FORCE");
+ 	if (val)
+ 		mac80211_config_rts_force(dut, ifname, val, link_id);
+@@ -16845,7 +17275,7 @@ static enum sigma_cmd_result mac80211_ap
+ 
+ 	val = get_param(cmd, "GI");
+ 	if (val || dut->ar_ltf) {
+-		res = mac80211_he_gi(dut, ifname, val);
++		res = mac80211_he_gi(dut, conn, ifname, val, link_id);
+ 		if (res != SUCCESS_SEND_STATUS)
+ 			return res;
+ 	}
+@@ -16901,10 +17331,18 @@ static enum sigma_cmd_result mac80211_ap
+ 	if (val) {
+ 		if (strcasecmp(val, "HE-SU") == 0) {
+ 			/* Change PPDU format type to HE-SU MCS 1 */
+-			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 89 0x401", ifname);
++			if (dut->program == PROGRAM_EHT)
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 89 0x401",
++							  ifname, link_id);
++			else
++				fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 89 0x401", ifname);
+ 		} else if (strcasecmp(val, "legacy") == 0) {
+ 			/* Change PPDU format type to non-HT */
+-			fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 89 3",ifname);
++			if (dut->program == PROGRAM_EHT)
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 89 3",
++							  ifname, link_id);
++			else
++				fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 89 3",ifname);
+ 		} else {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+ 				  "errorCode,Unsupported PPDUTxType");
+@@ -16912,6 +17350,240 @@ static enum sigma_cmd_result mac80211_ap
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "CodingType");
++	if (val) {
++		if (strcasecmp(val, "BCCCoding") == 0 && dut->program == PROGRAM_EHT) {
++			if (dut->ap_mode == AP_11be) {
++				if (dut->ap_fixed_rate) {
++					dut->ap_bcc = VALUE_ENABLED;
++					dut->ap_ldpc = VALUE_DISABLED;
++				} else
++					run_system_wrapper(dut,
++							"ath11k-fwtest -i %s -m 0xA -v 0  65 1",
++							ifname);
++			} else
++				run_system_wrapper(dut,
++						"ath11k-fwtest -t 1  -i %s  -m 0x00 -v 0  0x8A 0",
++						ifname);
++		} else if (strcasecmp(val, "LDPCCoding") == 0 && dut->program == PROGRAM_EHT) {
++			if (dut->ap_mode == AP_11be) {
++				if (dut->ap_fixed_rate)
++					dut->ap_ldpc = VALUE_ENABLED;
++				else
++					run_system_wrapper(dut,
++							"ath11k-fwtest -i %s -m 0xA -v 0  65 0",
++							ifname);
++			}
++		}
++	}
++
++	val = get_param(cmd, "Trigger_Variant");
++	if (val) {
++		if (strcasecmp(val, "EHT") == 0) {
++			/* EHT triggers will be sent for EHT peers if triggertype is provided
++			 * through CAPI - Send only when switching from HE to EHT
++			 */
++			if (dut->switch_he_eht == 1)
++				run_system_wrapper(dut,
++						"ath11k-fwtest -i %s -m 0x47  -v 0  548 0",
++						ifname);
++		} else if (strcasecmp(val, "HE") == 0) {
++			dut->switch_he_eht = 1;
++			if (dut->program == PROGRAM_EHT)
++				fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 548 1",
++							  ifname, link_id);
++			else
++				run_system_wrapper(dut, "ath11k-fwtest -i %s -m 0x47 -v 0 548 1",
++						   ifname);
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported TriggerVariant");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
++	if (dut->program == PROGRAM_EHT) {
++		snprintf(link_param, sizeof(link_param), "-l %d", link_id);
++		link_set = true;
++	}
++
++	val = get_param(cmd, "STA_WMMPE_ECWmin_BK");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_cwmin %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_ECWmin_BE");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_cwmin %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_ECWmin_VI");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_cwmin %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_ECWmin_VO");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_cwmin %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_AIFSN_BK");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_aifs %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_AIFSN_BE");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_aifs %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_AIFSN_VI");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_aifs %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_AIFSN_VO");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_aifs %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_ECWmax_BK");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_cwmax %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_ECWmax_BE");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_cwmax %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_ECWmax_VI");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_cwmax %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_ECWmax_VO");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_cwmax %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_TXOP_BK");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_txop %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_TXOP_BE");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_txop %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "	STA_WMMPE_TXOP_VI");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_txop %d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "STA_WMMPE_TXOP_VO");
++	if (val) {
++		param = atoi(val);
++		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_txop=%d", ifname, link_set ? link_param : "", param);
++		run_system(dut, buf);
++	}
++
++	val = get_param(cmd, "MRUAllocTones");
++	if (val) {
++		if (dut->ap_link_chwidth[link_id] == AP_20)
++			val_bw = 0;
++		else if (dut->ap_link_chwidth[link_id] == AP_40)
++			val_bw = 1;
++		else if (dut->ap_link_chwidth[link_id] == AP_80)
++			val_bw = 2;
++		else if (dut->ap_link_chwidth[link_id] == AP_160)
++			val_bw = 3;
++		else if (dut->ap_link_chwidth[link_id] == AP_320)
++			val_bw = 4;
++		else
++			val_bw = -1;
++
++		res = mac80211_eht_ru_mru_alloctones(dut, conn, ifname, val_bw, val, link_id);
++		if (res != SUCCESS_SEND_STATUS)
++			return res;
++	}
++
++	val = get_param(cmd, "Trig_ComInfo_GI-LTF");
++	if (val) {
++		int trig_gi_ltf;
++
++		trig_gi_ltf = atoi(val);
++		if (trig_gi_ltf == 0) {
++			mac80211_he_ltf(dut, conn, ifname, "3.2");
++			mac80211_he_gi(dut, conn, ifname, "1.6", link_id);
++		} else if (trig_gi_ltf == 1) {
++			mac80211_he_ltf(dut, conn, ifname, "6.4");
++			mac80211_he_gi(dut, conn, ifname, "1.6", link_id);
++		} else if (trig_gi_ltf == 2) {
++			mac80211_he_ltf(dut, conn, ifname, "12.8");
++			mac80211_he_gi(dut, conn, ifname, "3.2", link_id);
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported Trig_ComInfo_GI-LTF");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
++	val = get_param(cmd, "Trig_UsrInfo_MRUAlloc");
++	if (val) {
++		value_bw = get_param(cmd, "Trig_ComInfo_BW");
++		if (value_bw) {
++			val_bw = atoi(value_bw);
++		} else {
++			if (dut->ap_link_chwidth[link_id] == AP_20)
++				val_bw = 0;
++			else if (dut->ap_link_chwidth[link_id] == AP_40)
++				val_bw = 1;
++			else if (dut->ap_link_chwidth[link_id] == AP_80)
++				val_bw = 2;
++			else if (dut->ap_link_chwidth[link_id] == AP_160)
++				val_bw = 3;
++			else if (dut->ap_link_chwidth[link_id] == AP_320)
++				val_bw = 4;
++			else
++				val_bw = -1;
++		}
++		res = mac80211_eht_ru_mru_alloctones(dut, conn, ifname, val_bw, val, link_id);
++		if (res != SUCCESS_SEND_STATUS)
++			return res;
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -558,6 +558,26 @@ enum ap_key_mgmt {
+ 	AP_OSEN,
+ };
+ 
++enum eht_ru_alloc {
++	EHT_RU_ALLOC_2 = 2,
++	EHT_RU_ALLOC_26 = 26,
++	EHT_RU_ALLOC_52 = 52,
++	EHT_RU_ALLOC_106 = 106,
++	EHT_RU_ALLOC_242 = 242,
++	EHT_RU_ALLOC_484 = 484,
++	EHT_RU_ALLOC_996 = 996,
++};
++
++enum eht_mru_alloc {
++	EHT_MRU_ALLOC_2 = 2,
++	EHT_MRU_ALLOC_3 = 3,
++	EHT_MRU_ALLOC_52 = 52,
++	EHT_MRU_ALLOC_106 = 106,
++	EHT_MRU_ALLOC_484 = 484,
++	EHT_MRU_ALLOC_996 = 996,
++	EHT_MRU_ALLOC_2988 = 2988,
++};
++
+ /* Update this macro for supporting multiple mbss vaps */
+ #define MAX_NON_TX_BSS_COUNT	2
+ #define MAX_PSK_LEN		20
+@@ -1266,6 +1286,10 @@ struct sigma_dut {
+ 	u8 pasn_type;
+ 	bool is_p2p_twt_power_mgmt_enabled;
+ 	struct twt_config_params twt_param;
++
++	int dtim;
++	int dtim_1;
++	int switch_he_eht;
+ };
+ 
+ 

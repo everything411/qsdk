@@ -1,0 +1,47 @@
+From 069b541d7a4b12780981189978275a652153551e Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 27 Nov 2025 11:37:52 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Fix non ML link reconfig
+BTM request cases
+
+Fix BTM request hostapd_cli commands for non ML link reconfig cases.
+ML link reconfig test cases require partner_link_set parameter in BTM
+request hostapd_cli commands. To enforce this, the case without
+partner_link_set parameter was removed in the patch referenced in the
+fixes tag.
+
+This removal caused regressions in Wi-Fi 7 non-link reconfig and non-MLO
+test cases using BTM request hostapd_cli commands. These cases lack
+Neighbor_MLD_LinkIDs configuration, leading to invalid hostapd_cli
+command formats.
+
+Restore support for these older cases by adding back BTM request
+hostapd_cli command without partner_link_set parameter for non-MLO and
+non-link reconfig test cases, adding an exception for ML link reconfig
+test cases alone.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -15269,7 +15269,16 @@ static int mac80211_ap_send_frame_btm_re
+ 		for (i = 0; i < count; i++)
+ 			strlcat(nr_cmd_buf, nr[i], sizeof(nr_cmd_buf));
+ 
+-		if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
++
++		if (!(dut->ap_interface_5g && dut->ap_interface_6g && dut->ap_interface_2g) && (dut->ap_linkreconfig != VALUE_ENABLED)) {
++			snprintf(buf, sizeof(buf),
++				 "-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s %s mbo=0:%d:1",
++				 ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++				 mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++				 dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++				 bss_term ? bss_term_str : " ",
++				 cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
++		} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
+ 			snprintf(buf, sizeof(buf),
+ 				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d,%d",
+ 				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],

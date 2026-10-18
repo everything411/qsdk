@@ -1,0 +1,112 @@
+From fecba437ef556f5d338108549b8d8916f0fb2308 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Thu, 17 Jul 2025 10:58:57 +0530
+Subject: [PATCH] drivers: pci: Add support for lanes and link speed
+
+This patch adds support for the 'num-lanes' and
+'max-link-speed' Device Tree properties, allowing
+platforms to configure PCIe link width and speed
+based on hardware capabilities.
+
+Previously, the PCIe controller was hardcoded to
+train at Gen3, which caused link training failures
+on platforms where Gen3 signaling was unreliable
+or unsupported by certain endpoints.
+
+This led to link-up timeouts and unstable PCIe
+behavior, particularly on boards with endpoints
+that only support lower speeds or where signal
+integrity is insufficient for Gen3 operation.
+
+By introducing these properties, platforms can
+now explicitly limit the link speed and width,
+ensuring stable and reliable PCIe initialization
+across a wider range of hardware configurations.
+
+Change-Id: I8cb538774e07bd8867ce2e461609d305827e0c18
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/pci/pcie_dw_qcom.c | 42 +++++++++++++++++++++++++++++++++++---
+ 1 file changed, 39 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/pci/pcie_dw_qcom.c b/drivers/pci/pcie_dw_qcom.c
+index e140bc91570..c38c811b696 100644
+--- a/drivers/pci/pcie_dw_qcom.c
++++ b/drivers/pci/pcie_dw_qcom.c
+@@ -56,6 +56,8 @@ struct qcom_pcie {
+ 	struct qcom_pcie_ops *ops;
+ 	struct udevice *vregs[NUM_SUPPLIES];
+ 	int id;
++	u32 max_link_speed;
++	u32 num_lanes;
+ };
+ 
+ /* PARF registers */
+@@ -341,20 +343,51 @@ static void qcom_pcie_configure(struct qcom_pcie *priv)
+ 
+ 	dw_pcie_dbi_write_enable(&priv->dw, true);
+ 
++	clrsetbits_le32(priv->dw.dbi_base + PCIE_LINK_CAPABILITY,
++			TARGET_LINK_SPEED_MASK, priv->max_link_speed);
++
++	clrsetbits_le32(priv->dw.dbi_base + PCIE_LINK_CTL_2,
++			TARGET_LINK_SPEED_MASK, priv->max_link_speed);
++
+ 	val = readl(priv->dw.dbi_base + PCIE_PORT_LINK_CONTROL);
+ 	val &= ~PORT_LINK_FAST_LINK_MODE;
+ 	val |= PORT_LINK_DLL_LINK_EN;
+ 	val &= ~PORT_LINK_MODE_MASK;
+-	val |= PORT_LINK_MODE_2_LANES;
++	switch (priv->num_lanes) {
++	case 1:
++		val |= PORT_LINK_MODE_1_LANES;
++		break;
++	case 2:
++		val |= PORT_LINK_MODE_2_LANES;
++		break;
++	case 4:
++		val |= PORT_LINK_MODE_4_LANES;
++		break;
++	default:
++		dev_err(priv->dw.dev, "num-lanes %u: invalid value\n",
++			priv->num_lanes);
++		goto out;
++	}
+ 	writel(val, priv->dw.dbi_base + PCIE_PORT_LINK_CONTROL);
+ 
+ 	val = readl(priv->dw.dbi_base + PCIE_LINK_WIDTH_SPEED_CONTROL);
+ 	val &= ~PORT_LOGIC_LINK_WIDTH_MASK;
+-	val |= PORT_LOGIC_LINK_WIDTH_2_LANES;
++	switch (priv->num_lanes) {
++	case 1:
++		val |= PORT_LOGIC_LINK_WIDTH_1_LANES;
++		break;
++	case 2:
++		val |= PORT_LOGIC_LINK_WIDTH_2_LANES;
++		break;
++	case 4:
++		val |= PORT_LOGIC_LINK_WIDTH_4_LANES;
++		break;
++	}
+ 	writel(val, priv->dw.dbi_base + PCIE_LINK_WIDTH_SPEED_CONTROL);
+ 
+-	qcom_pcie_set_lanes(priv, 2);
++	qcom_pcie_set_lanes(priv, priv->num_lanes);
+ 
++out:
+ 	dw_pcie_dbi_write_enable(&priv->dw, false);
+ }
+ 
+@@ -533,6 +566,9 @@ static int qcom_pcie_parse_dt(struct udevice *dev)
+ 	}
+ 
+ 	priv->id = dev_read_u32_default(dev, "id", 0);
++	priv->max_link_speed = dev_read_u32_default(dev, "max-link-speed",
++						    LINK_SPEED_GEN_3);
++	priv->num_lanes = dev_read_u32_default(dev, "num-lanes", 2);
+ 
+ 	return 0;
+ }
+-- 
+2.34.1
+

@@ -1,0 +1,42 @@
+From 0ebeb7889b7fd533cfac6f12116d31b05c52ff06 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Wed, 6 Aug 2025 19:07:15 +0530
+Subject: [PATCH] misc: Add TMELCOM driver support
+
+Add TMELCOM driver to enable IPC with
+TME-L using QTI Mailbox Protocol (QMP).
+
+Change-Id: I5697319d23fa72d6af0aed49f06ba9e3d887225d
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/misc/Kconfig  | 6 ++++++
+ drivers/misc/Makefile | 1 +
+ 2 files changed, 7 insertions(+)
+
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 271aee641df..63cc395dcfd 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -724,4 +724,10 @@ config NOR_BLK
+ 	  The driver manages the SPI-Nor device as a block device
+ 	  that supports the GPT (EFI) partition table.
+ 
++config QCOM_TMELCOM
++	bool "Qualcomm TMELCOM Driver"
++	depends on QCOM_TMEL_QMP
++	help
++	  Qualcomm TMELCOM Driver enables the TME-L Com interface
++	  over QTI Mailbox Protocol (QMP) for IPC communication with TME-L.
+ endmenu
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index 9834eb325f4..359303cfb6b 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -95,3 +95,4 @@ obj-$(CONFIG_SL28CPLD) += sl28cpld.o
+ obj-$(CONFIG_SPL_SOCFPGA_DT_REG) += socfpga_dtreg.o
+ obj-$(CONFIG_QCOM_GENI_SE) += qcom-geni-se.o
+ obj-$(CONFIG_NOR_BLK) += qti_nor_blk.o
++obj-$(CONFIG_QCOM_TMELCOM) += tmelcom.o
+-- 
+2.34.1
+

@@ -1,0 +1,161 @@
+From becdf278d0c76c8e4c2a9916402b06138868c845 Mon Sep 17 00:00:00 2001
+From: Hariharan Basuthkar <hbasuthk@qti.qualcomm.com>
+Date: Tue, 2 Dec 2025 16:40:17 +0530
+Subject: [PATCH] UPSTREAM: HOSTAPD: Rectify current operating class field
+
+The current operating class field in the supported operating class IE
+present in the association request sent by a station to an AP operating
+on 80 MHz on 6 GHz band (133 is the opclass for 80 MHz on 6 GHz band)
+is always 131 (opclass for 20 MHz on 6 GHz band).
+
+On the STA side, the wpas_supp_op_class_ie fills the current operating
+class field in the supported operating class IE based on the HT/VHT
+capabilities advertised in the beacon by the Root AP. Currently, the
+HE/EHT capabilities/operation IE advertised by the Root AP are not parsed,
+resulting in the 6 GHz operating class for 20 MHz BW (opclass 131) being
+derived as the "current operating class".
+
+To address this issue, parse the HE/EHT operation IE of the Root AP,
+determine the Root AP's bandwidth, and then derive the
+current operating class.
+
+Tag: 6G_REGULATORY
+Patch-dependency: None
+Link: [PATCH] Fill current operating class field in supported operating class IE
+
+Signed-off-by: Hariharan Basuthkar <hbasuthk@qti.qualcomm.com>
+---
+ src/common/ieee802_11_defs.h |  6 +++
+ wpa_supplicant/rrm.c         | 83 +++++++++++++++++++++++++++++++++++-
+ 2 files changed, 88 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 7eae15c..3a4d44c 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2765,6 +2765,11 @@ struct ieee80211_he_6ghz_oper_info {
+ 	u8 min_rate;
+ } STRUCT_PACKED;
+ 
++#define IEEE80211_6GHZ_OP_CHWIDTH_20 0
++#define IEEE80211_6GHZ_OP_CHWIDTH_40 1
++#define IEEE80211_6GHZ_OP_CHWIDTH_80 2
++#define IEEE80211_6GHZ_OP_CHWIDTH_160_80_80 3
++
+ /* IEEE Std 802.11ax-2021, Figure 9-788l - Control field format */
+ #define HE_6GHZ_OPER_INFO_CTRL_CHAN_WIDTH_MASK	(BIT(0) | BIT(1))
+ #define HE_6GHZ_OPER_INFO_CTRL_DUP_BEACON	BIT(2)
+@@ -3054,6 +3059,7 @@ struct ieee80211_eht_operation {
+ 	struct ieee80211_eht_oper_info oper_info; /* 0 or 3 or 5 octets */
+ } STRUCT_PACKED;
+ 
++#define IEEE80211_EHT_OP_MIN_LEN 6
+ /* IEEE P802.11be/D1.5, 9.4.2.313 - EHT Capabilities element */
+ 
+ /* Figure 9-1002af: EHT MAC Capabilities Information field */
+diff --git a/wpa_supplicant/rrm.c b/wpa_supplicant/rrm.c
+index 2ec4310..5304593 100644
+--- a/wpa_supplicant/rrm.c
++++ b/wpa_supplicant/rrm.c
+@@ -714,9 +714,10 @@ int wpas_get_op_chan_phy(int freq, const u8 *ies, size_t ies_len,
+ {
+ 	const u8 *ie;
+ 	int sec_chan = 0, vht = 0;
++	struct ieee80211_he_6ghz_oper_info *he_oper_6g = NULL;
+ 	struct ieee80211_ht_operation *ht_oper = NULL;
+ 	struct ieee80211_vht_operation *vht_oper = NULL;
+-	u8 seg0, seg1;
++	u8 seg0, seg1, pos = 0;
+ 
+ 	ie = get_ie(ies, ies_len, WLAN_EID_HT_OPERATION);
+ 	if (ie && ie[1] >= sizeof(struct ieee80211_ht_operation)) {
+@@ -758,6 +759,86 @@ int wpas_get_op_chan_phy(int freq, const u8 *ies, size_t ies_len,
+ 			break;
+ 		}
+ 	}
++	ie = get_ie_ext(ies, ies_len, WLAN_EID_EXT_HE_OPERATION);
++	if (ie && ie[1] >= sizeof(struct ieee80211_he_operation)) {
++		const struct ieee80211_he_operation *he_oper =
++			(const struct ieee80211_he_operation *)(ie + 3);
++		if (he_oper->he_oper_params & HE_OPERATION_VHT_OPER_INFO)
++			pos = pos + 3;
++
++		if (he_oper->he_oper_params & HE_OPERATION_COHOSTED_BSS)
++			pos = pos + 1;
++
++		/*Overwite the chanwidth as below only for 6G */
++		if ((he_oper->he_oper_params & HE_OPERATION_6GHZ_OPER_INFO) &&
++		    (is_6ghz_freq(freq))) {
++			u8 he_oper_chwidth;
++
++			pos = pos + 9;
++			he_oper_6g = (struct ieee80211_he_6ghz_oper_info *)(ie + pos);
++			he_oper_chwidth =
++				he_oper_6g->control & HE_6GHZ_OPER_INFO_CTRL_CHAN_WIDTH_MASK;
++			wpa_printf(MSG_DEBUG, "HE 6G operation width: %d",
++				   he_oper_chwidth);
++
++			switch (he_oper_chwidth) {
++			case IEEE80211_6GHZ_OP_CHWIDTH_20:
++				vht = CONF_OPER_CHWIDTH_USE_HT;
++				break;
++			case IEEE80211_6GHZ_OP_CHWIDTH_40:
++				sec_chan = 1;
++				vht = CONF_OPER_CHWIDTH_USE_HT;
++				break;
++			case IEEE80211_6GHZ_OP_CHWIDTH_80:
++				vht = CONF_OPER_CHWIDTH_80MHZ;
++				break;
++			case IEEE80211_6GHZ_OP_CHWIDTH_160_80_80:
++				vht = CONF_OPER_CHWIDTH_160MHZ;
++				break;
++			default:
++				vht = CONF_OPER_CHWIDTH_USE_HT;
++			}
++			wpa_printf(MSG_DEBUG, "vht from HE 6G operation info: %d",
++				   vht);
++		}
++	}
++
++	ie = get_ie_ext(ies, ies_len, WLAN_EID_EXT_EHT_OPERATION);
++	if (ie && ie[1] >= 1 + IEEE80211_EHT_OP_MIN_LEN) {
++		struct ieee80211_eht_operation *eht_op;
++		u8 eht_width;
++
++		eht_op = (struct ieee80211_eht_operation *)(ie + 3);
++
++		if (eht_op->oper_params & EHT_OPER_INFO_PRESENT)
++			eht_width = eht_op->oper_info.control;
++		else
++			eht_width = EHT_OPER_CHANNEL_WIDTH_20MHZ;
++
++		wpa_printf(MSG_DEBUG, "EHT operation width: %d", eht_width);
++		switch (eht_width) {
++		case EHT_OPER_CHANNEL_WIDTH_20MHZ:
++			vht = CONF_OPER_CHWIDTH_USE_HT;
++			break;
++		case EHT_OPER_CHANNEL_WIDTH_40MHZ:
++			sec_chan = 1;
++			vht = CONF_OPER_CHWIDTH_USE_HT;
++			break;
++		case EHT_OPER_CHANNEL_WIDTH_80MHZ:
++			vht = CONF_OPER_CHWIDTH_80MHZ;
++			break;
++		case EHT_OPER_CHANNEL_WIDTH_160MHZ:
++			vht = CONF_OPER_CHWIDTH_160MHZ;
++			break;
++		case EHT_OPER_CHANNEL_WIDTH_320MHZ:
++			vht = CONF_OPER_CHWIDTH_320MHZ;
++			break;
++		default:
++			vht = CONF_OPER_CHWIDTH_USE_HT;
++			break;
++		}
++		wpa_printf(MSG_DEBUG, "vht from EHT operation info: %d", vht);
++	}
+ 
+ 	if (ieee80211_freq_to_channel_ext(freq, sec_chan, vht, op_class,
+ 					  chan) == NUM_HOSTAPD_MODES) {
+-- 
+2.34.1
+

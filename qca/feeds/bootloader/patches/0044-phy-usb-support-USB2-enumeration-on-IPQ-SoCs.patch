@@ -1,0 +1,81 @@
+From d0827d6227c50ed828a9d60f08d44ff07fe6abb0 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Thu, 5 Jun 2025 16:40:03 +0530
+Subject: [PATCH] phy: usb: support USB2 enumeration on IPQ SoCs
+
+Adds support for USB2 PHY enumeration on IPQ SoCs by
+introducing SoC-specific private data handling.
+
+This enables proper initialization and detection of USB2
+devices during boot.
+
+Change-Id: I2b51d04d7014bb2d8a60342c923363d5cc325d83
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/phy/qcom/phy-qcom-qusb2.c | 43 +++++++++++++++++++++++++++++++
+ 1 file changed, 43 insertions(+)
+
+diff --git a/drivers/phy/qcom/phy-qcom-qusb2.c b/drivers/phy/qcom/phy-qcom-qusb2.c
+index c91ba18c4ab..4766d4c15aa 100644
+--- a/drivers/phy/qcom/phy-qcom-qusb2.c
++++ b/drivers/phy/qcom/phy-qcom-qusb2.c
+@@ -232,6 +232,46 @@ static const struct qusb2_phy_cfg qusb2_v2_phy_cfg = {
+ 	.update_tune1_with_efuse = true,
+ };
+ 
++static const unsigned int ipq9574_regs_layout[] = {
++	[QUSB2PHY_PLL_STATUS]              = 0x38,
++	[QUSB2PHY_PORT_TUNE1]              = 0x80,
++	[QUSB2PHY_PORT_TUNE2]              = 0x84,
++	[QUSB2PHY_PORT_TUNE3]              = 0x88,
++	[QUSB2PHY_PORT_TUNE4]              = 0x8C,
++	[QUSB2PHY_PORT_TUNE5]              = 0x90,
++	[QUSB2PHY_PORT_TEST1]              = 0x98,
++	[QUSB2PHY_PORT_TEST2]              = 0x9C,
++	[QUSB2PHY_PORT_POWERDOWN]          = 0xB4,
++	[QUSB2PHY_INTR_CTRL]               = 0xBC,
++};
++
++static const struct qusb2_phy_init_tbl ipq9574_init_tbl[] = {
++	QUSB2_PHY_INIT_CFG(QUSB2PHY_PLL, 0x14),
++	QUSB2_PHY_INIT_CFG_L(QUSB2PHY_PORT_TUNE1, 0xF8),
++	QUSB2_PHY_INIT_CFG_L(QUSB2PHY_PORT_TUNE2, 0xB3),
++	QUSB2_PHY_INIT_CFG_L(QUSB2PHY_PORT_TUNE3, 0x83),
++	QUSB2_PHY_INIT_CFG_L(QUSB2PHY_PORT_TUNE4, 0xC0),
++	QUSB2_PHY_INIT_CFG(QUSB2PHY_PLL_TUNE, 0x30),
++	QUSB2_PHY_INIT_CFG(QUSB2PHY_PLL_USER_CTL1, 0x79),
++	QUSB2_PHY_INIT_CFG(QUSB2PHY_PLL_USER_CTL2, 0x21),
++	QUSB2_PHY_INIT_CFG_L(QUSB2PHY_PORT_TUNE5, 0x00),
++	QUSB2_PHY_INIT_CFG(QUSB2PHY_PLL_PWR_CTRL, 0x00),
++	QUSB2_PHY_INIT_CFG_L(QUSB2PHY_PORT_TEST2, 0x14),
++	QUSB2_PHY_INIT_CFG(QUSB2PHY_PLL_TEST, 0x80),
++	QUSB2_PHY_INIT_CFG(QUSB2PHY_PLL_AUTOPGM_CTL1, 0x9F),
++};
++
++static const struct qusb2_phy_cfg ipq9574_phy_cfg = {
++	.tbl            = ipq9574_init_tbl,
++	.tbl_num        = ARRAY_SIZE(ipq9574_init_tbl),
++	.regs           = ipq9574_regs_layout,
++
++	.disable_ctrl   = POWER_DOWN,
++	.mask_core_ready = PLL_LOCKED,
++	/* autoresume not used */
++	.autoresume_en   = BIT(0),
++};
++
+ /**
+  * struct qusb2_phy - structure holding qusb2 phy attributes
+  *
+@@ -416,6 +456,9 @@ static const struct udevice_id qusb2phy_ids[] = {
+ 	{ .compatible = "qcom,sm6115-qusb2-phy",
+ 	  .data = (ulong)&sm6115_phy_cfg },
+ 	{ .compatible = "qcom,qusb2-v2-phy", .data = (ulong)&qusb2_v2_phy_cfg },
++	{ .compatible = "qcom,ipq9574-qusb2-phy",
++	  .data = (long unsigned int)&ipq9574_phy_cfg,
++	},
+ 	{}
+ };
+ 
+-- 
+2.34.1
+

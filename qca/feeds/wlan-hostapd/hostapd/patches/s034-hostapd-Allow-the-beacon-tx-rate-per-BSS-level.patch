@@ -1,0 +1,162 @@
+From 258908b505891c76bdbbb1af3dd338d0f491983d Mon Sep 17 00:00:00 2001
+From: Raja Mani <rmani@qti.qualcomm.com>
+Date: Sun, 16 Nov 2025 08:48:44 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:HOSTAPD:Move beacon transmit rate configuration from radio level to BSS level
+
+Move beacon transmit rate configuration from the radio level to the BSS level,
+enabling users to control the beacon transmission rate on a per-BSS basis.
+Refactor beacon rate handling by moving the `beacon_rate` and `rate_type`
+fields from `hostapd_config` structure to the per-BSS `hostapd_bss_config`
+structure. This change ensures that beacon rate settings are applied at
+BSS level, allowing multiple BSS instances to have independent configurations.
+The patch updates the configuration parsing logic to set these values in BSS
+context, initializes defaults in `hostapd_config_defaults()`, and adjusts
+beacon parameter building and HE operation handling to reference the BSS-level
+fields.
+
+Tested-by: Prasath Rao Loganathan <prasathr@qti.qualcomm.com>
+Signed-off-by: Raja Mani <rmani@qti.qualcomm.com>
+
+Patch-dependency: none
+---
+ hostapd/config_file.c  | 19 +++++++++----------
+ src/ap/ap_config.c     |  3 +++
+ src/ap/ap_config.h     |  5 +++--
+ src/ap/beacon.c        |  4 ++--
+ src/ap/ieee802_11_he.c |  2 +-
+ 5 files changed, 18 insertions(+), 15 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 60289094484c..ec7ac9941368 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3270,6 +3270,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 			return 1;
+ 		}
+ 	} else if (os_strcmp(buf, "beacon_rate") == 0) {
++		enum beacon_rate_type rate_type = BEACON_RATE_LEGACY;
+ 		int val;
+ 
+ 		if (os_strncmp(pos, "ht:", 3) == 0) {
+@@ -3280,8 +3281,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 					   line, val);
+ 				return 1;
+ 			}
+-			conf->rate_type = BEACON_RATE_HT;
+-			conf->beacon_rate = val;
++			rate_type = BEACON_RATE_HT;
+ 		} else if (os_strncmp(pos, "vht:", 4) == 0) {
+ 			val = atoi(pos + 4);
+ 			if (val < 0 || val > 9) {
+@@ -3290,8 +3290,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 					   line, val);
+ 				return 1;
+ 			}
+-			conf->rate_type = BEACON_RATE_VHT;
+-			conf->beacon_rate = val;
++			rate_type = BEACON_RATE_VHT;
+ 		} else if (os_strncmp(pos, "he:", 3) == 0) {
+ 			val = atoi(pos + 3);
+ 			if (val < 0 || val > 11) {
+@@ -3300,8 +3299,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 					   line, val);
+ 				return 1;
+ 			}
+-			conf->rate_type = BEACON_RATE_HE;
+-			conf->beacon_rate = val;
++			rate_type = BEACON_RATE_HE;
+ 		} else if (os_strncmp(pos, "eht:", 4) == 0) {
+ 			val = atoi(pos + 4);
+ 			if (val < 0 || val > 15) {
+@@ -3310,8 +3308,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 					   line, val);
+ 				return 1;
+ 			}
+-			conf->rate_type = BEACON_RATE_EHT;
+-			conf->beacon_rate = val;
++			rate_type = BEACON_RATE_EHT;
+ 		} else {
+ 			val = atoi(pos);
+ 			if (val < 10 || val > 10000) {
+@@ -3320,9 +3317,11 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 					   line, val);
+ 				return 1;
+ 			}
+-			conf->rate_type = BEACON_RATE_LEGACY;
+-			conf->beacon_rate = val;
++			rate_type = BEACON_RATE_LEGACY;
+ 		}
++
++		bss->rate_type = rate_type;
++		bss->beacon_rate = val;
+ 	} else if (os_strcmp(buf, "preamble") == 0) {
+ 		if (atoi(pos))
+ 			conf->preamble = SHORT_PREAMBLE;
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 17f45dce87c7..f3a60de50430 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -383,6 +383,9 @@ struct hostapd_config * hostapd_config_defaults(void)
+ 	hostapd_set_default_epcs_params(bss);
+ #endif /* CONFIG_IEEE80211BE */
+ 
++	bss->rate_type = BEACON_RATE_LEGACY;
++	bss->beacon_rate = 0;
++
+ 	return conf;
+ }
+ 
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 1b306179c9df..c33622172ec9 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1038,6 +1038,9 @@ struct hostapd_bss_config {
+ 	bool scs;
+ 	bool mscs;
+ #endif /* CONFIG_IEEE80211AX */
++
++	enum beacon_rate_type rate_type;
++	unsigned int beacon_rate;
+ };
+ 
+ /**
+@@ -1122,8 +1125,6 @@ struct hostapd_config {
+ 
+ 	int *supported_rates;
+ 	int *basic_rates;
+-	unsigned int beacon_rate;
+-	enum beacon_rate_type rate_type;
+ 
+ 	const struct wpa_driver_ops *driver;
+ 	char *driver_params;
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index c0a3a5b0c8fb..8d89f364e7d9 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2894,8 +2894,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 	params->dtim_period = hapd->conf->dtim_period;
+ 	params->beacon_int = hapd->iconf->beacon_int;
+ 	params->basic_rates = hapd->iface->basic_rates;
+-	params->beacon_rate = hapd->iconf->beacon_rate;
+-	params->rate_type = hapd->iconf->rate_type;
++	params->beacon_rate = hapd->conf->beacon_rate;
++	params->rate_type = hapd->conf->rate_type;
+ 	params->ssid = hapd->conf->ssid.ssid;
+ 	params->ssid_len = hapd->conf->ssid.ssid_len;
+ 	if ((hapd->conf->wpa & (WPA_PROTO_WPA | WPA_PROTO_RSN)) ==
+diff --git a/src/ap/ieee802_11_he.c b/src/ap/ieee802_11_he.c
+index 44ad9167793c..2bb92da23a01 100644
+--- a/src/ap/ieee802_11_he.c
++++ b/src/ap/ieee802_11_he.c
+@@ -276,7 +276,7 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 		if (center_idx_to_bw_6ghz(seg0) &&
+ 		    !is_6ghz_psc_frequency(ieee80211_chan_to_freq(NULL,
+ 				    hapd->iconf->op_class, hapd->iconf->channel)) &&
+-				    hapd->iconf->rate_type == BEACON_RATE_LEGACY)
++				    hapd->conf->rate_type == BEACON_RATE_LEGACY)
+ 			control |= HE_6GHZ_OPER_INFO_CTRL_DUP_BEACON;
+ 
+ 		*pos++ = control;
+-- 
+2.34.1
+

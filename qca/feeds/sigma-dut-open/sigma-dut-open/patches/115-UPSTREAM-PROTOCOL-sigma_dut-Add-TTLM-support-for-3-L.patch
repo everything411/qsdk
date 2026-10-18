@@ -1,0 +1,290 @@
+From e0cc0a805ef4710e2f107c6fbca5c3f752c56b01 Mon Sep 17 00:00:00 2001
+From: Vikram Kandukuri <vikram@qti.qualcomm.com>
+Date: Fri, 6 Feb 2026 08:08:38 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Add TTLM support for 3 Link Load
+ balancing
+
+Add TTLM support for 3 Link Load balancing
+
+Propagate the BTM query reason code into the MBO field of BTM requests so
+three-link load balancing cases can trigger the expected TTLM behavior.
+
+Handle the T2LMTeardown action by issuing negotiated_ttlm teardown to
+hostapd to clean up TTLM mappings for Wi-Fi 7 AP mode.
+
+Signed-off-by: Vikram Kandukuri <vikram@qti.qualcomm.com>
+---
+ ap.c | 214 +++++++++++++++++++++++++++++++++++++++++++++--------------
+ 1 file changed, 164 insertions(+), 50 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -15200,6 +15200,7 @@ static int mac80211_ap_send_frame_btm_re
+ 	bool link_set = false;
+ 	char link_param[10];
+ 	int link_id = 0;
++	int mbo_reason = 0;
+ 
+ 	val = get_param(cmd, "Interface");
+ 	if (val) {
+@@ -15238,6 +15239,11 @@ static int mac80211_ap_send_frame_btm_re
+ 		return -1;
+ 	}
+ 
++	val = get_param(cmd, "BTMQuery_Reason_Code");
++	if (val)
++		mbo_reason = atoi(val);
++
++
+ 	if (dut->program == PROGRAM_EHT) {
+ 		snprintf(link_param, sizeof(link_param), "-l %d", link_id);
+ 		link_set = true;
+@@ -15316,39 +15322,67 @@ static int mac80211_ap_send_frame_btm_re
+ 		for (i = 0; i < count; i++)
+ 			strlcat(nr_cmd_buf, nr[i], sizeof(nr_cmd_buf));
+ 
+-
+-		if (!(dut->ap_interface_5g && dut->ap_interface_6g && dut->ap_interface_2g) && (dut->ap_linkreconfig != VALUE_ENABLED)) {
+-			snprintf(buf, sizeof(buf),
+-				 "-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s %s mbo=0:%d:1",
+-				 ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+-				 mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+-				 dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+-				 bss_term ? bss_term_str : " ",
+-				 cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
+-		} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
+-			snprintf(buf, sizeof(buf),
+-				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d,%d",
+-				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+-				mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+-				dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+-				bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
+-				dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1],  dut->btm[0].nebor_linkid[2]);
+-		} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1) {
+-			snprintf(buf, sizeof(buf),
+-				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d",
+-				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+-				mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+-				dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+-				bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
+-				dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1]);
+-		} else if (dut->btm[0].nebor_linkid[0] != -1) {
+-			snprintf(buf, sizeof(buf),
+-				"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d",
+-				ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
+-				mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
+-				dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+-				bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
+-				dut->btm[0].nebor_linkid[0]);
++		if (dut->ap_ttlm == VALUE_ENABLED) {
++			sigma_dut_print(dut, DUT_MSG_INFO, " TTLM Case 3 Link \n");
++			if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 valid_int=15 disassoc_imminent=%d disassoc_timer=%d %s mbo=%d:%d:1 partner_link_set=%d,%d,%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						bss_term ? bss_term_str : " ", mbo_reason, dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1],  dut->btm[0].nebor_linkid[2]);
++			} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 valid_int=15 disassoc_imminent=%d disassoc_timer=%d %s mbo=%d:%d:1 partner_link_set=%d,%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						bss_term ? bss_term_str : " ", mbo_reason, dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1]);
++			} else if (dut->btm[0].nebor_linkid[0] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 valid_int=15 disassoc_imminent=%d disassoc_timer=%d %s mbo=%d:%d:1 partner_link_set=%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						bss_term ? bss_term_str : " ", mbo_reason, dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0]);
++			}
++		} else {
++			if (!(dut->ap_interface_5g && dut->ap_interface_6g && dut->ap_interface_2g) && (dut->ap_linkreconfig != VALUE_ENABLED)) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s %s mbo=0:%d:1",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						bss_term ? bss_term_str : " ",
++						cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
++			} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1],  dut->btm[0].nebor_linkid[2]);
++			} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1]);
++			} else if (dut->btm[0].nebor_linkid[0] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s mbo=0:%d:1 partner_link_set=%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						bss_term ? bss_term_str : " ", dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0]);
++			}
+ 		}
+ 
+ 		sigma_dut_print(dut, DUT_MSG_INFO, "bss_tm_req buf %s\n", buf);
+@@ -15362,7 +15396,10 @@ static int mac80211_ap_send_frame_btm_re
+ 
+ 		if (cand_list) {
+ 			self_mac = dut->mbo_self_ap_tuple.mac_addr;
+-			self_ap_ne_pref = dut->mbo_self_ap_tuple.ap_ne_pref;
++			if (dut->ap_ttlm == VALUE_ENABLED)
++				self_ap_ne_pref = 0;
++			else
++				self_ap_ne_pref = dut->mbo_self_ap_tuple.ap_ne_pref;
+ 			snprintf(nrbuf[0], sizeof(nrbuf[0]),
+ 				"neighbor=%02x:%02x:%02x:%02x:%02x:%02x,0x00000017,%02d,%02d,%02d,0301%02x ",
+ 				self_mac[0], self_mac[1], self_mac[2],
+@@ -15371,28 +15408,59 @@ static int mac80211_ap_send_frame_btm_re
+ 				dut->mbo_self_ap_tuple.ap_ne_op_ch, 0,
+ 				dut->ap_btmreq_disassoc_imnt ? 0 : self_ap_ne_pref);
+ 
+-			for (i = 0; i < dut->mbo_pref_ap_cnt; i++) {
+-				pref_mac_addr = dut->mbo_pref_aps[i].mac_addr;
+-				snprintf(nrbuf[i + 1], sizeof(nrbuf[0]),
+-					"neighbor=%02x:%02x:%02x:%02x:%02x:%02x,0x00000017,%02d,%02d,%02d,0301%02x ",
+-					pref_mac_addr[0], pref_mac_addr[1], pref_mac_addr[2],
+-					pref_mac_addr[3], pref_mac_addr[4], pref_mac_addr[5],
+-					dut->mbo_pref_aps[i].ap_ne_class,
+-					dut->mbo_pref_aps[i].ap_ne_op_ch, 0,
+-					dut->mbo_pref_aps[i].ap_ne_pref);
++			if (dut->ap_ttlm != VALUE_ENABLED) {
++				for (i = 0; i < dut->mbo_pref_ap_cnt; i++) {
++					pref_mac_addr = dut->mbo_pref_aps[i].mac_addr;
++					snprintf(nrbuf[i + 1], sizeof(nrbuf[0]),
++							"neighbor=%02x:%02x:%02x:%02x:%02x:%02x,0x00000017,%02d,%02d,%02d,0301%02x ",
++							pref_mac_addr[0], pref_mac_addr[1], pref_mac_addr[2],
++							pref_mac_addr[3], pref_mac_addr[4], pref_mac_addr[5],
++							dut->mbo_pref_aps[i].ap_ne_class,
++							dut->mbo_pref_aps[i].ap_ne_op_ch, 0,
++							dut->mbo_pref_aps[i].ap_ne_pref);
++				}
+ 			}
+ 		}
+ 
+ 		for (i = 0; (i < dut->mbo_pref_ap_cnt + 1); i++)
+ 			strlcat(nr_cmd_buf, nrbuf[i], sizeof(nr_cmd_buf));
+ 
+-		snprintf(buf, sizeof(buf),
+-			"-i %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s %s mbo=0:%d:1",
+-			ifname, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
+-			mac_addr[4], mac_addr[5], cand_list,
+-			dut->ap_btmreq_disassoc_imnt, disassoc_timer,
+-			bss_term ? bss_term_str : " ",
+-			cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
++		if (dut->ap_ttlm == VALUE_ENABLED) {
++			sigma_dut_print(dut, DUT_MSG_INFO, " TTLM Case - 2 Link\n");
++			if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1 && dut->btm[0].nebor_linkid[2] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 valid_int=15 disassoc_imminent=%d disassoc_timer=%d %s mbo=%d:%d:1 partner_link_set=%d,%d,%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						cand_list ? nr_cmd_buf : " ", mbo_reason, dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1],  dut->btm[0].nebor_linkid[2]);
++			} else if (dut->btm[0].nebor_linkid[0] != -1 && dut->btm[0].nebor_linkid[1] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 valid_int=15 disassoc_imminent=%d disassoc_timer=%d %s mbo=%d:%d:1 partner_link_set=%d,%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						cand_list ? nr_cmd_buf : " ", mbo_reason, dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0], dut->btm[0].nebor_linkid[1]);
++			} else if (dut->btm[0].nebor_linkid[0] != -1) {
++				snprintf(buf, sizeof(buf),
++						"-i %s %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d abridged=1 valid_int=15 disassoc_imminent=%d disassoc_timer=%d %s mbo=%d:%d:1 partner_link_set=%d,%d",
++						ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						mac_addr[3], mac_addr[4], mac_addr[5], cand_list,
++						dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++						nr_cmd_buf, mbo_reason, dut->ap_assoc_delay, dut->btm[0].ap_ne_pref,
++						dut->btm[0].nebor_linkid[0]);
++			}
++		} else {
++			snprintf(buf, sizeof(buf),
++					"-i %s bss_tm_req %02x:%02x:%02x:%02x:%02x:%02x pref=%d disassoc_imminent=%d disassoc_timer=%d %s %s mbo=0:%d:1",
++					ifname, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3],
++					mac_addr[4], mac_addr[5], cand_list,
++					dut->ap_btmreq_disassoc_imnt, disassoc_timer,
++					bss_term ? bss_term_str : " ",
++					cand_list ? nr_cmd_buf : " ", dut->ap_assoc_delay);
++		}
+ 
+ 		sigma_dut_print(dut, DUT_MSG_INFO, "bss_tm_req buf %s\n", buf);
+ 
+@@ -15452,6 +15520,50 @@ static int mac80211_ap_send_frame_disass
+ 	return 0;
+ }
+ 
++static int mac80211_ap_send_frame_t2lmteardown(struct sigma_dut *dut,
++					 struct sigma_cmd *cmd,
++					 const char *ifname)
++{
++	char link_param[10];
++	bool link_set = false;
++	unsigned char peer_mld_macaddr[ETH_ALEN];
++	char buf[100];
++	const char *val;
++	int link_id = 0;
++
++	val = get_param(cmd, "STA_MLD");
++	if (!val || parse_mac_address(dut, val, peer_mld_macaddr) < 0) {
++		sigma_dut_print(dut, DUT_MSG_ERROR,
++				"Sta MLD MAC Address not in proper format");
++		return -1;
++	}
++
++	val = get_param(cmd, "Interface");
++	if (val) {
++		if (strcasecmp(val, "24G") == 0)
++			link_id = dut->band_to_link[0];
++		else if (strcasecmp(val, "5G") == 0)
++			link_id = dut->band_to_link[1];
++		else if (strcasecmp(val, "6G") == 0)
++			link_id = dut->band_to_link[2];
++
++		dut->intf_defined = dut->num_links;
++	}
++
++	if (dut->program == PROGRAM_EHT) {
++		snprintf(link_param, sizeof(link_param), "-l %d", link_id);
++		link_set = true;
++	}
++
++	snprintf(buf, sizeof(buf),
++		"hostapd_cli -i %s %s negotiated_ttlm teardown %02x:%02x:%02x:%02x:%02x:%02x",
++		ifname, link_set ? link_param : "", peer_mld_macaddr[0], peer_mld_macaddr[1], peer_mld_macaddr[2],
++		peer_mld_macaddr[3], peer_mld_macaddr[4], peer_mld_macaddr[5]);
++	sigma_dut_print(dut, DUT_MSG_INFO, "teardown: '%s'\n", buf);
++	run_system(dut, buf);
++
++	return 0;
++}
+ 
+ static int mac80211_ap_send_frame_mbo(struct sigma_dut *dut, struct sigma_conn *conn,
+ 				      struct sigma_cmd *cmd)
+@@ -15475,6 +15587,8 @@ static int mac80211_ap_send_frame_mbo(st
+ 		mac80211_ap_send_frame_bcn_rpt_req(dut, cmd, (const char *)ifname);
+ 	else if (strcasecmp(val, "disassoc") == 0)
+ 		mac80211_ap_send_frame_disassoc(dut, cmd, (const char *)ifname);
++	else if (strcasecmp(val, "T2LMTeardown") == 0)
++		mac80211_ap_send_frame_t2lmteardown(dut, cmd, (const char *)ifname);
+ 	else
+ 		return -1;
+ 

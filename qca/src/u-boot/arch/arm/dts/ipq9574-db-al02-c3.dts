@@ -1,0 +1,208 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+/dts-v1/;
+
+#include "ipq9574-default.dts"
+
+/ {
+	config_name = "config@db-al02-c3", "config-db-al02-c3";
+
+	soc: soc {
+		tlmm: pinctrl@1000000 {
+
+			mdio_pinmux: mdio {
+				mdc {
+					pins = "GPIO_38";
+					function = "mdc";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				mdio {
+					pins = "GPIO_39";
+					function = "mdio";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			phy_rst_pinmux: phy_rst {
+				qti_8085_rst {
+					pins = "GPIO_60";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qti_aquantia_rst {
+					pins = "GPIO_36";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qti_sfp_rst {
+					pins = "GPIO_61";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			blsp3_i2c_pinmux: blsp3_i2c_pins {
+				blsp3_scl {
+					pins = "GPIO_15";
+					function = "blsp3_i2c_scl";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				blsp3_sda {
+					pins = "GPIO_16";
+					function = "blsp3_i2c_sda";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			blsp4_i2c_pinmux: blsp4_i2c_pins {
+				blsp4_scl {
+					pins = "GPIO_50";
+					function = "blsp4_i2c_scl";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				blsp4_sda {
+					pins = "GPIO_51";
+					function = "blsp4_i2c_sda";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+		};
+
+		blsp3_i2c: i2c@78B8000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&blsp3_i2c_pinmux>;
+			status = "okay";
+		};
+
+		blsp4_i2c: i2c@78B9000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&blsp4_i2c_pinmux>;
+			status = "okay";
+		};
+
+		qmp_ssphy_0: ssphy@7D000 {
+			status = "okay";
+		};
+
+		qusb2_phy_0: qusb2@7B000 {
+			status = "okay";
+		};
+
+		usb0: usb@8af8800 {
+			status = "okay";
+
+			dwc3@8a00000 {
+				phys = <&qusb2_phy_0>, <&qmp_ssphy_0>;
+				phy-names = "usb2-phy", "usb3-phy";
+				maximum-speed = "super-speed";
+			};
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&mdio_pinmux>;
+			status = "okay";
+
+			phy0: phy@16 {
+				phy-reset-gpio = <&tlmm 60 0>;
+				reg = <16>;
+				phy_id = <QCA8075_PHY_TYPE>;
+				id = <1>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+			};
+
+			phy1: phy@17 {
+				reg = <17>;
+				phy_id = <QCA8075_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+			};
+
+			phy2: phy@18 {
+				reg = <18>;
+				phy_id = <QCA8075_PHY_TYPE>;
+				id = <3>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+			};
+
+			phy3: phy@19 {
+				reg = <19>;
+				phy_id = <QCA8075_PHY_TYPE>;
+				id = <4>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+			};
+
+			phy4: phy@ff {
+				phy-reset-gpio = <&tlmm 61 0>;
+				reg = <0xFF>;
+				phy_id = <SFP10G_PHY_TYPE>;
+				id = <5>;
+				uniphy_id = <1>;
+				uniphy_type = <1>;
+				max_speed = <10000>;
+				xgmac;
+			};
+
+			phy5: phy@0 {
+				phy-reset-gpio = <&tlmm 36 0>;
+				reg = <0>;
+				phy_id = <AQ_PHY_TYPE>;
+				phy-mode = "usxgmii";
+				id = <6>;
+				uniphy_id = <2>;
+				uniphy_type = <0>;
+				xgmac;
+			};
+		};
+
+		ethernet: nss-switch {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			phy-handle2 = <&phy2>;
+			phy-handle3 = <&phy3>;
+			phy-handle4 = <&phy4>;
+			phy-handle5 = <&phy5>;
+			status = "okay";
+		};
+
+		pcie0_x1: pci@28000000 {
+			status = "okay";
+			perst_gpio = <&tlmm 23 0>;
+		};
+
+		pcie1_x1: pci@10000000 {
+			status = "okay";
+			perst_gpio = <&tlmm 26 0>;
+		};
+
+		pcie2_x2: pci@20000000 {
+			status = "okay";
+			perst_gpio = <&tlmm 29 0>;
+		};
+
+		pcie3_x2: pci@18000000 {
+			status = "okay";
+			perst_gpio = <&tlmm 32 0>;
+		};
+	};
+};

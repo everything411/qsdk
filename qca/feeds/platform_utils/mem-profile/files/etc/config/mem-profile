@@ -1,0 +1,46 @@
+# =============================================================
+# UCI configuration: mem-profile
+# Defines hardware constraints per runtime memory profile.
+#
+# Supported platforms: IPQ5332, IPQ5424, IPQ9574, IPQ5210, IPQ9650
+# All platforms support 256 MB, 512 MB, and Open (1 GB+) DDR configs.
+#
+# Profile names match the mem-profile= kernel cmdline bootarg:
+#   high       — 1 GB DDR   (Open config)
+#   balanced   — 512 MB DDR
+#   optimized  — 256 MB DDR
+#
+# Default Profile : physical DDR upper bound (MB) for this profile.
+#   optimized     : physical DDR <= 256 MB
+#   balanced      : physical DDR <= 512 MB
+#   high          : physical DDR >  512 MB  (no threshold — catch-all)
+#
+# rdp_support : 'any' to skip the check, or a board_name string from
+#               /etc/board.json (e.g. 'qcom,ipq9574-ap-al02-c4') to
+#               restrict the profile to a specific board.
+#
+# required_wifi_bands : minimum band count from 'iw list | grep -c "Band [0-9]*:"'
+# =============================================================
+
+# ── optimized — 256 MB DDR ───────────────────────────────────
+
+config profile 'optimized'
+	option kernel_mem_profile  '256'
+	option threshold           '256'
+	option rdp_support         'any'
+	option required_wifi_bands '3'
+
+# ── balanced — 512 MB DDR ────────────────────────────────────
+
+config profile 'balanced'
+	option kernel_mem_profile  '512'
+	option threshold           '512'
+	option rdp_support         'any'
+	option required_wifi_bands '3'
+
+# ── high — 1 GB DDR (catch-all for > 512 MB) ─────────────────
+
+config profile 'high'
+	option kernel_mem_profile  '0'
+	option rdp_support         'any'
+	option required_wifi_bands '3'

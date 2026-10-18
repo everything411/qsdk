@@ -1,0 +1,83 @@
+From 1b8cf6f87d5e5af4738abcd63956f582b19754d1 Mon Sep 17 00:00:00 2001
+From: Badhrinath S <badhrina@qti.qualcomm.com>
+Date: Thu, 30 Oct 2025 16:23:07 +0530
+Subject: [PATCH] mtd: spi-nor-core: Add fixups for s25fl129p flash
+
+Fixups for the s25fl129p flash to support erase
+handling when the device is configured with non-
+uniform sector layout by default.
+
+The fixup reads the CFR3V register to determine if
+uniform sector mode is disabled. If so, it assigns a
+custom erase hook to handle the 8 x 4KB sectors at
+the bottom of the flash.
+
+Change-Id: I2bd9ce9791acd13f2d9449ec2779559df26dbc06
+Signed-off-by: Badhrinath S <badhrina@qti.qualcomm.com>
+---
+ drivers/mtd/spi/spi-nor-core.c | 42 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/drivers/mtd/spi/spi-nor-core.c b/drivers/mtd/spi/spi-nor-core.c
+index d247e874841..ff6a832034f 100644
+--- a/drivers/mtd/spi/spi-nor-core.c
++++ b/drivers/mtd/spi/spi-nor-core.c
+@@ -3949,6 +3949,45 @@ static void s25fl256l_late_init(struct spi_nor *nor,
+ static struct spi_nor_fixups s25fl256l_fixups = {
+ 	.late_init = s25fl256l_late_init,
+ };
++
++static int s25fl129p_erase_non_uniform(struct spi_nor *nor, loff_t addr)
++{
++	/* Support 8 x 4KB sectors at bottom */
++	return spansion_erase_non_uniform(nor, addr, SPINOR_OP_BE_4K, 0,
++					  SZ_32K);
++}
++
++static int s25fl129p_setup(struct spi_nor *nor, const struct flash_info *info,
++			   const struct spi_nor_flash_parameter *params)
++{
++	int ret;
++	u8 cr;
++
++	/*
++	 * Read CFR3V to check if uniform sector is selected. If not, assign an
++	 * erase hook that supports non-uniform erase.
++	 */
++	ret = spansion_read_any_reg(nor, SPINOR_REG_CYPRESS_CFR3V, 0, &cr);
++	if (ret)
++	{
++		debug("Failed to read CFR3V register: %d\n", ret);
++		return ret;
++	}
++	if (!(cr & SPINOR_REG_CYPRESS_CFR3_UNISECT))
++		nor->erase = s25fl129p_erase_non_uniform;
++
++	return spi_nor_default_setup(nor, info, params);
++}
++
++static void s25fl129p_late_init(struct spi_nor *nor,
++			      struct spi_nor_flash_parameter *params)
++{
++	nor->setup = s25fl129p_setup;
++}
++
++static struct spi_nor_fixups s25fl129p_fixups = {
++	.late_init = s25fl129p_late_init,
++};
+ #endif
+ 
+ #ifdef CONFIG_SPI_FLASH_S28HX_T
+@@ -4416,6 +4455,9 @@ void spi_nor_set_fixups(struct spi_nor *nor)
+ 		}
+ 	}
+ 
++	if (!strcmp(nor->info->name, "s25fl129p1"))
++		nor->fixups = &s25fl129p_fixups;
++
+ 	if (CONFIG_IS_ENABLED(SPI_FLASH_BAR) &&
+ 	    !strcmp(nor->info->name, "s25fl256l"))
+ 		nor->fixups = &s25fl256l_fixups;
+-- 
+2.34.1
+

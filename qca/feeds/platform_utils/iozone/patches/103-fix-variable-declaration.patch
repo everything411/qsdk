@@ -1,0 +1,24 @@
+From 6e24ca0c829c10d3ecb02c11bc85133c69749e18 Mon Sep 17 00:00:00 2001
+From: Ermine Jose <quic_erminejo@quicinc.com>
+Date: Wed, 24 May 2023 10:59:47 +0530
+Subject: [PATCH] iozone: fix linkage issue in OpenWrt-23.XX
+
+a variable been declared twice in the src of the iozone
+make one variable extern to fix the linkage error
+
+Change-Id: I7fefa809ca5bfd6ec9fd21e65573267cd0aee680
+Signed-off-by: Ermine Jose <quic_erminejo@quicinc.com>
+
+Index: iozone3_420/src/current/iozone.c
+===================================================================
+--- iozone3_420.orig/src/current/iozone.c
++++ iozone3_420/src/current/iozone.c
+@@ -1412,7 +1412,7 @@ int client_error;
+ 
+ char pit_hostname[40];
+ char pit_service[8];
+-int junk;
++extern int junk;
+ 
+ /* 
+  * Host ports used to listen, and handle errors.

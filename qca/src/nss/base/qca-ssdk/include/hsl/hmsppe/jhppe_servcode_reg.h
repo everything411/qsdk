@@ -1,0 +1,162 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#ifndef _JHPPE_SERVCODE_REG_H_
+#define _JHPPE_SERVCODE_REG_H_
+
+/*[table] L2_SPEC_SERVICE_TBL*/
+#define L2_SPEC_SERVICE_TBL
+#define L2_SPEC_SERVICE_TBL_ADDRESS 0x1900
+#define L2_SPEC_SERVICE_TBL_NUM     10
+#define L2_SPEC_SERVICE_TBL_INC     0x8
+#define L2_SPEC_SERVICE_TBL_TYPE    REG_TYPE_RW
+#define L2_SPEC_SERVICE_TBL_DEFAULT 0x0
+	/*[field] BYPASS_BITMAP*/
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_OFFSET  0
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_LEN     24
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_DEFAULT 0x0
+	/*[field] RX_CNT_EN*/
+	#define L2_SPEC_SERVICE_TBL_RX_CNT_EN
+	#define L2_SPEC_SERVICE_TBL_RX_CNT_EN_OFFSET  24
+	#define L2_SPEC_SERVICE_TBL_RX_CNT_EN_LEN     1
+	#define L2_SPEC_SERVICE_TBL_RX_CNT_EN_DEFAULT 0x0
+	/*[field] TX_CNT_EN*/
+	#define L2_SPEC_SERVICE_TBL_TX_CNT_EN
+	#define L2_SPEC_SERVICE_TBL_TX_CNT_EN_OFFSET  25
+	#define L2_SPEC_SERVICE_TBL_TX_CNT_EN_LEN     1
+	#define L2_SPEC_SERVICE_TBL_TX_CNT_EN_DEFAULT 0x0
+	/*[field] BYPASS_BITMAP_EXT*/
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_EXT
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_EXT_OFFSET  26
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_EXT_LEN     8
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_EXT_DEFAULT 0x0
+	/*[field] BYPASS_BITMAP_NEW*/
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_NEW
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_NEW_OFFSET  34
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_NEW_LEN     16
+	#define L2_SPEC_SERVICE_TBL_BYPASS_BITMAP_NEW_DEFAULT 0x0
+	/*[field] POST_BYPASS_BITMAP*/
+	#define L2_SPEC_SERVICE_TBL_POST_BYPASS_BITMAP
+	#define L2_SPEC_SERVICE_TBL_POST_BYPASS_BITMAP_OFFSET  50
+	#define L2_SPEC_SERVICE_TBL_POST_BYPASS_BITMAP_LEN     8
+	#define L2_SPEC_SERVICE_TBL_POST_BYPASS_BITMAP_DEFAULT 0x0
+
+struct l2_spec_service_tbl {
+	a_uint32_t  bypass_bitmap:24;
+	a_uint32_t  rx_cnt_en:1;
+	a_uint32_t  tx_cnt_en:1;
+	a_uint32_t  bypass_bitmap_ext_0:6;
+	a_uint32_t  bypass_bitmap_ext_1:2;
+	a_uint32_t  bypass_bitmap_new:16;
+	a_uint32_t  post_bypass_bitmap:8;
+	a_uint32_t  _reserved0:6;
+};
+
+union l2_spec_service_tbl_u {
+	a_uint32_t val[2];
+	struct l2_spec_service_tbl bf;
+};
+
+/*[register] IN_SPEC_SERVICE_TBL*/
+#define IN_SPEC_SERVICE_TBL
+#define IN_SPEC_SERVICE_TBL_ADDRESS 0x100
+#define IN_SPEC_SERVICE_TBL_NUM     10
+#define IN_SPEC_SERVICE_TBL_INC     0x8
+#define IN_SPEC_SERVICE_TBL_TYPE    REG_TYPE_RW
+#define IN_SPEC_SERVICE_TBL_DEFAULT 0x0
+	/*[field] BYPASS_BITMAP*/
+	#define IN_SPEC_SERVICE_TBL_BYPASS_BITMAP
+	#define IN_SPEC_SERVICE_TBL_BYPASS_BITMAP_OFFSET  0
+	#define IN_SPEC_SERVICE_TBL_BYPASS_BITMAP_LEN     32
+	#define IN_SPEC_SERVICE_TBL_BYPASS_BITMAP_DEFAULT 0x0
+	/*[field] RX_COUNTING_EN*/
+	#define IN_SPEC_SERVICE_TBL_RX_COUNTING_EN
+	#define IN_SPEC_SERVICE_TBL_RX_COUNTING_EN_OFFSET  32
+	#define IN_SPEC_SERVICE_TBL_RX_COUNTING_EN_LEN     1
+	#define IN_SPEC_SERVICE_TBL_RX_COUNTING_EN_DEFAULT 0x0
+
+struct in_spec_service_tbl {
+	a_uint32_t  bypass_bitmap:32;
+	a_uint32_t  rx_counting_en:1;
+	a_uint32_t  _reserved0:31;
+};
+
+union in_spec_service_tbl_u {
+	a_uint32_t val[2];
+	struct in_spec_service_tbl bf;
+};
+
+/*[register] EG_SPEC_SERVICE_TBL*/
+#define EG_SPEC_SERVICE_TBL
+#define EG_SPEC_SERVICE_TBL_ADDRESS 0x138
+#define EG_SPEC_SERVICE_TBL_NUM     12
+#define EG_SPEC_SERVICE_TBL_INC     0x10
+#define EG_SPEC_SERVICE_TBL_TYPE    REG_TYPE_RW
+#define EG_SPEC_SERVICE_TBL_DEFAULT 0x0
+	/*[field] FIELD_UPDATE_ACTION*/
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_OFFSET  0
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_LEN     32
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_DEFAULT 0x0
+	/*[field] TX_COUNTING_EN*/
+	#define EG_SPEC_SERVICE_TBL_TX_COUNTING_EN
+	#define EG_SPEC_SERVICE_TBL_TX_COUNTING_EN_OFFSET  32
+	#define EG_SPEC_SERVICE_TBL_TX_COUNTING_EN_LEN     1
+	#define EG_SPEC_SERVICE_TBL_TX_COUNTING_EN_DEFAULT 0x0
+	/*[field] IP_LENGTH_UPDATE*/
+	#define EG_SPEC_SERVICE_TBL_IP_LENGTH_UPDATE
+	#define EG_SPEC_SERVICE_TBL_IP_LENGTH_UPDATE_OFFSET  33
+	#define EG_SPEC_SERVICE_TBL_IP_LENGTH_UPDATE_LEN     1
+	#define EG_SPEC_SERVICE_TBL_IP_LENGTH_UPDATE_DEFAULT 0x0
+	/*[field] FIELD_UPDATE_ACTION_EXT*/
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_EXT
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_EXT_OFFSET  34
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_EXT_LEN     24
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_EXT_DEFAULT 0x0
+	/*[field] FIELD_UPDATE_ACTION_EXT1*/
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_EXT1
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_EXT1_OFFSET  64
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_EXT1_LEN     16
+	#define EG_SPEC_SERVICE_TBL_FIELD_UPDATE_ACTION_EXT1_DEFAULT 0x0
+
+struct eg_spec_service_tbl {
+	a_uint32_t  field_update_action:32;
+	a_uint32_t  tx_counting_en:1;
+	a_uint32_t  ip_length_update:1;
+	a_uint32_t  field_update_action_ext:24;
+	a_uint32_t  _reserved0:6;
+	a_uint32_t  field_update_action_ext1:16;
+	a_uint32_t  _reserved1:16;
+};
+
+union eg_spec_service_tbl_u {
+	a_uint32_t val[3];
+	struct eg_spec_service_tbl bf;
+};
+
+/*[register] TL_SPEC_SERVICE_TBL*/
+#define TL_SPEC_SERVICE_TBL
+#define TL_SPEC_SERVICE_TBL_ADDRESS 0x124
+#define TL_SPEC_SERVICE_TBL_NUM     10
+#define TL_SPEC_SERVICE_TBL_INC     0x4
+#define TL_SPEC_SERVICE_TBL_TYPE    REG_TYPE_RW
+#define TL_SPEC_SERVICE_TBL_DEFAULT 0x0
+	/*[field] BYPASS_BITMAP*/
+	#define TL_SPEC_SERVICE_TBL_BYPASS_BITMAP
+	#define TL_SPEC_SERVICE_TBL_BYPASS_BITMAP_OFFSET  0
+	#define TL_SPEC_SERVICE_TBL_BYPASS_BITMAP_LEN     32
+	#define TL_SPEC_SERVICE_TBL_BYPASS_BITMAP_DEFAULT 0x0
+
+struct tl_spec_service_tbl {
+	a_uint32_t  bypass_bitmap:32;
+};
+
+union tl_spec_service_tbl_u {
+	a_uint32_t val;
+	struct tl_spec_service_tbl bf;
+};
+
+#endif

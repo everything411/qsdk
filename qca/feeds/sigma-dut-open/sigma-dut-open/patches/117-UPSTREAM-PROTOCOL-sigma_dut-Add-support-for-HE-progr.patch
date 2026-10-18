@@ -1,0 +1,206 @@
+From 62072aecb23d94286436c8f0bb0fb0db4bf659ad Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Tue, 31 Mar 2026 14:56:39 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Add support for HE program Multi
+ MBSSID testcases
+
+Added support for Mode, BCNINT, ChnlFreq, and Band6Gonly configurations
+as part of Multi MBSSID configuration in cmd_ap_set_wireless. Added OWE
+support for Multi MBSSID configuration in cmd_ap_set_security(). Updated
+cmd_ap_config_commit() to handle the above additions.
+
+Specifically:
+- Parse 'MODE' parameter to configure the AP's wireless mode
+  (e.g., 11ax, 11be).
+- Parse 'BCNINT' to configure Beacon Interval duration.
+- Parse 'ChnlFreq' to identify and configure 6 GHz band and MBO
+  parameters.
+- Derive the band and interface configurations directly from the
+  'Channel' and 'ChnlFreq' parameters. Eliminate the need for an
+  explicitly configured 'Interface' parameter, as HE testcases do not
+  configure it.
+- Add 'Band6Gonly' CAPI parameter support to enable/disable 6 GHz-only
+  mode, reset it in cmd_ap_reset_default(), and add the corresponding
+  band_6g_only field to sigma_dut struct.
+- Add OWE security support for MBSSID configurations.
+- Fix security configuration logic: convert separate 'if' blocks for
+  SAE, SAE-EXT-KEY, WPA-PSK, and OWE into an 'else if' chain to prevent
+  multiple security configs from being written simultaneously.
+- Add force_disable_in_band_discovery and fils_discovery_max_interval
+  for 6g only MBSSID group's TX VAPs, as the HE MULTI MBSSID testcase
+  checks for higher rate of beacon and FILS Discovery frames. Guard
+  this with 'band_6g_only' to avoid these configurations in dual band
+  testcases as there is an explicit check that fils_discovery frames
+  are not being transmitted.
+
+Patch-dependency: 093-sigma_dut-Add-support-for-MBSSID-grouping.patch
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 65 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 61 insertions(+), 4 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -1222,6 +1222,79 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			if (val)
+ 				dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].mld_id = atoi(val);
+ 
++			val = get_param(cmd, "MODE");
++			if (val) {
++				char *str, *pos;
++				enum ap_mode mode;
++
++				str = strdup(val);
++				if (str == NULL)
++					return INVALID_SEND_STATUS;
++				pos = strchr(str, ';');
++				if (pos)
++					*pos++ = '\0';
++				mode = get_mode(str);
++				free(str);
++				if (mode == AP_inval) {
++					send_resp(dut, conn, SIGMA_INVALID,
++						  "errorCode,Unsupported MODE");
++					return STATUS_SENT_ERROR;
++				}
++				dut->mld[link_id].ap_mode = mode;
++
++				if (mode == AP_11ax)
++					dut->use_5g = 1;
++			}
++
++			val = get_param(cmd, "BCNINT");
++			if (val)
++				dut->ap_bcnint = atoi(val);
++
++			val = get_param(cmd, "ChnlFreq");
++			if (val) {
++				if (atoi(val) >= 5935 && atoi(val) <= 7115) {
++					is_6g = 1;
++					dut->cfreq = atoi(val);
++					dut->ap_band_6g = 1;
++					dut->ap_mbo = 1;
++				} else {
++					dut->ap_band_6g = 0;
++				}
++			}
++
++			val = get_param(cmd, "Band6Gonly");
++			if (val) {
++				if (strcasecmp(val, "enable") == 0) {
++					dut->band_6g_only = VALUE_ENABLED;
++				} else if (strcasecmp(val, "disable") == 0) {
++					dut->band_6g_only = VALUE_DISABLED;
++				} else {
++					send_resp(dut, conn, SIGMA_ERROR,
++						  "errorCode,Unsupported single link eMLSR");
++					return STATUS_SENT_ERROR;
++				}
++				dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].ap_band = BAND_6G;
++			}
++
++			/*
++			 * ap_band is directly configured via "Interface"/"Band6Gonly" config. Incase
++			 * both the configs are missing derive ap_band using other configurations.
++			 */
++			if (dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].ap_band == BAND_UNKNOWN) {
++				if (is_6g) {
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].ap_band = BAND_6G;
++					dut->ap_interface_6g = 1;
++				} else if (dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].channel >= 1 &&
++					   dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].channel <= 14) {
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].ap_band = BAND_2G;
++					dut->ap_interface_2g = 1;
++				} else if (dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].channel >= 36 &&
++					   dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].channel <= 171) {
++					dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].ap_band = BAND_5G;
++					dut->ap_interface_5g = 1;
++				}
++			}
++
+ 			return SUCCESS_SEND_STATUS;
+ 		}
+ 	}
+@@ -3683,6 +3756,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 						dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].key_mgmt = AP_WPA3_SAE_EXT;
+ 					else
+ 						dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].key_mgmt = AP_WPA2_SAE;
++				} else if (strcasecmp(val, "OWE") == 0) {
++						dut->mbss_set[mbssid_set_idx].conf[mbss_conf_idx].key_mgmt = AP_WPA2_OWE;
+ 				} else {
+ 					if (check_band(dut, BAND_6G, 0)) {
+ 						send_resp(dut, conn, SIGMA_INVALID,
+@@ -11705,7 +11780,7 @@ skip_vht_parameters_set:
+ 								     link_id);
+ 			}
+ 
+-			if (check_band(dut, BAND_6G, link_id)) {
++			if (check_band(dut, BAND_6G, link_id) && !dut->multi_mbssid) {
+ 				if (dut->ap_6g_unsol_prb_resp) {
+ 					fprintf(f, "unsol_bcast_probe_resp_interval=20\n");
+ 					fprintf(f, "force_disable_in_band_discovery=0\n");
+@@ -11943,9 +12018,7 @@ skip_vht_parameters_set:
+ 						fprintf(f, "ieee80211w=2\n");
+ 						fprintf(f, "sae_password=%s\n", dut->mbss_set[j].conf[i].psk);
+ 						fprintf(f, "sae_pwe=1\n");
+-					}
+-
+-					if (dut->mbss_set[j].conf[i].key_mgmt == AP_WPA3_SAE_EXT) {
++					} else if (dut->mbss_set[j].conf[i].key_mgmt == AP_WPA3_SAE_EXT) {
+ 						fprintf(f, "wpa=2\n");
+ 						fprintf(f, "wpa_key_mgmt=SAE-EXT-KEY\n");
+ 						if (dut->program == PROGRAM_EHT) {
+@@ -11957,19 +12030,31 @@ skip_vht_parameters_set:
+ 						fprintf(f, "sae_password=%s\n", dut->mbss_set[j].conf[i].psk);
+ 						if (check_band(dut, BAND_6G, link_id))
+ 							fprintf(f, "sae_pwe=1\n");
+-					}
+-
+-					if (dut->mbss_set[j].conf[i].key_mgmt == AP_WPA2_PSK) {
++					} else if (dut->mbss_set[j].conf[i].key_mgmt == AP_WPA2_PSK) {
+ 						fprintf(f, "wpa=2\n");
+ 						fprintf(f, "wpa_key_mgmt=WPA-PSK\n");
+ 						fprintf(f, "wpa_pairwise=CCMP\n");
+ 						fprintf(f, "wpa_passphrase=%s\n", dut->mbss_set[j].conf[i].psk);
++					} else if (dut->mbss_set[j].conf[i].key_mgmt == AP_WPA2_OWE) {
++						fprintf(f, "wpa=2\n");
++						fprintf(f, "wpa_key_mgmt=OWE\n");
++						fprintf(f, "rsn_pairwise=CCMP\n");
++						fprintf(f, "ieee80211w=2\n");
+ 					}
+ 
+ 					fprintf(f, "dtim_period=1\n");
+ 					if (dut->program == PROGRAM_EHT || mode == AP_11be)
+ 						fprintf(f, "mld_ap=1\n");
+ 
++					/* Configs within the following block applicable for only TX vaps */
++					if (i == 0 && dut->band_6g_only == VALUE_ENABLED) {
++						fprintf(f, "force_disable_in_band_discovery=0\n");
++						if (dut->ap_6g_unsol_prb_resp)
++							fprintf(f, "unsol_bcast_probe_resp_interval=20\n");
++						else
++							fprintf(f, "fils_discovery_max_interval=20\n");
++					}
++
+ 					count = count + 1;
+ 				}
+ 				grp_idx = (grp_idx + max_bss_count) & 0x0F;
+@@ -14077,6 +14162,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->num_users_ofdma = 0;
+ 	dut->ap_dscp_cap = VALUE_NOT_SET;
+ 	dut->ap_epcs = VALUE_NOT_SET;
++	dut->band_6g_only = VALUE_NOT_SET;
+ 
+ 	if (dut->program == PROGRAM_QM && dut->device_type != AP_testbed) {
+ 		dut->ap_scs = VALUE_ENABLED;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1516,6 +1516,7 @@ struct sigma_dut {
+ 	enum value_not_set_enabled_disabled ap_ttlm;
+ 	enum value_not_set_enabled_disabled ap_linkreconfig;
+ 	enum value_not_set_enabled_disabled single_link_emlsr;
++	enum value_not_set_enabled_disabled band_6g_only;
+ };
+ 
+ #ifdef NL80211_SUPPORT

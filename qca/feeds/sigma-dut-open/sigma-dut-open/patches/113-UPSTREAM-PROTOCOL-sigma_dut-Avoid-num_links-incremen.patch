@@ -1,0 +1,35 @@
+From 94593407aad9c926a4e6819304ed51db894d96ae Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 27 Nov 2025 14:20:00 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Avoid num_links increment for
+ HS2 programs using WLAN_TAG CAPI param
+
+HS2 programs that use WLAN_TAG CAPI parameters follow separate logic in
+cmd_ap_config_commit() for handling multiple VAPs on an interface. This
+logic differs from the generic WLAN_TAG handling used by other programs
+which depend on dut->num_links value incremented based on WLAN_TAG.
+Since HS2 does not rely on this mechanism, skip dut->num_links increment
+when dut->ap_hs2 is set for HS2 programs to prevent redundant updates to
+dut->num_links, avoid VAP bring-up issues, and ensure consistency.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index edcd41e..ce45c57 100644
+--- a/ap.c
++++ b/ap.c
+@@ -1392,7 +1392,7 @@ static enum sigma_cmd_result cmd_ap_set_wireless(struct sigma_dut *dut,
+ 				dut->ap_is_mld = 1;
+ 		}
+ 
+-	        if (dut->num_links < wlan_tag)
++	        if ((dut->num_links < wlan_tag) && !(dut->ap_hs2))
+ 	                dut->num_links = wlan_tag;
+ 	}
+ 
+-- 
+2.34.1
+

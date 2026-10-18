@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+/dts-v1/;
+
+#include "ipq5210-u-boot.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. IPQ5210-EMULATION";
+	compatible = "qcom,ipq5210-emulation", "qcom,ipq5210";
+
+	soc@0 {
+		pcie0: pcie@70000000 {
+			max-link-speed = <1>;
+			phys = <>;
+			phy-names = "";
+			perst-gpios = <&tlmm 34 GPIO_ACTIVE_LOW>;
+			status = "okay";
+		};
+
+		pcie1: pcie@50000000 {
+			max-link-speed = <1>;
+			phys = <>;
+			phy-names = "";
+			perst-gpios = <&tlmm 35 GPIO_ACTIVE_LOW>;
+			status = "disabled";
+		};
+
+		usb3_1: usb3_1@8af8800 {
+			status = "okay";
+			dwc3@8a00000 {
+				phys = <>;
+				phy-names = "";
+			};
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			status = "disabled";
+
+			phy0: phy@0 {
+				id = <1>;
+			};
+
+			phy1: phy@1 {
+				id = <2>;
+			};
+
+			phy2: phy@2 {
+				id = <3>;
+			};
+
+			phy3: phy@3 {
+				id = <4>;
+			};
+
+			phy4: phy@4 {
+				id = <5>;
+			};
+
+			phy5: phy@5 {
+				id = <6>;
+			};
+		};
+
+		ess_instance: ess-instance {
+			qcom,emulation;
+			pinctrl-names = "default";
+			phy-handle0 = <&phy0>;
+			status = "okay";
+			tdm_mode = <0>;
+		};
+	};
+};
+
+&tmel_qmp {
+	status = "okay";
+};
+
+&tmelcom {
+	status = "okay";
+};

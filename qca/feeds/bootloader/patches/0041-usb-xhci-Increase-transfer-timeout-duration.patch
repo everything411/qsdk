@@ -1,0 +1,36 @@
+From 78a36974771af657e95928f222ceabece1574ee2 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Fri, 30 May 2025 11:55:06 +0530
+Subject: [PATCH] usb: xhci: Increase transfer timeout duration
+
+Extended the transfer timeout duration in the xHCI
+driver to improve reliability with devices that
+require more time for data transactions.
+
+This change helps prevent premature timeouts and
+transfer failures, especially with slower or
+high-latency USB devices.
+
+Change-Id: I5c23f27fede99a5a8aa97ce02a812d2d726b0e2b
+Signed-off-by: Ram Kumar D <quic_ramd@quicinc.com>
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ include/usb/xhci.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/usb/xhci.h b/include/usb/xhci.h
+index ba065311df5..f240284f62d 100644
+--- a/include/usb/xhci.h
++++ b/include/usb/xhci.h
+@@ -27,7 +27,7 @@
+ #define MAX_EP_CTX_NUM		31
+ #define XHCI_ALIGNMENT		64
+ /* Generic timeout for XHCI events */
+-#define XHCI_TIMEOUT		5000
++#define XHCI_TIMEOUT		8000
+ /* Max number of USB devices for any host controller - limit in section 6.1 */
+ #define MAX_HC_SLOTS            256
+ /* Section 5.3.3 - MaxPorts */
+-- 
+2.34.1
+

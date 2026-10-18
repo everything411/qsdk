@@ -1,0 +1,248 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#include <nss_ppenl_base.h>
+#include "nss_ppenl_sock.h"
+#include <nss_ppenl_gemport_api.h>
+#include "nss_ppenl_gemport.h"
+
+static struct nss_ppenl_gem_port_ctx nss_gem_port_ctx;
+static void nss_ppenl_gem_port_resp(void *user_ctx, struct nss_ppenl_gem_port_rule *rule, void *resp_ctx) __attribute__((unused));
+
+/*
+ * ppecfg_gem_port_resp()
+ *	ppecfg log based on response from netlink
+ */
+static void nss_ppenl_gem_port_resp(void *user_ctx, struct nss_ppenl_gem_port_rule *gem_port_rule, void *resp_ctx)
+{
+	ppe_gem_port_ret_t ret = 0;
+
+	if (!gem_port_rule) {
+		return;
+	}
+
+	uint8_t cmd = nss_ppenl_cmn_get_cmd_type(&gem_port_rule->cm);
+
+	switch (cmd) {
+	case NSS_PPE_GEM_PORT_CREATE_RULE_MSG:
+		ret = gem_port_rule->rule.ret;
+		if (ret != PPE_GEM_PORT_RET_SUCCESS) {
+			nss_ppenl_sock_log_error("GEM PORT rule create failed with error: %d\n", ret);
+			return;
+		}
+
+		nss_ppenl_sock_log_info("GEM PORT rule create successful for gem-port id %d\n", gem_port_rule->rule.rule.gem_port_id);
+		break;
+
+	case NSS_PPE_GEM_PORT_DELETE_RULE_MSG:
+		ret = gem_port_rule->rule.ret;
+		if (ret != PPE_GEM_PORT_RET_SUCCESS) {
+			nss_ppenl_sock_log_error("GEM PORT rule delete failed with error: %d\n", ret);
+			return;
+		}
+
+		nss_ppenl_sock_log_info("GEM PORT rule delete successful for gem port id %d\n", gem_port_rule->rule.rule.gem_port_id);
+		break;
+
+	case NSS_PPE_GEM_PORT_FLUSH_RULE_MSG:
+		ret = gem_port_rule->rule.ret;
+		if (ret != PPE_GEM_PORT_RET_SUCCESS) {
+			nss_ppenl_sock_log_error("GEM PORT rule flush failed with error: %d\n", ret);
+			return;
+		}
+
+		nss_ppenl_sock_log_info("GEM PORT rule flush successful\n");
+		break;
+
+	default:
+		nss_ppenl_sock_log_error("unsupported message cmd type(%d)\n", cmd);
+	}
+}
+
+/*
+ * nss_ppenl_gem_port_sock_cb()
+ *	NSS NL GEM PORT callback
+ */
+int nss_ppenl_gem_port_sock_cb(struct nl_msg *msg, void *arg)
+{
+	pid_t pid = getpid();
+
+	struct nss_ppenl_gem_port_ctx *ctx = (struct nss_ppenl_gem_port_ctx *)arg;
+	struct nss_ppenl_sock_ctx *sock = &ctx->sock;
+
+	struct nss_ppenl_gem_port_rule *rule = nss_ppenl_sock_get_data(msg);
+	if (!rule) {
+		nss_ppenl_sock_log_error("%d:failed to get NSS NL GEM PORT header\n", pid);
+		return NL_SKIP;
+	}
+
+	uint8_t cmd = nss_ppenl_cmn_get_cmd_type(&rule->cm);
+
+	switch (cmd) {
+	case NSS_PPE_GEM_PORT_CREATE_RULE_MSG:
+	case NSS_PPE_GEM_PORT_DELETE_RULE_MSG:
+	case NSS_PPE_GEM_PORT_FLUSH_RULE_MSG:
+	{
+		void *cb_data = nss_ppenl_cmn_get_cb_data(&rule->cm, sock->family_id);
+		if (!cb_data) {
+			return NL_SKIP;
+		}
+
+		/*
+		 * Note: The callback user can modify the CB content so it
+		 * needs to locally save the response data for further use
+		 * after the callback is completed
+		 */
+		struct nss_ppenl_gem_port_resp resp;
+		memcpy(&resp, cb_data, sizeof(struct nss_ppenl_gem_port_resp));
+
+		/*
+		 * clear the ownership of the CB so that callback user can
+		 * use it if needed
+		 */
+		nss_ppenl_cmn_clr_cb_owner(&rule->cm);
+
+		if (!resp.cb) {
+			nss_ppenl_sock_log_info("%d:no GEM PORT response callback for cmd(%d)\n", pid, cmd);
+			return NL_SKIP;
+		}
+
+		resp.cb(sock->user_ctx, rule, resp.data);
+
+		return NL_OK;
+	}
+
+	default:
+		nss_ppenl_sock_log_error("%d:unsupported message cmd type(%d)\n", pid, cmd);
+		return NL_SKIP;
+	}
+}
+
+/*
+ * nss_ppenl_gem_port_sock_open()
+ *	this opens the NSS GEM PORT NL socket for usage
+ */
+int nss_ppenl_gem_port_sock_open(struct nss_ppenl_gem_port_ctx *ctx, void *user_ctx)
+{
+	pid_t pid = getpid();
+	int error;
+	if (!ctx) {
+		nss_ppenl_sock_log_error("%d: invalid parameters passed\n", pid);
+		return -EINVAL;
+	}
+
+	memset(ctx, 0, sizeof(*ctx));
+
+	nss_ppenl_sock_set_family(&ctx->sock, NSS_PPENL_GEM_PORT_FAMILY);
+	nss_ppenl_sock_set_user_ctx(&ctx->sock, user_ctx);
+
+	/*
+	 * try opening the socket with Linux
+	 */
+	error = nss_ppenl_sock_open(&ctx->sock, nss_ppenl_gem_port_sock_cb);
+	if (error) {
+		nss_ppenl_sock_log_error("%d:unable to open NSS GEM PORT socket, error(%d)\n", pid, error);
+		goto fail;
+	}
+
+	return 0;
+fail:
+	memset(ctx, 0, sizeof(*ctx));
+	return error;
+}
+
+/*
+ * nss_ppenl_gem_port_sock_close()
+ *	close the NSS GEM PORT NL socket
+ */
+void nss_ppenl_gem_port_sock_close(struct nss_ppenl_gem_port_ctx *ctx)
+{
+	nss_ppenl_sock_close(&ctx->sock);
+}
+
+/*
+ * nss_ppenl_gem_port_sock_send()
+ *	register callback and send the GEM PORT message synchronously through the socket
+ */
+int nss_ppenl_gem_port_sock_send(struct nss_ppenl_gem_port_ctx *ctx, struct nss_ppenl_gem_port_rule *rule, nss_ppenl_gem_port_resp_cb_t cb)
+{
+	int32_t family_id = ctx->sock.family_id;
+	struct nss_ppenl_gem_port_resp *resp;
+	pid_t pid = getpid();
+	bool has_resp = false;
+	int error;
+
+	if (!rule) {
+		nss_ppenl_sock_log_error("%d:invalid NSS GEM PORT rule\n", pid);
+		return -ENOMEM;
+	}
+
+	if (cb) {
+		nss_ppenl_cmn_set_cb_owner(&rule->cm, family_id);
+
+		resp = nss_ppenl_cmn_get_cb_data(&rule->cm, family_id);
+		assert(resp);
+
+		resp->data = NULL;
+		resp->cb = cb;
+		has_resp = true;
+	}
+
+	error = nss_ppenl_sock_send(&ctx->sock, &rule->cm, rule, has_resp);
+	if (error) {
+		nss_ppenl_sock_log_error("%d:failed to send NSS gem port rule, error(%d)\n", pid, error);
+		return error;
+	}
+
+	return 0;
+}
+
+/*
+ * nss_ppenl_gem_port_rule_send()
+ * 	send rules in PPE
+ */
+int nss_ppenl_gem_port_rule_send(struct nss_ppenl_gem_port_rule *rule)
+{
+	int error;
+
+	/*
+	 * open the NSS NL GEM PORT socket
+	 */
+	error = nss_ppenl_gem_port_sock_open(&nss_gem_port_ctx, NULL);
+	if (error < 0) {
+		nss_ppenl_sock_log_error("Failed to open GEM PORT socket; error(%d)\n", error);
+		return error;
+	}
+
+	/*
+	 * send message
+	 */
+	error = nss_ppenl_gem_port_sock_send(&nss_gem_port_ctx, rule, nss_ppenl_gem_port_resp);
+	if (error < 0) {
+		nss_ppenl_sock_log_error("Unable to send message; error(%d)\n", error);
+		goto done;
+	}
+
+done:
+	/*
+	 * close the socket
+	 */
+	nss_ppenl_gem_port_sock_close(&nss_gem_port_ctx);
+	return error;
+}
+
+/*
+ * nss_ppenl_gem_port_init_rule()
+ *	Init the rule message
+ */
+void nss_ppenl_gem_port_init_rule(struct nss_ppenl_gem_port_rule *rule, enum nss_ppe_gem_port_message_types type)
+{
+	if (type >= NSS_PPE_GEM_PORT_MAX_MSG_TYPES) {
+		nss_ppenl_sock_log_error("Incorrect rule type\n");
+		return;
+	}
+
+	nss_ppenl_gem_port_rule_init(rule, type);
+}

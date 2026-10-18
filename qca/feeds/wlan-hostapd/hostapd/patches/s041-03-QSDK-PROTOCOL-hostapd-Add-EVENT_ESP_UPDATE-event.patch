@@ -1,0 +1,40 @@
+From 7dd0cf557974c495fc3fa101aa5c8bb6e546474e Mon Sep 17 00:00:00 2001
+From: Amith A <amitajit@qti.qualcomm.com>
+Date: Tue, 11 Nov 2025 09:41:05 +0530
+Subject: [PATCH 3/3] QSDK:PROTOCOL:hostapd: Add EVENT_ESP_UPDATE event type
+ and string mapping
+
+Add EVENT_ESP_UPDATE event type and include ESP_UPDATE in the
+event_to_string() helper for its string mapping.
+
+Patch-dependency: None
+
+Signed-off-by: Amith A <amitajit@qti.qualcomm.com>
+---
+ src/drivers/driver_nl80211_event.c | 45 ++++++++++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -6857,6 +6857,11 @@ enum wpa_event_type {
+ 	 * which will be the mirrored value of the UL flow
+ 	 */
+ 	EVENT_MSCS_FLOW_RECEIVED,
++
++	/**
++	 * EVENT_ESP_UPDATE - Notification about ESP airtime fraction update event
++	 */
++	EVENT_ESP_UPDATE,
+ };
+ 
+ 
+--- a/src/drivers/driver_common.c
++++ b/src/drivers/driver_common.c
+@@ -115,6 +115,7 @@ const char * event_to_string(enum wpa_ev
+ 	E2S(TTLM_EXPEC_DUR_UPDATE);
+ 	E2S(SETUP_LINK_RECONFIG);
+ 	E2S(MSCS_FLOW_RECEIVED);
++	E2S(ESP_UPDATE);
+ 	}
+ 
+ 	return "UNKNOWN";

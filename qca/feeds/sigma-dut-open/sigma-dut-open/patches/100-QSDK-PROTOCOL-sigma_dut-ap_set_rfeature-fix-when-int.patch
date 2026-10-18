@@ -1,0 +1,69 @@
+From 3eeb9ff2ed126454333dc51333b71bcf6265cfb8 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Fri, 10 Jan 2025 10:33:22 +0530
+Subject: [PATCH] QSDK:PROTOCOL: sigma_dut: ap_set_rfeature fix when interface
+ is not defined
+
+In ap_set_rfeature command, for mld interfaces the fwtest command are
+issued to link 0 by default if the interface is not defined. This is
+leading to issues when issuing the command to transmit Trigger frames
+in non-HT format as interface wont be defined.
+
+To fix this, issue the fwtest command to change the PPDU type to
+non-HT for both links, not just the default link. intf_defined
+variable is added to track whether interface is defined.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c        |  8 +++++++++-
+ sigma_dut.h |  1 +
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -19137,7 +19137,7 @@ static enum sigma_cmd_result mac80211_ap
+ 	unsigned char mac_addr[ETH_ALEN];
+ 	int he_ackpolicymac = 0;
+ 	int ap_he_ackpolicy;
+-	int link_id = 0;
++	int link_id = dut->intf_defined;
+ 	int param;
+ 	char buf[200];
+ 	int val_bw = -1;
+@@ -19159,6 +19159,8 @@ static enum sigma_cmd_result mac80211_ap
+ 			link_id = dut->band_to_link[1];
+ 		else if (strcasecmp(val, "6G") == 0)
+ 			link_id = dut->band_to_link[2];
++
++		dut->intf_defined = dut->num_links;
+ 	}
+ 
+ 	val = get_param(cmd, "MBSSIDSet");
+@@ -19785,6 +19787,9 @@ static enum sigma_cmd_result mac80211_ap
+ 		}
+ 	}
+ 
++	if (++dut->intf_defined < dut->num_links)
++		mac80211_ap_set_rfeature(dut, conn, cmd);
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -19916,6 +19921,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	case DRIVER_WCN:
+ 		return wcn_ap_set_rfeature(dut, conn, cmd);
+ 	case DRIVER_MAC80211:
++		dut->intf_defined = 0;
+ 		return mac80211_ap_set_rfeature(dut, conn, cmd);
+ #ifdef __linux__
+ 	case DRIVER_WIL6210:
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1403,6 +1403,7 @@ struct sigma_dut {
+ 	struct mld_ap mld[NUM_OF_LINKS];
+ 	int link_specific_security;
+ 	int multi_mld;
++	int intf_defined;
+ 	unsigned int security_links;
+ };
+ 

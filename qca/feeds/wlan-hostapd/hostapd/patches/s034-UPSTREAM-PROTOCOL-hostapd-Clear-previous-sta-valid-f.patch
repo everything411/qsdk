@@ -1,0 +1,45 @@
+From e39e67da9e81f7baa68690127446ce279f5cf1ce Mon Sep 17 00:00:00 2001
+From: Ramasamy Kaliappan <rkaliapp@qti.qualcomm.com>
+Date: Fri, 14 Nov 2025 11:25:24 +0530
+Subject: [PATCH 2/3] UPSTREAM:PROTOCOL:hostapd:Clear previous sta valid flag
+ and set based on link Information
+
+When a station initially connects as a 3-link STA, without
+disconnecting, after the SA query timeout and temporary rejection
+timeout, it tries to associate with a single or two links but
+attempts to add 3 links due to previous valid links not being reset.
+
+Reset valid links before parsing and updating link information
+
+Patch-dependency: None
+
+Signed-off-by: Ramasamy Kaliappan <rkaliapp@qti.qualcomm.com>
+---
+ src/ap/ieee802_11_eht.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -1171,6 +1171,7 @@ u16 hostapd_process_ml_assoc_req(struct
+ 	int ret = -1;
+ 	u16 ml_control;
+ 	const u8 *ml_end;
++	unsigned int i;
+ 
+ 	mlbuf = ieee802_11_defrag(elems->basic_mle, elems->basic_mle_len, true);
+ 	if (!mlbuf)
+@@ -1276,6 +1277,14 @@ u16 hostapd_process_ml_assoc_req(struct
+ 		goto out;
+ 	}
+ 
++	/*
++	 * When a station initially connected as a 3-link STA
++	 * re-associates as a single-link STA, it is not valid.
++	 * Reset the valid flag
++	 */
++	for (i = 0; i < MAX_NUM_MLD_LINKS; i++)
++		info->links[i].valid = false;
++
+ 	info->links[hapd->mld_link_id].valid = 1;
+ 
+ 	/* Parse the Link Info field that starts after the end of the variable

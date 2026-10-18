@@ -1,0 +1,56 @@
+From b451dbbdfccddae2f9fa7ccd26429351a3a1b5cc Mon Sep 17 00:00:00 2001
+From: Sai Pratyusha Magam <sai.magam@oss.qualcomm.com>
+Date: Mon, 21 Sep 2026 10:30:09 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma-dut - Set eppke_unauth to allow
+ Unauthenticated EPPKE
+
+When EPPKE is enabled in AP, in addition to setting
+assoc_frame_encryption=1, Set eppke_unauth=1 to allow
+Unauthenticated EPPKE
+
+Patch-dependency: None
+
+Signed-off-by: Sai Pratyusha Magam <smagam@qti.qualcomm.com>
+---
+ ap.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 9a9d6d3..61249fd 100644
+--- a/ap.c
++++ b/ap.c
+@@ -10831,6 +10831,7 @@ static int set_second_ap_security_conf(FILE *file, struct sigma_dut *dut, int li
+ 			fprintf(file, "pasn_groups=%s\n", dut->ap_sae_groups);
+ 		fprintf(file, "ieee80211w=2\n");
+ 		fprintf(file, "assoc_frame_encryption=1\n");
++		fprintf(file, "eppke_unauth=1\n");
+ 	case AP2_WPA2_EAP:
+ 		fprintf(file, "ieee8021x=1\n");
+ 		fprintf(file, "wpa=2\n");
+@@ -11878,6 +11879,7 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 				if (sae_groups)
+ 					fprintf(f, "pasn_groups=%s\n", sae_groups);
+ 				fprintf(f, "assoc_frame_encryption=1\n");
++				fprintf(f, "eppke_unauth=1\n");
+ 				if (check_band(dut, BAND_6G, link_id)) {
+ 					fprintf(f, "ieee80211w=2\n");
+ 					fprintf(f, "sae_pwe=1\n");
+@@ -12170,6 +12172,7 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 			if (sae_groups)
+ 				fprintf(f, "pasn_groups=%s\n", sae_groups);
+ 			fprintf(f, "assoc_frame_encryption=1\n");
++			fprintf(f, "eppke_unauth=1\n");
+ 			if (check_band(dut, BAND_6G, link_id)) {
+ 				fprintf(f, "wpa_key_mgmt=SAE SAE-EXT-KEY EPPKE\n");
+ 				fprintf(f, "ieee80211w=2\n");
+@@ -12188,6 +12191,7 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 			fprintf(f, "wpa=2\n");
+ 			fprintf(f, "wpa_pairwise=CCMP GCMP-256\n");
+ 			fprintf(f, "assoc_frame_encryption=1\n");
++			fprintf(f, "eppke_unauth=1\n");
+ 			fprintf(f, "wpa_key_mgmt=EPPKE\n");
+ 			if (check_band(dut, BAND_6G, link_id)) {
+ 				fprintf(f, "ieee80211w=2\n");
+-- 
+2.34.1
+

@@ -1,0 +1,147 @@
+/*
+ * Copyright (c) 2016-2017, 2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#ifndef _HTTPPE_FDB_REG_H_
+#define _HTTPPE_FDB_REG_H_
+
+/*[register] L2_GLOBAL_CONF*/
+#define L2_GLOBAL_CONF
+#define L2_GLOBAL_CONF_ADDRESS 0x38
+#define L2_GLOBAL_CONF_NUM     1
+#define L2_GLOBAL_CONF_INC     0x4
+#define L2_GLOBAL_CONF_TYPE    REG_TYPE_RW
+#define L2_GLOBAL_CONF_DEFAULT 0x400c0
+	/*[field] FDB_HASH_MODE_0*/
+	#define L2_GLOBAL_CONF_FDB_HASH_MODE_0
+	#define L2_GLOBAL_CONF_FDB_HASH_MODE_0_OFFSET  0
+	#define L2_GLOBAL_CONF_FDB_HASH_MODE_0_LEN     2
+	#define L2_GLOBAL_CONF_FDB_HASH_MODE_0_DEFAULT 0x0
+	/*[field] FDB_HASH_MODE_1*/
+	#define L2_GLOBAL_CONF_FDB_HASH_MODE_1
+	#define L2_GLOBAL_CONF_FDB_HASH_MODE_1_OFFSET  2
+	#define L2_GLOBAL_CONF_FDB_HASH_MODE_1_LEN     2
+	#define L2_GLOBAL_CONF_FDB_HASH_MODE_1_DEFAULT 0x0
+	/*[field] FDB_HASH_FULL_FWD_CMD*/
+	#define L2_GLOBAL_CONF_FDB_HASH_FULL_FWD_CMD
+	#define L2_GLOBAL_CONF_FDB_HASH_FULL_FWD_CMD_OFFSET  4
+	#define L2_GLOBAL_CONF_FDB_HASH_FULL_FWD_CMD_LEN     2
+	#define L2_GLOBAL_CONF_FDB_HASH_FULL_FWD_CMD_DEFAULT 0x0
+	/*[field] LRN_EN*/
+	#define L2_GLOBAL_CONF_LRN_EN
+	#define L2_GLOBAL_CONF_LRN_EN_OFFSET  6
+	#define L2_GLOBAL_CONF_LRN_EN_LEN     1
+	#define L2_GLOBAL_CONF_LRN_EN_DEFAULT 0x1
+	/*[field] AGE_EN*/
+	#define L2_GLOBAL_CONF_AGE_EN
+	#define L2_GLOBAL_CONF_AGE_EN_OFFSET  7
+	#define L2_GLOBAL_CONF_AGE_EN_LEN     1
+	#define L2_GLOBAL_CONF_AGE_EN_DEFAULT 0x1
+	/*[field] LRN_CTRL_MODE*/
+	#define L2_GLOBAL_CONF_LRN_CTRL_MODE
+	#define L2_GLOBAL_CONF_LRN_CTRL_MODE_OFFSET  8
+	#define L2_GLOBAL_CONF_LRN_CTRL_MODE_LEN     1
+	#define L2_GLOBAL_CONF_LRN_CTRL_MODE_DEFAULT 0x0
+	/*[field] AGE_CTRL_MODE*/
+	#define L2_GLOBAL_CONF_AGE_CTRL_MODE
+	#define L2_GLOBAL_CONF_AGE_CTRL_MODE_OFFSET  9
+	#define L2_GLOBAL_CONF_AGE_CTRL_MODE_LEN     1
+	#define L2_GLOBAL_CONF_AGE_CTRL_MODE_DEFAULT 0x0
+	/*[field] FAILOVER_EN*/
+	#define L2_GLOBAL_CONF_FAILOVER_EN
+	#define L2_GLOBAL_CONF_FAILOVER_EN_OFFSET  10
+	#define L2_GLOBAL_CONF_FAILOVER_EN_LEN     1
+	#define L2_GLOBAL_CONF_FAILOVER_EN_DEFAULT 0x0
+	/*[field] SERVICE_CODE_LOOP*/
+	#define L2_GLOBAL_CONF_SERVICE_CODE_LOOP
+	#define L2_GLOBAL_CONF_SERVICE_CODE_LOOP_OFFSET  11
+	#define L2_GLOBAL_CONF_SERVICE_CODE_LOOP_LEN     1
+	#define L2_GLOBAL_CONF_SERVICE_CODE_LOOP_DEFAULT 0x0
+	/*[field] FLOW_CPY_ESCAPE*/
+	#define L2_GLOBAL_CONF_FLOW_CPY_ESCAPE
+	#define L2_GLOBAL_CONF_FLOW_CPY_ESCAPE_OFFSET  12
+	#define L2_GLOBAL_CONF_FLOW_CPY_ESCAPE_LEN     1
+	#define L2_GLOBAL_CONF_FLOW_CPY_ESCAPE_DEFAULT 0x0
+	/*[field] MC_PVLAN_ISOL_EN*/
+	#define L2_GLOBAL_CONF_MC_PVLAN_ISOL_EN
+	#define L2_GLOBAL_CONF_MC_PVLAN_ISOL_EN_OFFSET  13
+	#define L2_GLOBAL_CONF_MC_PVLAN_ISOL_EN_LEN     1
+	#define L2_GLOBAL_CONF_MC_PVLAN_ISOL_EN_DEFAULT 0x0
+	/*[field] BC_PVLAN_ISOL_EN*/
+	#define L2_GLOBAL_CONF_BC_PVLAN_ISOL_EN
+	#define L2_GLOBAL_CONF_BC_PVLAN_ISOL_EN_OFFSET  14
+	#define L2_GLOBAL_CONF_BC_PVLAN_ISOL_EN_LEN     1
+	#define L2_GLOBAL_CONF_BC_PVLAN_ISOL_EN_DEFAULT 0x0
+	/*[field] IPMC_EN*/
+	#define L2_GLOBAL_CONF_IPMC_EN
+	#define L2_GLOBAL_CONF_IPMC_EN_OFFSET  15
+	#define L2_GLOBAL_CONF_IPMC_EN_LEN     1
+	#define L2_GLOBAL_CONF_IPMC_EN_DEFAULT 0x0
+	/*[field] IPMC_HASH_MODE_0*/
+	#define L2_GLOBAL_CONF_IPMC_HASH_MODE_0
+	#define L2_GLOBAL_CONF_IPMC_HASH_MODE_0_OFFSET  16
+	#define L2_GLOBAL_CONF_IPMC_HASH_MODE_0_LEN     2
+	#define L2_GLOBAL_CONF_IPMC_HASH_MODE_0_DEFAULT 0x0
+	/*[field] IPMC_HASH_MODE_1*/
+	#define L2_GLOBAL_CONF_IPMC_HASH_MODE_1
+	#define L2_GLOBAL_CONF_IPMC_HASH_MODE_1_OFFSET  18
+	#define L2_GLOBAL_CONF_IPMC_HASH_MODE_1_LEN     2
+	#define L2_GLOBAL_CONF_IPMC_HASH_MODE_1_DEFAULT 0x1
+	/*[field] MC_VLAN_MATCH_MODE*/
+	#define L2_GLOBAL_CONF_MC_VLAN_MATCH_MODE
+	#define L2_GLOBAL_CONF_MC_VLAN_MATCH_MODE_OFFSET  20
+	#define L2_GLOBAL_CONF_MC_VLAN_MATCH_MODE_LEN     1
+	#define L2_GLOBAL_CONF_MC_VLAN_MATCH_MODE_DEFAULT 0x0
+	/*[field] MC_DMAC_CHECK_EN*/
+	#define L2_GLOBAL_CONF_MC_DMAC_CHECK_EN
+	#define L2_GLOBAL_CONF_MC_DMAC_CHECK_EN_OFFSET  21
+	#define L2_GLOBAL_CONF_MC_DMAC_CHECK_EN_LEN     1
+	#define L2_GLOBAL_CONF_MC_DMAC_CHECK_EN_DEFAULT 0x0
+	/*[field] IPMC_MISMATCH_ACT*/
+	#define L2_GLOBAL_CONF_IPMC_MISMATCH_ACT
+	#define L2_GLOBAL_CONF_IPMC_MISMATCH_ACT_OFFSET  22
+	#define L2_GLOBAL_CONF_IPMC_MISMATCH_ACT_LEN     2
+	#define L2_GLOBAL_CONF_IPMC_MISMATCH_ACT_DEFAULT 0x0
+	/*[field] DOT1P_MAPPER_VLAN_MODE*/
+	#define L2_GLOBAL_CONF_DOT1P_MAPPER_VLAN_MODE
+	#define L2_GLOBAL_CONF_DOT1P_MAPPER_VLAN_MODE_OFFSET  24
+	#define L2_GLOBAL_CONF_DOT1P_MAPPER_VLAN_MODE_LEN     2
+	#define L2_GLOBAL_CONF_DOT1P_MAPPER_VLAN_MODE_DEFAULT 0x0
+	/*[field] DOT1P_MAPPER_PCP_MODE*/
+	#define L2_GLOBAL_CONF_DOT1P_MAPPER_PCP_MODE
+	#define L2_GLOBAL_CONF_DOT1P_MAPPER_PCP_MODE_OFFSET  26
+	#define L2_GLOBAL_CONF_DOT1P_MAPPER_PCP_MODE_LEN     2
+	#define L2_GLOBAL_CONF_DOT1P_MAPPER_PCP_MODE_DEFAULT 0x0
+
+struct l2_global_conf {
+	a_uint32_t  fdb_hash_mode_0:2;
+	a_uint32_t  fdb_hash_mode_1:2;
+	a_uint32_t  fdb_hash_full_fwd_cmd:2;
+	a_uint32_t  lrn_en:1;
+	a_uint32_t  age_en:1;
+	a_uint32_t  lrn_ctrl_mode:1;
+	a_uint32_t  age_ctrl_mode:1;
+	a_uint32_t  failover_en:1;
+	a_uint32_t  service_code_loop:1;
+	a_uint32_t  flow_cpy_escape:1;
+	a_uint32_t  mc_pvlan_isol_en:1;
+	a_uint32_t  bc_pvlan_isol_en:1;
+	a_uint32_t  ipmc_en:1;
+	a_uint32_t  ipmc_hash_mode_0:2;
+	a_uint32_t  ipmc_hash_mode_1:2;
+	a_uint32_t  mc_vlan_match_mode:1;
+	a_uint32_t  mc_dmac_check_en:1;
+	a_uint32_t  ipmc_mismatch_act:2;
+	a_uint32_t  dot1p_mapper_vlan_mode:2;
+	a_uint32_t  dot1p_mapper_pcp_mode:2;
+	a_uint32_t  _reserved0:4;
+};
+
+union l2_global_conf_u {
+	a_uint32_t val;
+	struct l2_global_conf bf;
+};
+
+#endif

@@ -1,0 +1,33 @@
+From 516efbde02de8ff404552c99624dd4c2cad2222e Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 4 Jun 2025 18:58:58 +0530
+Subject: [PATCH] cmd: mtdparts: max len configurable via defconfig
+
+This change enables SoC vendors to define MTDPARTS_MAXLEN
+via defconfig, allowing greater flexibility in handling
+platform-specific partition string lengths.
+
+Change-Id: I13b40fa40e1dba10e2d45dcf4efd94ac405d63e7
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ cmd/mtdparts.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/cmd/mtdparts.c b/cmd/mtdparts.c
+index 9f537bfdf75..6d99a9bfc90 100644
+--- a/cmd/mtdparts.c
++++ b/cmd/mtdparts.c
+@@ -129,7 +129,9 @@ static const char *mtdparts_default = MTDPARTS_DEFAULT;
+ 
+ /* copies of last seen 'mtdids', 'mtdparts' and 'partition' env variables */
+ #define MTDIDS_MAXLEN		128
+-#ifndef MTDPARTS_MAXLEN
++#if defined(CONFIG_MTDPARTS_MAXLEN)
++#define MTDPARTS_MAXLEN		CONFIG_MTDPARTS_MAXLEN
++#else
+ #define MTDPARTS_MAXLEN		512
+ #endif
+ #define PARTITION_MAXLEN	16
+-- 
+2.34.1
+

@@ -1,0 +1,31 @@
+From c710f71bb76624bb397561d9be4b333b714b3f89 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Mon, 26 May 2025 22:02:40 +0530
+Subject: [PATCH] net: Drop multi-bitbang support from MDIO bitbang
+
+This patch cleans up the MDIO bitbang implementation
+by removing support for multi-bitbang,
+simplifying the driver and reducing unused complexity.
+
+Change-Id: I0fb21026c620565c9ddcb7dd9b89698afb3c3730
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/net/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/Kconfig b/drivers/net/Kconfig
+index 1c2e09a5bdd..dcc18283c12 100644
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -1037,7 +1037,7 @@ config MDIO_IPQ4019
+ 
+ config MDIO_IPQ_BITBANGMII
+ 	bool "Qualcomm IPQ Bit-Bang MDIO interface support"
+-	depends on DM_MDIO && BITBANGMII && BITBANGMII_MULTI
++	depends on DM_MDIO && BITBANGMII
+ 	help
+ 	  This driver supports the MDIO interface found in Qualcomm
+ 	  IPQ series Soc-s.
+-- 
+2.34.1
+

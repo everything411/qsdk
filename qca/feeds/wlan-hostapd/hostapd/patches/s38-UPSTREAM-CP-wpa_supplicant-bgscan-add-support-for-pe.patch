@@ -1,0 +1,181 @@
+From a98e894e3c4ed5ef78738fd7170b0bae3ec0adef Mon Sep 17 00:00:00 2001
+From: Maharaja Kennadyrajan <mkenna@qti.qualcomm.com>
+Date: Wed, 3 Dec 2025 22:30:59 +0530
+Subject: [PATCH 2/3] UPSTREAM:CP: wpa_supplicant: bgscan: add support for
+ per-network bgscan_freq configuration
+
+Introduce a new wpa_supplicant configuration 'bgscan_freq' parameter in
+network configuration to allow specifying a frequency list used exclusively
+for background scans.
+
+This provides finer control over scan behavior without affecting the
+existing behavior.
+
+This enables optimized background scanning by limiting channels to
+specific subset, reducing scan overhead and improving roaming performance.
+
+Also maintains backward compatibility; if 'bgscan_freq' is unset or cleared
+then default behavior remains unchanged.
+
+Usage in wpa_supplicant config file:
+network={
+	 bgscan_freq=5955 6215 7015
+	 bgscan="simple:30:-45:60"
+}
+
+Patch-work:none
+Patch-dependency:none
+
+Signed-off-by: Maharaja Kennadyrajan <mkenna@qti.qualcomm.com>
+---
+ wpa_supplicant/bgscan_simple.c     |  2 ++
+ wpa_supplicant/config.c            | 29 +++++++++++++++++++++++++++++
+ wpa_supplicant/config_file.c       |  1 +
+ wpa_supplicant/config_ssid.h       | 11 +++++++++++
+ wpa_supplicant/ctrl_iface.c        |  6 ++++++
+ wpa_supplicant/wpa_supplicant.conf |  4 ++++
+ 6 files changed, 53 insertions(+)
+
+diff --git a/wpa_supplicant/bgscan_simple.c b/wpa_supplicant/bgscan_simple.c
+index d9aaa63..98753fc 100644
+--- a/wpa_supplicant/bgscan_simple.c
++++ b/wpa_supplicant/bgscan_simple.c
+@@ -88,6 +88,8 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
+ 	params.ssids[0].ssid = data->ssid->ssid;
+ 	params.ssids[0].ssid_len = data->ssid->ssid_len;
+ 	params.freqs = data->ssid->scan_freq;
++	if (data->ssid->bgscan_freq)
++		params.freqs = data->ssid->bgscan_freq;
+ 
+ 	/* Add OWE transition mode SSID of the current network */
+ 	wpa_add_owe_scan_ssid(wpa_s, &params, data->ssid,
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 0c1c95f..16141a7 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -1472,6 +1472,26 @@ static int wpa_config_parse_scan_freq(const struct parse_data *data,
+ }
+ 
+ 
++static int wpa_config_parse_bgscan_freq(const struct parse_data *data,
++				        struct wpa_ssid *ssid, int line,
++				        const char *value)
++{
++	int *freqs;
++
++	freqs = wpa_config_parse_int_array(value);
++	if (freqs == NULL)
++		return -1;
++	if (freqs[0] == 0) {
++		os_free(freqs);
++		freqs = NULL;
++	}
++	os_free(ssid->bgscan_freq);
++	ssid->bgscan_freq = freqs;
++
++	return 0;
++}
++
++
+ static int wpa_config_parse_freq_list(const struct parse_data *data,
+ 				      struct wpa_ssid *ssid, int line,
+ 				      const char *value)
+@@ -1533,6 +1553,13 @@ static char * wpa_config_write_scan_freq(const struct parse_data *data,
+ }
+ 
+ 
++static char * wpa_config_write_bgscan_freq(const struct parse_data *data,
++					   struct wpa_ssid *ssid)
++{
++	return wpa_config_write_freqs(data, ssid->bgscan_freq);
++}
++
++
+ static char * wpa_config_write_freq_list(const struct parse_data *data,
+ 					 struct wpa_ssid *ssid)
+ {
+@@ -2870,6 +2897,7 @@ static const struct parse_data ssid_fields[] = {
+ 	{ INT_RANGE(ssid_protection, 0, 1)},
+ 	{ INT_RANGE(rsn_overriding, 0, 2)},
+ 	{ INT_RANGE(disable_reconfig, 0, 1)},
++	{ FUNC(bgscan_freq) },
+ };
+ 
+ #undef OFFSET
+@@ -3049,6 +3077,7 @@ void wpa_config_free_ssid(struct wpa_ssid *ssid)
+ 	os_free(ssid->scan_freq);
+ 	os_free(ssid->freq_list);
+ 	os_free(ssid->bgscan);
++	os_free(ssid->bgscan_freq);
+ 	os_free(ssid->p2p_client_list);
+ 	os_free(ssid->p2p2_client_list);
+ 	os_free(ssid->bssid_ignore);
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 27209ce..9ea0014 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -1008,6 +1008,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
+ 	INT(ssid_protection);
+ 	INT_DEF(rsn_overriding, RSN_OVERRIDING_NOT_SET);
+ 	INT(disable_reconfig);
++	STR(bgscan_freq);
+ 
+ #undef STR
+ #undef INT
+diff --git a/wpa_supplicant/config_ssid.h b/wpa_supplicant/config_ssid.h
+index 10b313c..b9a3679 100644
+--- a/wpa_supplicant/config_ssid.h
++++ b/wpa_supplicant/config_ssid.h
+@@ -1381,6 +1381,17 @@ struct wpa_ssid {
+ 	 */
+ 	bool disable_reconfig;
+ 
++	/**
++	 * bgscan_freq - Zero-terminated array of minimal background scan
++	 * freqs (MHz)
++	 *
++	 * Used only by bgscan_simple while connected. If configured and
++	 * non-empty for the current network, ALL bgscans are constrained
++	 * to this list.
++	 * If empty or not set, bgscan falls back to normal behavior (which
++	 * may still honor freq_list if configured).
++	 */
++	int *bgscan_freq;
+ };
+ 
+ #endif /* CONFIG_SSID_H */
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index d12f407..b0c2deb 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -3675,6 +3675,12 @@ static int wpa_supplicant_ctrl_iface_update_network(
+ 			wpa_supplicant_reset_bgscan(wpa_s);
+ 		return 0;
+ 	}
++	if (os_strcmp(name, "bgscan_freq") == 0) {
++		if (wpa_s->current_ssid == ssid && wpa_s->bgscan &&
++		    wpa_s->wpa_state == WPA_COMPLETED)
++			wpa_supplicant_reset_bgscan(wpa_s);
++		return 0;
++	}
+ #endif /* CONFIG_BGSCAN */
+ 
+ 	if (os_strcmp(name, "bssid") != 0 &&
+diff --git a/wpa_supplicant/wpa_supplicant.conf b/wpa_supplicant/wpa_supplicant.conf
+index fbd79f4..257e4b5 100644
+--- a/wpa_supplicant/wpa_supplicant.conf
++++ b/wpa_supplicant/wpa_supplicant.conf
+@@ -1094,6 +1094,10 @@ fast_reauth=1
+ # bgscan="learn:30:-45:300:/etc/wpa_supplicant/network1.bgscan"
+ # Explicitly disable bgscan by setting
+ # bgscan=""
++# bgscan_freq="2412 2437 2462"
++# List of space separated frequencies in MHz to background simple scan.
++# This option can be used to optimize the background scanning with minimal
++# set of frequencies.
+ #
+ # This option can also be set outside of all network blocks for the bgscan
+ # parameter to apply for all the networks that have no specific bgscan
+-- 
+2.34.1
+

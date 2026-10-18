@@ -1,0 +1,154 @@
+From 512ca195c9a3bcf3652e5a3a174c978fb08cffc3 Mon Sep 17 00:00:00 2001
+From: Thirusenthil Kumaran J <thirusen@qti.qualcomm.com>
+Date: Thu, 13 Nov 2025 09:25:15 +0530
+Subject: [PATCH] QSDK:PROTOCOL: hostapd: Channel switch to same channel for
+ DFS test mode
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When a 5 GHz link is configured in DFS test mode for probability
+detection, the expected behavior is to send a Channel Switch
+Announcement (CSA) where the next channel in the CSA IE is the same
+as the current channel.
+
+Currently, hostapd achieves this by updating the beacon template with
+a fixed CSA IE and a hardcoded CSA count of 3. After 1 second, hostapd
+removes the CSA IE and sends a new beacon template to the driver.
+
+However, because the CSA IE is added to a static template rather than
+through an actual CSA operation, the CSA offsets are not populated when
+the beacon template is sent to the firmware. With recent firmware
+validation checks, this results in an error: the template contains
+CSA IEs, but the CSA offsets are incorrect. Consequently, the firmware
+suspends transmissions, causing DFS probability detection tests to fail.
+
+To fix this, instead of injecting a fixed beacon template with CSA IE,
+initiate a channel switch to the same channel. This ensures CSA offsets
+are computed correctly, as they would be during a normal channel switch.
+
+For channel switch, use a CSA count of 5 which is used for other
+hostapd initiated channel switches instead of current value of 3
+for consistency.
+
+Tag: DFS
+Patch-dependency:
+a00-004-Add-provision-to-test-RADAR-detection-probablity-in-.patch
+Fixes: I3d68b12ec8b ("hostapd: Add provision to test RADAR detection probablity in dfs testing")
+
+Signed-off-by: Thirusenthil Kumaran J <thirusen@qti.qualcomm.com>
+---
+ src/ap/dfs.c     | 41 ++++++++++++++++++++---------------------
+ src/ap/dfs.h     |  3 ---
+ src/ap/hostapd.c |  1 -
+ 3 files changed, 20 insertions(+), 25 deletions(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 19d3b2fed872..231814689e4c 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1283,15 +1283,6 @@ hostapd_dfs_is_background_event(struct hostapd_iface *iface, int freq)
+ 		iface->radar_background.freq == freq;
+ }
+ 
+-void hostapd_dfs_test_mode_csa_timeout(void *eloop_data, void *user_data)
+-{
+-	struct hostapd_data *hapd = eloop_data;
+-
+-	wpa_printf(MSG_INFO, "Stopping CSA in dfs test mode");
+-	hostapd_cleanup_cs_params(hapd);
+-	ieee802_11_set_beacon(hapd);
+-}
+-
+ void hostapd_dfs_radar_handling_timeout(void *eloop_data, void *user_data)
+ {
+ 	struct hostapd_iface *iface = eloop_data;
+@@ -1312,7 +1303,6 @@ static int hostapd_dfs_testmode_set_beacon_csa(struct hostapd_iface *iface)
+ 	u8 vht_oper_centr_freq_seg1_idx;
+ 	int err = 0;
+ 
+-	eloop_cancel_timeout(hostapd_dfs_test_mode_csa_timeout, hapd, NULL);
+ 	secondary_channel = iface->conf->secondary_channel;
+ 	vht_oper_centr_freq_seg0_idx =
+ 			iface->conf->vht_oper_centr_freq_seg0_idx;
+@@ -1321,6 +1311,14 @@ static int hostapd_dfs_testmode_set_beacon_csa(struct hostapd_iface *iface)
+ 
+ 	/* Setup CSA request */
+ 	os_memset(&csa_settings, 0, sizeof(csa_settings));
++	csa_settings.cs_count = 5;
++	csa_settings.block_tx = 1;
++	csa_settings.link_id = -1;
++#ifdef CONFIG_IEEE80211BE
++	if (iface->bss[0]->conf->mld_ap)
++		csa_settings.link_id = iface->bss[0]->mld_link_id;
++#endif /* CONFIG_IEEE80211BE */
++
+ 	err = hostapd_set_freq_params(&csa_settings.freq_params,
+ 				      iface->conf->hw_mode,
+ 				      iface->freq,
+@@ -1353,17 +1351,18 @@ static int hostapd_dfs_testmode_set_beacon_csa(struct hostapd_iface *iface)
+ 		hostapd_disable_iface(iface);
+ 		return -1;
+ 	}
+-	hapd->cs_freq_params = csa_settings.freq_params;
+-	hapd->cs_count = 3;
+-	hapd->cs_block_tx = 1;
+-	err = ieee802_11_set_beacon(hapd);
+-	if (err)
+-		goto fail;
+-	wpa_printf(MSG_DEBUG, "CSA beacon configured for dfs mode, count %d",
+-		   hapd->cs_count);
+-	hapd->csa_in_progress = 1;
+-	eloop_register_timeout(HOSTAPD_DFS_TEST_MODE_CSA_DUR, 0,
+-			       hostapd_dfs_test_mode_csa_timeout, hapd, NULL);
++
++	for (int i = 0; i < iface->num_bss; i++) {
++		err = hostapd_switch_channel(iface->bss[i], &csa_settings);
++		if (err) {
++			wpa_printf(MSG_ERROR,
++				   "CSA failed for BSS %d in dfs test mode", i);
++			goto fail;
++		}
++	}
++
++	wpa_printf(MSG_DEBUG, "CSA started for dfs test mode");
++
+ 	return 0;
+ 
+ fail:
+diff --git a/src/ap/dfs.h b/src/ap/dfs.h
+index f062a538c071..e8f392191d03 100644
+--- a/src/ap/dfs.h
++++ b/src/ap/dfs.h
+@@ -9,8 +9,6 @@
+ #ifndef DFS_H
+ #define DFS_H
+ 
+-/* CSA beacon duration in seconds for dfs testing mode */
+-#define HOSTAPD_DFS_TEST_MODE_CSA_DUR 1
+ /* Wait duration between radar detection and channel switch*/
+ #define HAPD_DFS_RADAR_CH_SWITCH_WAIT_DUR 500000
+ 
+@@ -20,7 +18,6 @@
+ #define GET_FREQ_CHAN_5G(chan) (BASE_FREQ_5G + ((chan - BASE_CHAN_5G) * 5))
+ 
+ bool hostapd_is_freq_in_current_hw_info(struct hostapd_iface *iface, int freq);
+-void hostapd_dfs_test_mode_csa_timeout(void *eloop_data, void *user_data);
+ 
+ int hostapd_handle_dfs(struct hostapd_iface *iface);
+ 
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 2072311ca55b..107e093c73f7 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4748,7 +4748,6 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ 		hostapd_cleanup_cs_params(hapd_iface->bss[j]);
+ #endif /* NEED_AP_MLME */
+ 
+-	eloop_cancel_timeout(hostapd_dfs_test_mode_csa_timeout, hapd_iface, NULL);
+ 	/* same as hostapd_interface_deinit without deinitializing ctrl-iface */
+ 	for (j = 0; j < hapd_iface->num_bss; j++) {
+ 		struct hostapd_data *hapd = hapd_iface->bss[j];
+-- 
+2.34.1
+

@@ -1,0 +1,188 @@
+From 8cd76c92ae3fa51cae38fd9ab3db0b056b36fbd5 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Fri, 6 Jun 2025 11:47:01 +0530
+Subject: [PATCH] dts: upstream: remove downstream clk/reset macros
+
+Remove downstream clock and reset macros to allow
+a clean build with upstream includes.
+
+Change-Id: Ibc08b4be9899b0619879eb6d8291e3e1d1bbe3c6
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ .../dt-bindings/clock/qcom,ipq5332-gcc.h      | 38 -------------
+ .../dt-bindings/clock/qcom,ipq9574-gcc.h      | 54 -------------------
+ .../dt-bindings/reset/qcom,ipq9574-gcc.h      | 36 +------------
+ 3 files changed, 1 insertion(+), 127 deletions(-)
+
+diff --git a/dts/upstream/include/dt-bindings/clock/qcom,ipq5332-gcc.h b/dts/upstream/include/dt-bindings/clock/qcom,ipq5332-gcc.h
+index 3b8ae8d6b9d..da9b507c30b 100644
+--- a/dts/upstream/include/dt-bindings/clock/qcom,ipq5332-gcc.h
++++ b/dts/upstream/include/dt-bindings/clock/qcom,ipq5332-gcc.h
+@@ -127,7 +127,6 @@
+ #define GCC_SNOC_USB_CLK				126
+ #define GCC_SYS_NOC_AT_CLK				127
+ #define GCC_SYSTEM_NOC_BFDCD_CLK_SRC			129
+-
+ #define GCC_UNIPHY0_AHB_CLK				130
+ #define GCC_UNIPHY0_SYS_CLK				131
+ #define GCC_UNIPHY1_AHB_CLK				132
+@@ -161,13 +160,6 @@
+ #define GCC_PCIE3X1_1_PIPE_CLK_SRC			171
+ #define GCC_USB0_PIPE_CLK_SRC				172
+ 
+-#define NSS_CC_CFG_CLK					173
+-#define NSS_CC_PPE_CLK					174
+-#define UNIPHY0_NSS_RX_CLK				175
+-#define UNIPHY0_NSS_TX_CLK				176
+-#define UNIPHY1_NSS_RX_CLK				177
+-#define UNIPHY1_NSS_TX_CLK				178
+-
+ #define GCC_ADSS_BCR					0
+ #define GCC_ADSS_PWM_CLK_ARES				1
+ #define GCC_AHB_CLK_ARES				2
+@@ -341,34 +333,4 @@
+ #define GCC_NSSNOC_PCNOC_1_CLK_ARES			170
+ #define GCC_UNIPHY0_XPCS_ARES				171
+ #define GCC_UNIPHY1_XPCS_ARES				172
+-#define NSS_CC_NSS_CSR_CLK				173
+-#define NSS_CC_NSSNOC_NSS_CSR_CLK			174
+-#define NSS_CC_PORT1_MAC_CLK				175
+-#define NSS_CC_PORT2_MAC_CLK				176
+-#define NSS_CC_PPE_SWITCH_IPE_CLK			177
+-#define NSS_CC_PPE_SWITCH_CLK				178
+-#define NSS_CC_PPE_SWITCH_CFG_CLK			179
+-#define NSS_CC_PPE_EDMA_CFG_CLK				180
+-#define NSS_CC_NSSNOC_PPE_CLK				181
+-#define NSS_CC_NSSNOC_PPE_CFG_CLK			182
+-#define NSS_CC_PPE_SWITCH_BTQ_CLK			183
+-#define NSS_CC_PORT1_RX_CLK				184
+-#define NSS_CC_PORT1_TX_CLK				185
+-#define NSS_CC_PORT2_RX_CLK				186
+-#define NSS_CC_PORT2_TX_CLK				187
+-#define NSS_CC_UNIPHY_PORT1_RX_CLK			188
+-#define NSS_CC_UNIPHY_PORT1_TX_CLK			189
+-#define NSS_CC_UNIPHY_PORT2_RX_CLK			190
+-#define NSS_CC_UNIPHY_PORT2_TX_CLK			191
+-#define GCC_UNIPHY0_SOFT_RESET				192
+-#define GCC_UNIPHY1_SOFT_RESET				193
+-#define GCC_UNIPHY0_XPCS_RESET				194
+-#define GCC_UNIPHY1_XPCS_RESET				195
+-#define NSS_CC_PPE_BCR					196
+-#define NSS_CC_PORT1_RX_RESET				197
+-#define NSS_CC_PORT1_TX_RESET				198
+-#define NSS_CC_PORT2_RX_RESET				199
+-#define NSS_CC_PORT2_TX_RESET				200
+-#define GCC_MDIO_MASTER_AHB_CLK				201
+-#define NSS_CC_PPE_EDMA_CLK				202
+ #endif
+diff --git a/dts/upstream/include/dt-bindings/clock/qcom,ipq9574-gcc.h b/dts/upstream/include/dt-bindings/clock/qcom,ipq9574-gcc.h
+index 406ae2d901c..f238aa4794a 100644
+--- a/dts/upstream/include/dt-bindings/clock/qcom,ipq9574-gcc.h
++++ b/dts/upstream/include/dt-bindings/clock/qcom,ipq9574-gcc.h
+@@ -202,58 +202,4 @@
+ #define GCC_PCIE1_PIPE_CLK				211
+ #define GCC_PCIE2_PIPE_CLK				212
+ #define GCC_PCIE3_PIPE_CLK				213
+-#define GCC_MEM_NOC_SNOC_AXI_CLK			214
+-#define NSS_CC_NSS_CSR_CLK				215
+-#define NSS_CC_NSSNOC_NSS_CSR_CLK			216
+-#define NSS_CC_PORT1_MAC_CLK				217
+-#define NSS_CC_PORT2_MAC_CLK				218
+-#define NSS_CC_PORT3_MAC_CLK				219
+-#define NSS_CC_PORT4_MAC_CLK				220
+-#define NSS_CC_PORT5_MAC_CLK				221
+-#define NSS_CC_PORT6_MAC_CLK				222
+-#define NSS_CC_PPE_SWITCH_IPE_CLK			223
+-#define NSS_CC_PPE_SWITCH_CLK				224
+-#define NSS_CC_PPE_SWITCH_CFG_CLK			225
+-#define NSS_CC_PPE_EDMA_CLK				226
+-#define NSS_CC_PPE_EDMA_CFG_CLK				227
+-#define NSS_CC_CRYPTO_PPE_CLK				228
+-#define NSS_CC_NSSNOC_PPE_CLK				229
+-#define NSS_CC_NSSNOC_PPE_CFG_CLK			230
+-#define NSS_CC_PPE_SWITCH_BTQ_CLK			231
+-#define NSS_CC_PORT1_RX_CLK				232
+-#define NSS_CC_PORT1_TX_CLK				233
+-#define NSS_CC_PORT2_RX_CLK				234
+-#define NSS_CC_PORT2_TX_CLK				235
+-#define NSS_CC_PORT3_RX_CLK				236
+-#define NSS_CC_PORT3_TX_CLK				237
+-#define NSS_CC_PORT4_RX_CLK				238
+-#define NSS_CC_PORT4_TX_CLK				239
+-#define NSS_CC_PORT5_RX_CLK				240
+-#define NSS_CC_PORT5_TX_CLK				241
+-#define NSS_CC_PORT6_RX_CLK				242
+-#define NSS_CC_PORT6_TX_CLK				243
+-#define NSS_CC_UNIPHY_PORT1_RX_CLK			244
+-#define NSS_CC_UNIPHY_PORT1_TX_CLK			245
+-#define NSS_CC_UNIPHY_PORT2_RX_CLK			246
+-#define NSS_CC_UNIPHY_PORT2_TX_CLK			247
+-#define NSS_CC_UNIPHY_PORT3_RX_CLK			248
+-#define NSS_CC_UNIPHY_PORT3_TX_CLK			249
+-#define NSS_CC_UNIPHY_PORT4_RX_CLK			250
+-#define NSS_CC_UNIPHY_PORT4_TX_CLK			251
+-#define NSS_CC_UNIPHY_PORT5_RX_CLK			252
+-#define NSS_CC_UNIPHY_PORT5_TX_CLK			253
+-#define NSS_CC_UNIPHY_PORT6_RX_CLK			254
+-#define NSS_CC_UNIPHY_PORT6_TX_CLK			255
+-#define UNIPHY0_NSS_RX_CLK				256
+-#define UNIPHY0_NSS_TX_CLK				257
+-#define UNIPHY1_NSS_RX_CLK				258
+-#define UNIPHY1_NSS_TX_CLK				259
+-#define UNIPHY2_NSS_RX_CLK				260
+-#define UNIPHY2_NSS_TX_CLK				261
+-#define GCC_UNIPHY_SYS_CLK                              262
+-#define GCC_PCNOC_BFDCD_CLK				263
+-#define GCC_SYSTEM_NOC_BFDCD_CLK			264
+-#define GCC_NSSNOC_MEMNOC_BFDCD_CLK			265
+-#define NSS_CC_CFG_CLK					266
+-#define NSS_CC_PPE_CLK					267
+ #endif
+diff --git a/dts/upstream/include/dt-bindings/reset/qcom,ipq9574-gcc.h b/dts/upstream/include/dt-bindings/reset/qcom,ipq9574-gcc.h
+index 2254975e63e..c709d103673 100644
+--- a/dts/upstream/include/dt-bindings/reset/qcom,ipq9574-gcc.h
++++ b/dts/upstream/include/dt-bindings/reset/qcom,ipq9574-gcc.h
+@@ -161,39 +161,5 @@
+ #define GCC_WCSS_Q6_TBU_BCR					152
+ #define GCC_TCSR_BCR						153
+ #define GCC_CRYPTO_BCR						154
+-#define GCC_UNIPHY0_SOFT_RESET					155
+-#define GCC_UNIPHY1_SOFT_RESET					156
+-#define GCC_UNIPHY2_SOFT_RESET					157
+-#define NSS_CC_UNIPHY_PORT1_TX_RESET				158
+-#define NSS_CC_UNIPHY_PORT1_RX_RESET				159
+-#define NSS_CC_UNIPHY_PORT2_TX_RESET				160
+-#define NSS_CC_UNIPHY_PORT2_RX_RESET				161
+-#define NSS_CC_UNIPHY_PORT3_TX_RESET				162
+-#define NSS_CC_UNIPHY_PORT3_RX_RESET				163
+-#define NSS_CC_UNIPHY_PORT4_TX_RESET				164
+-#define NSS_CC_UNIPHY_PORT4_RX_RESET				165
+-#define NSS_CC_UNIPHY_PORT5_TX_RESET				166
+-#define NSS_CC_UNIPHY_PORT5_RX_RESET				167
+-#define NSS_CC_UNIPHY_PORT6_TX_RESET				168
+-#define NSS_CC_UNIPHY_PORT6_RX_RESET				169
+-#define NSS_CC_PORT1_TX_RESET					170
+-#define NSS_CC_PORT1_RX_RESET					171
+-#define NSS_CC_PORT2_TX_RESET					172
+-#define NSS_CC_PORT2_RX_RESET					173
+-#define NSS_CC_PORT3_TX_RESET					174
+-#define NSS_CC_PORT3_RX_RESET					175
+-#define NSS_CC_PORT4_TX_RESET					176
+-#define NSS_CC_PORT4_RX_RESET					177
+-#define NSS_CC_PORT5_TX_RESET					178
+-#define NSS_CC_PORT5_RX_RESET					179
+-#define NSS_CC_PORT6_TX_RESET					180
+-#define NSS_CC_PORT6_RX_RESET					181
+-#define NSS_CC_PPE_EDMA_RESET					182
+-#define NSS_CC_PPE_CFG_RESET					183
+-#define NSS_CC_PORT1_MAC_RESET					184
+-#define NSS_CC_PORT2_MAC_RESET					185
+-#define NSS_CC_PORT3_MAC_RESET					186
+-#define NSS_CC_PORT4_MAC_RESET					187
+-#define NSS_CC_PORT5_MAC_RESET					188
+-#define NSS_CC_PORT6_MAC_RESET					189
++
+ #endif
+-- 
+2.34.1
+

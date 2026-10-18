@@ -1,0 +1,354 @@
+From 13fe551af3cc8e135345e4cdb4fc7979d67c72f6 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Tue, 1 Jul 2025 13:12:35 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Adding support for WiFi 7 EPCS
+ feature
+
+Adding support for WiFi 7 APUT Emergency Preparedness Communications
+Services(EPCS) feature. CAPI parameters added to support the feature
+are EPCS and EPCS_Setup.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c        | 84 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 85 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -3073,6 +3073,19 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "EPCS");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0) {
++			dut->ap_epcs = VALUE_ENABLED;
++		} else if (strcasecmp(val, "disable") == 0) {
++			dut->ap_epcs = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported EPCS Value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -12060,6 +12073,26 @@ skip_vht_parameters_set:
+ 		else if (dut->ap_qos_map_set == 2)
+ 			fprintf(f, "qos_map_set=%s\n", QOS_MAP_SET_2);
+ 
++		if (dut->ap_epcs == VALUE_ENABLED) {
++			fprintf(f, "enable_epcs=1\n");
++			fprintf(f, "epcs_wmm_ac_bk_aifs=7\n");
++			fprintf(f, "epcs_wmm_ac_bk_cwmin=4\n");
++			fprintf(f, "epcs_wmm_ac_bk_cwmax=9\n");
++			fprintf(f, "epcs_wmm_ac_bk_txop_limit=0\n");
++			fprintf(f, "epcs_wmm_ac_be_aifs=3\n");
++			fprintf(f, "epcs_wmm_ac_be_cwmin=4\n");
++			fprintf(f, "epcs_wmm_ac_be_cwmax=9\n");
++			fprintf(f, "epcs_wmm_ac_be_txop_limit=0\n");
++			fprintf(f, "epcs_wmm_ac_vi_aifs=2\n");
++			fprintf(f, "epcs_wmm_ac_vi_cwmin=3\n");
++			fprintf(f, "epcs_wmm_ac_vi_cwmax=4\n");
++			fprintf(f, "epcs_wmm_ac_vi_txop_limit=188\n");
++			fprintf(f, "epcs_wmm_ac_vo_aifs=2\n");
++			fprintf(f, "epcs_wmm_ac_vo_cwmin=2\n");
++			fprintf(f, "epcs_wmm_ac_vo_cwmax=3\n");
++			fprintf(f, "epcs_wmm_ac_vo_txop_limit=102\n");
++		}
++
+ 		fclose(f);
+ 	}
+ 
+@@ -13744,6 +13777,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_trigsubfb = VALUE_NOT_SET;
+ 	dut->num_users_ofdma = 0;
+ 	dut->ap_dscp_cap = VALUE_NOT_SET;
++	dut->ap_epcs = VALUE_NOT_SET;
+ 
+ 	if (dut->program == PROGRAM_QM && dut->device_type == AP_dut) {
+ 		dut->ap_scs = VALUE_ENABLED;
+@@ -20488,116 +20522,118 @@ static enum sigma_cmd_result mac80211_ap
+ 		}
+ 	}
+ 
+-	val = get_param(cmd, "STA_WMMPE_ECWmin_BK");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_cwmin %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++	if (dut->ap_epcs != VALUE_ENABLED) {
++		val = get_param(cmd, "STA_WMMPE_ECWmin_BK");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_cwmin %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_ECWmin_BE");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_cwmin %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_ECWmin_BE");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_cwmin %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_ECWmin_VI");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_cwmin %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_ECWmin_VI");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_cwmin %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_ECWmin_VO");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_cwmin %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_ECWmin_VO");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_cwmin %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_AIFSN_BK");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_aifs %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_AIFSN_BK");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_aifs %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_AIFSN_BE");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_aifs %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_AIFSN_BE");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_aifs %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_AIFSN_VI");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_aifs %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_AIFSN_VI");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_aifs %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_AIFSN_VO");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_aifs %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_AIFSN_VO");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_aifs %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_ECWmax_BK");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_cwmax %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_ECWmax_BK");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_cwmax %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_ECWmax_BE");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_cwmax %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_ECWmax_BE");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_cwmax %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_ECWmax_VI");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_cwmax %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_ECWmax_VI");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_cwmax %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_ECWmax_VO");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_cwmax %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_ECWmax_VO");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_cwmax %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_TXOP_BK");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_txop %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_TXOP_BK");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_bk_txop %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_TXOP_BE");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_txop %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "STA_WMMPE_TXOP_BE");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_be_txop %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "	STA_WMMPE_TXOP_VI");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_txop %d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
+-	}
++		val = get_param(cmd, "	STA_WMMPE_TXOP_VI");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vi_txop %d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 
+-	val = get_param(cmd, "STA_WMMPE_TXOP_VO");
+-	if (val) {
+-		param = atoi(val);
+-		snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_txop=%d", ifname, link_set ? link_param : "", param);
+-		run_system(dut, buf);
++		val = get_param(cmd, "STA_WMMPE_TXOP_VO");
++		if (val) {
++			param = atoi(val);
++			snprintf(buf, sizeof(buf), "hostapd_cli -i %s %s SET wmm_ac_vo_txop=%d", ifname, link_set ? link_param : "", param);
++			run_system(dut, buf);
++		}
+ 	}
+ 
+ 	val = get_param(cmd, "MRUAllocTones");
+@@ -20750,6 +20786,56 @@ static enum sigma_cmd_result mac80211_ap
+ 			return STATUS_SENT_ERROR;
+ 	}
+ 
++	val = get_param(cmd, "EPCS_Setup");
++	if (val) {
++		 if (strcasecmp(val, "Authorize") == 0) {
++			val = get_param(cmd, "client_mac");
++			if (val) {
++				if (parse_mac_address(dut, val, mac_addr) < 0) {
++				    sigma_dut_print(dut, DUT_MSG_ERROR,
++						"MAC Address not in proper format");
++				    return STATUS_SENT_ERROR;
++				}
++
++				run_system_wrapper(dut, "hostapd_cli -i %s %s epcs authorize_mac %02x:%02x:%02x:%02x:%02x:%02x",
++						   ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						   mac_addr[3], mac_addr[4], mac_addr[5]);
++			}
++		} else if (strcasecmp(val, "Request") == 0) {
++			val = get_param(cmd, "client_mac");
++			if (val) {
++				if (parse_mac_address(dut, val, mac_addr) < 0) {
++				    sigma_dut_print(dut, DUT_MSG_ERROR,
++						"MAC Address not in proper format");
++				    return STATUS_SENT_ERROR;
++				}
++
++				run_system_wrapper(dut, "hostapd_cli -i %s %s epcs authorize_mac %02x:%02x:%02x:%02x:%02x:%02x",
++						   ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						   mac_addr[3], mac_addr[4], mac_addr[5]);
++				run_system_wrapper(dut, "hostapd_cli -i %s %s epcs session_initiate  %02x:%02x:%02x:%02x:%02x:%02x",
++						   ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++						   mac_addr[3], mac_addr[4], mac_addr[5]);
++			}
++		} else if (strcasecmp(val, "Teardown") == 0) {
++			val = get_param(cmd, "client_mac");
++			if (val) {
++				if (parse_mac_address(dut, val, mac_addr) < 0) {
++				    sigma_dut_print(dut, DUT_MSG_ERROR,
++						"MAC Address not in proper format");
++				    return STATUS_SENT_ERROR;
++				}
++					run_system_wrapper(dut, "hostapd_cli -i %s %s epcs session_terminate %02x:%02x:%02x:%02x:%02x:%02x",
++							   ifname, link_set ? link_param : "", mac_addr[0], mac_addr[1], mac_addr[2],
++							   mac_addr[3], mac_addr[4], mac_addr[5]);
++			}
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Unsupported EPCS_Setup");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	if (++dut->intf_defined < dut->num_links)
+ 		mac80211_ap_set_rfeature(dut, conn, cmd);
+ 
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1492,6 +1492,7 @@ struct sigma_dut {
+ 	int num_users_ofdma;
+ 	enum value_not_set_enabled_disabled ap_trigsubfb;
+ 	enum value_not_set_enabled_disabled ap_dscp_cap;
++	enum value_not_set_enabled_disabled ap_epcs;
+ };
+ 
+ #ifdef NL80211_SUPPORT

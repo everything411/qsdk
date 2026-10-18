@@ -1,0 +1,99 @@
+From 9525f8a99c19c9d8fc3f5761287a74c8fb5e4ff6 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Tue, 30 Apr 2024 19:11:44 +0530
+Subject: [PATCH] sigma_dut: Add support for EHT and missing subelements in
+ Beacon Request frame
+
+Currently while sending hostapd_cli for beacon
+request, the link id in which the frame should be
+sent is not present which results in sending the
+frame in wrong link an also beacon request frame
+is getting malformed when the subelement has no
+contents in it as currently even when length is zero,
+some random value is being sent for the subelement
+with the length 0 which results in miscalculation in
+tag length and results in malformed packet.
+
+
+Add link support for EHT while building the frame
+for Beacon request frame in hostapd_cli command to
+specify in which link the frame should go and send the
+buffer for a subelement only when the length is greater
+than zero to avoid miscalculations and add support to get
+the required parameter in CAPI "Last Beacon Report
+Indication Request" and as per spec IEEE Std 802.11-2020,
+set the value of length field to 1 and sublement id to 164
+and sent it along with buffer info in the hostapd_cli command
+for beacon request frame.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c | 40 ++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 36 insertions(+), 4 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -13315,6 +13315,12 @@ static int return_subelem_id(const char
+ 		return 51;
+ 	else if (strncasecmp(param, "ReqInfo", buf_size) == 0)
+ 		return 10;
++	/* 164 indicates the subelement id of LastBeaconRptIndication
++	 * as per the spec IEEE Std 802.11-2020 in the Table 9-104—Optional
++	 * subelement IDs for Beacon request
++	 */
++	else if (strncasecmp(param, "LastBeaconRptIndication", buf_size) == 0)
++		return 164;
+ 	else
+ 		return -1;
+ }
+@@ -13324,6 +13330,8 @@ static void mac80211_bcn_rpt_prepare_buf
+ 					 uint8_t len)
+ {
+ 	char temp_str[120];
++	if (!len)
++		return;
+ 	snprintf(temp_str, sizeof(temp_str), "%02x%02x%s",
+ 		 return_subelem_id(param, sizeof(buf)), len, param_val);
+ 	strlcat(buf, temp_str, buf_size);
+@@ -13340,8 +13348,26 @@ static int mac80211_ap_send_frame_bcn_rp
+ 	uint8_t len;
+ 	char param_val[100], temp[10];
+ 	char ssid_str[50], tok[20] = {0};
++	char link_param[10];
++	bool link_set = false;
++	int link_id = 0;
+ 
+-	snprintf(buf, sizeof(buf), "-i %s req_beacon", ifname);
++	str_val = get_param(cmd, "Interface");
++	if (str_val) {
++		if (strcasecmp(str_val, "24G") == 0)
++			link_id = dut->band_to_link[0];
++		else if (strcasecmp(str_val, "5G") == 0)
++			link_id = dut->band_to_link[1];
++		else if (strcasecmp(str_val, "6G") == 0)
++			link_id = dut->band_to_link[2];
++	}
++
++	if (dut->program == PROGRAM_EHT) {
++		snprintf(link_param, sizeof(link_param), "-l %d", link_id);
++		link_set = true;
++	}
++
++	snprintf(buf, sizeof(buf), "-i %s %s req_beacon", ifname, link_set ? link_param : "");
+ 
+ 	if (parse_send_frame_params_mac("Dest_MAC", cmd, dut, buf, sizeof(buf)))
+ 		return -1;
+@@ -13433,6 +13459,13 @@ static int mac80211_ap_send_frame_bcn_rp
+ 		mac80211_bcn_rpt_prepare_buf(buf, sizeof(buf), "ReqInfo", param_val, len);
+ 	}
+ 
++	str_val = get_param(cmd, "LastBeaconRptIndication");
++	if (str_val) {
++		snprintf(param_val, sizeof(param_val), "%02x", atoi(str_val));
++		mac80211_bcn_rpt_prepare_buf(buf, sizeof(buf), "LastBeaconRptIndication",
++					     param_val, 1);
++	}
++
+ 	sigma_dut_print(dut, DUT_MSG_INFO,"bcn req buf %s\n", buf);
+ 
+ 	if (run_hostapd_cli(dut, buf) != 0)

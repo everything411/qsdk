@@ -1,0 +1,102 @@
+From 15b9ca43c199fc0ec8de9e401b5bfc9b742edcb4 Mon Sep 17 00:00:00 2001
+From: Guru Pratap Sharma <guruprat@qti.qualcomm.com>
+Date: Fri, 5 Dec 2025 02:06:57 -0800
+Subject: [PATCH] UPSTREAM:PROTOCOL: hostapd: Retain orignal bandwidth for all
+ AFC requests
+
+Currently, the Access Point (AP) does not retain the original bandwidth
+after receiving the next AFC response when the bandwidth changes.
+This causes inconsistencies because the AP starts processing subsequent
+requests without considering the initial bandwidth configuration,
+leading to incorrect calculations and potential performance issues.
+
+To fix this update the bandwidth handling logic for the second and
+subsequent AFC requests. At the start of processing each new request,
+restore the original bandwidth before running the AFC algorithm.
+This ensures that the algorithm operates on the correct baseline
+bandwidth and maintains consistency across all AFC responses.
+
+Fixes: I47b8c3d32832 (UPSTREAM:PROTOCOL: hostapd: Fix AFC random channel selection)
+
+Patch-work: None
+Tag: 6G_REGULATORY
+Feature: AFC
+Patch-dependency:
+n00-001-hostapd-add-support-for-6GHz-operation.patch,
+r65-QSDK-HOSTAPD-Implement-Min-PSD-Calculation-and-Punct.patch,
+r66-UPSTREAM-PROTOCOL-hostapd-Fetch-AFC-support-from-wiphy.patch,
+r66-UPSTREAM-PROTOCOL-hostapd-Handle-AFC-Channel-Change.patch,
+r72-a-UPSTREAM-PROTOCOL-hostapd-6-GHz-power-mode-channels-.patch,
+r72-b-UPSTREAM-PROTOCOL-hostapd-Print-6-GHz-power-mode-cha.patch,
+r72-c-UPSTREAM-PROTOCOL-hostapd-Store-6-GHz-power-mode-cha.patch,
+r72-d-UPSTREAM-PROTOCOL-hostapd-Clean-up-and-refactor-6-GH.patch,
+r72-e-UPSTREAM-PROTOCOL-hostapd-Support-for-SP-and-Punctur.patch,
+r72-f-UPSTREAM-PROTOCOL-hostapd-Add-6-GHz-regulatory-struc.patch,
+r72-g-UPSTREAM-PROTOCOL-hostapd-Add-6-GHz-base-regulatory-.patch,
+r72-h-UPSTREAM-PROTOCOL-hostapd-Apply-best-power-mode-for-.patch,
+r72-i-UPSTREAM-PROTOCOL-hostapd-Fix-6-GHz-power-mode-confi.patch,
+r72-j-UPSTREAM-PROTOCOL-hostapd-Handle-empty-AFC-power-eve.patch,
+r73-UPSTREAM-PROTOCOL-hostapd-Select-Random-Channel-Change.patch,
+r74-UPSTREAM-PROTOCOL-hostapd-Call-random-channel-change.patch,
+r80-d-UPSTREAM-PROTOCOL-hostapd-Add-minimum-PSD-calculatio.patch,
+r95-01-UPSTREAM-PROTOCOL-hostapd-Enhance-Random-Channel-Change.patch,
+r95-02-UPSTREAM-PROTOCOL-hostapd-Implement-CLI-to-validate.patch,
+r99-UPSTREAM-PROTOCOL-hostapd-Fix-AFC-channel-bandwidth-.patch,
+s005-UPSTREAM-PROTOCOL-hostapd-Fix-AFC-random-channel-sel.patch
+
+Signed-off-by: Guru Pratap Sharma <guruprat@qti.qualcomm.com>
+---
+ src/ap/ap_config.c    |  1 +
+ src/ap/ap_config.h    |  1 +
+ src/ap/interference.c | 11 +++++++++++
+ 3 files changed, 13 insertions(+)
+
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 1a75c81..4174027 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -374,6 +374,7 @@ struct hostapd_config * hostapd_config_defaults(void)
+ 	conf->enable_6ghz_composite_ap = 1;
+ 	conf->cur_chan_eirp = CHAN_MIN_EIRP_POWER;
+ 	conf->afc_chan_sel_config = HOSTAPD_AFC_CHAN_SEL_ALL;
++	conf->original_chan_width = 0;
+ 
+ 	hostapd_set_and_check_bw320_offset(conf, 0);
+ 
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 272e7f8..ea78517 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1364,6 +1364,7 @@ struct hostapd_config {
+ 	bool enable_mcs15;
+ 	int afc_chan_sel_config;
+ 	int cur_chan_eirp;
++	int original_chan_width; /* Original channel width for AFC */
+ 
+ };
+ 
+diff --git a/src/ap/interference.c b/src/ap/interference.c
+index 239be69..714c780 100644
+--- a/src/ap/interference.c
++++ b/src/ap/interference.c
+@@ -1472,6 +1472,17 @@ int hostapd_intf_afc_received(struct hostapd_iface *iface)
+ 	chan_width = hostapd_get_chan_width_from_oper_chan_width(iface->conf);
+ 	wpa_printf(MSG_DEBUG, "chan_width=%d", chan_width);
+ 
++	/* Store the original channel width on first AFC request */
++	if (iface->conf->original_chan_width == 0) {
++		iface->conf->original_chan_width = chan_width;
++		wpa_printf(MSG_DEBUG, "AFC: Storing original channel width: %d",
++			   iface->conf->original_chan_width);
++	} else {
++		/* Use the original channel width as starting point for subsequent requests */
++		chan_width = iface->conf->original_chan_width;
++		wpa_printf(MSG_DEBUG, "AFC: Using original channel width: %d", chan_width);
++	}
++
+ 	chan_data = os_zalloc(sizeof(struct hostapd_channel_data));
+ 	if (!chan_data) {
+ 		wpa_printf(MSG_ERROR, "chan_data memory allocation failed");
+-- 
+2.34.1
+

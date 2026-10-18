@@ -1,0 +1,65 @@
+From 4ed05116a2ee6f750eeeb2b59391b329443df355 Mon Sep 17 00:00:00 2001
+From: Paulson Raja L <quic_lraja@quicinc.com>
+Date: Mon, 20 Jan 2025 16:15:16 +0530
+Subject: [PATCH] QSDK:PROTOCOL: control-app: Add support for btm frame request
+
+Currently while configuring the AP, the AP is failing to send the BTM
+requests while running the control application resulting in the failure
+of `10379` testcase.
+
+Add required `hostapd_cli` commands to ensure the AP sends the required
+BTM request during configuration through control application.
+
+The BTM request and disassociation sequence are
+1.Execute BSS Transition Management Request for the client with the
+termination values and preference.
+2.Sleep for 2 seconds.
+3.Disassociate client.
+4.Sleep for 1 second.
+5.Disable the interface.
+
+Signed-off-by: Paulson Raja L <quic_lraja@quicinc.com>
+---
+ indigo_api_callback_dut.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+--- a/indigo_api_callback_dut.c
++++ b/indigo_api_callback_dut.c
+@@ -1549,6 +1549,25 @@ done:
+     return 0;
+ }
+ 
++void send_ap_btm_req(char *bssid, char *command)
++{
++  char request[4096];
++  char *ifname = NULL;
++
++  ifname = get_wireless_interface();
++  memset(request, 0, sizeof(request));
++  snprintf(request, sizeof(request), "hostapd_cli -i %s %s", ifname, command);
++  system(request);
++  sleep(2);
++  memset(request, 0, sizeof(request));
++  snprintf(request ,sizeof(request), "hostapd_cli -i %s disassociate %s", ifname, bssid);
++  system(request);
++  sleep(1);
++  memset(request, 0, sizeof(request));
++  snprintf(request, sizeof(request), " hostapd_cli -i %s disable", ifname);
++  system(request);
++}
++
+ static int send_ap_btm_handler(struct packet_wrapper *req, struct packet_wrapper *resp) {
+     int status = TLV_VALUE_STATUS_NOT_OK;
+     size_t resp_len;
+@@ -1654,6 +1673,11 @@ static int send_ap_btm_handler(struct pa
+     }
+     indigo_logger(LOG_LEVEL_DEBUG, "cmd:%s", request);
+ 
++    send_ap_btm_req(bssid, request);
++    status = TLV_VALUE_STATUS_OK;
++    message = TLV_VALUE_OK;
++    goto done;
++
+     /* Open hostapd UDS socket */
+     w = wpa_ctrl_open(get_hapd_ctrl_path());
+     if (!w) {

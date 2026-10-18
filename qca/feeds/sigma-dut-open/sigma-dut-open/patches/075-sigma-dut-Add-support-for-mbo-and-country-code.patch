@@ -1,0 +1,78 @@
+From cc20fbc23ef01da71fe7a525dce4fdf26815dad2 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Thu, 11 Jan 2024 19:53:28 +0530
+Subject: [PATCH] sigma_dut: Add support for mbo and country code
+
+MBO is enabled in hostapd config for 6 GHz alone.
+In order to support BTM test cases, as per Wi-Fi 7
+test plan, enabled mbo support for all the bands via
+hostapd config.
+
+Currently country code is enabled only for 5 GHz.
+As per Wi-Fi 7 test plan, country code needs to be enabled
+for all the bands.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c        | 37 +++++++++++++++++++++++++++++++++++++
+ sigma_dut.h |  1 +
+ 2 files changed, 38 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -2899,6 +2899,20 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "BTMsupt");
++	if (val) {
++		if (strcasecmp(val, "enable") == 0) {
++			dut->ap_mbo = 1;
++			dut->ap_btmsupt = VALUE_ENABLED;
++		} else if (strcasecmp(val, "disable") == 0) {
++			dut->ap_btmsupt = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				"errorCode,Unsupported BTMsupt Value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	val = get_param(cmd, "MBSSID_MU");
+ 	if (val) {
+ 		if (strcasecmp(val, "enable") == 0) {
+@@ -9930,6 +9944,16 @@ write_conf:
+ 
+ 	}
+ 
++	if (drv == DRIVER_MAC80211 && mode == AP_11be && ((check_band(dut, BAND_2G, conf_counter))
++				|| (check_band(dut, BAND_6G, conf_counter)))) {
++		if (dut->ap_countrycode[0])
++			fprintf(f, "country_code=%s\n", dut->ap_countrycode);
++		else
++			fprintf(f, "country_code=US\n");
++
++		fprintf(f, "ieee80211d=1\n");
++	}
++
+ 	if ((drv == DRIVER_MAC80211 || drv == DRIVER_QNXNTO ||
+ 	     drv == DRIVER_LINUX_WCN) &&
+ 	    (mode == AP_11ac ||
+@@ -12128,6 +12152,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->eht_txemlomn = VALUE_NOT_SET;
+ 	dut->cohost_iface = 0;
+ 	dut->ap_cohosted_bss = VALUE_NOT_SET;
++	dut->ap_btmsupt = VALUE_NOT_SET;
+ 
+ 	if (dut->program == PROGRAM_HT || dut->program == PROGRAM_VHT ||
+ 	    dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1302,6 +1302,7 @@ struct sigma_dut {
+ 	int switch_he_eht;
+ 	int cohost_iface;
+ 	int ap_cohosted_bss;
++	enum value_not_set_enabled_disabled ap_btmsupt;
+ };
+ 
+ 

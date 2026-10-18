@@ -1,0 +1,23 @@
+From 877ac544eafa2fb72bad3e73e3b0ac3c37501ac1 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Thu, 26 Mar 2026 21:46:35 +0530
+Subject: [PATCH] clk: qcom: Add build support for clock-ipq-cmnpll
+
+Change-Id: I6d0c30f8200289869234a8a145753fbcc01addef
+Signed-off-by: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+---
+ drivers/clk/qcom/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index a20d99b3ca5..efe393ebac6 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -25,3 +25,4 @@ obj-$(CONFIG_CLK_QCOM_SM8250) += clock-sm8250.o
+ obj-$(CONFIG_CLK_QCOM_SM8550) += clock-sm8550.o
+ obj-$(CONFIG_CLK_QCOM_SM8650) += clock-sm8650.o
+ obj-$(CONFIG_CLK_QCOM_X1E80100) += clock-x1e80100.o
++obj-$(CONFIG_CLK_QCOM_CMN_PLL) += clock-ipq-cmnpll.o
+-- 
+2.34.1
+

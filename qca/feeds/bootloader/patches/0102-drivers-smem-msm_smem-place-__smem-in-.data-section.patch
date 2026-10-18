@@ -1,0 +1,34 @@
+From e61453fd308dfbf44e3601103079e2d2e7efa611 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Mon, 18 May 2026 14:55:49 +0530
+Subject: [PATCH] drivers: smem: msm_smem: place __smem in .data section
+
+Move the global __smem pointer explicitly to the .data section
+to ensure it resides in a writable data segment instead of the
+default placement.
+
+This helps avoid potential issues related to section placement
+and ensures proper initialization/runtime behavior.
+
+Change-Id: I59e0122cfaf07d9d4da8f26397844b1df1f58a0f
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/smem/msm_smem.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/smem/msm_smem.c b/drivers/smem/msm_smem.c
+index cfe38930bbe..f26c320f2c3 100644
+--- a/drivers/smem/msm_smem.c
++++ b/drivers/smem/msm_smem.c
+@@ -338,7 +338,7 @@ static void *cached_entry_to_item(struct smem_private_entry *e)
+ }
+ 
+ /* Pointer to the one and only smem handle */
+-static struct qcom_smem *__smem;
++static struct qcom_smem *__smem __section(".data");
+ 
+ static int qcom_smem_alloc_private(struct qcom_smem *smem,
+ 				   struct smem_partition_header *phdr,
+-- 
+2.34.1
+

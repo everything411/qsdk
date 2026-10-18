@@ -1,0 +1,49 @@
+From d0881b139a5989c760ff9cf647d75a522ac94680 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Wed, 6 Aug 2025 19:03:01 +0530
+Subject: [PATCH] mailbox: Add TMEL QMP driver support
+
+This patch introduces support for the Qualcomm
+Mailbox Protocol (QMP) driver specific to the
+TMEL subsystem. It includes updates to the
+Kconfig and Makefile to integrate the new driver
+into the mailbox framework.
+
+Change-Id: I49e51d495b13934aad043ed645a62a8a32a13fe1
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/mailbox/Kconfig  | 10 ++++++++++
+ drivers/mailbox/Makefile |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/drivers/mailbox/Kconfig b/drivers/mailbox/Kconfig
+index 67d5ac1a742..9f615ae0aef 100644
+--- a/drivers/mailbox/Kconfig
++++ b/drivers/mailbox/Kconfig
+@@ -58,4 +58,14 @@ config ZYNQMP_IPI
+ 	help
+ 	  This enables support for the Xilinx ZynqMP Inter Processor Interrupt
+ 	  communication controller.
++
++config QCOM_TMEL_QMP
++	bool "QCOM Mailbox Protocol(QMP) for TMEL SS"
++	depends on DM_MAILBOX && ARCH_IPQ
++	help
++	  Say yes to add support for the QMP Mailbox Protocol driver for
++	  Trust Management Engine Lite Sub System (TMEL SS).
++	  QMP is a lightweight communication protocol for sending messages to
++	  TMEL. This protocol fits into the Generic Mailbox Framework.
++	  QMP uses mailbox registers.
+ endmenu
+diff --git a/drivers/mailbox/Makefile b/drivers/mailbox/Makefile
+index 6072fa1956b..0714fac0bea 100644
+--- a/drivers/mailbox/Makefile
++++ b/drivers/mailbox/Makefile
+@@ -11,3 +11,4 @@ obj-$(CONFIG_STM32_IPCC) += stm32-ipcc.o
+ obj-$(CONFIG_TEGRA_HSP) += tegra-hsp.o
+ obj-$(CONFIG_K3_SEC_PROXY) += k3-sec-proxy.o
+ obj-$(CONFIG_ZYNQMP_IPI) += zynqmp-ipi.o
++obj-$(CONFIG_QCOM_TMEL_QMP) += qcom-tmel-qmp.o
+-- 
+2.34.1
+

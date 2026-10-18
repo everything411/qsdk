@@ -1,0 +1,15 @@
+if TARGET_IPQ9574
+
+config SYS_BOARD
+	default "ipq9574"
+
+config SYS_VENDOR
+	default "qti"
+
+config SYS_SOC
+	default "ipq9574"
+
+config SYS_CONFIG_NAME
+	default "ipq9574"
+
+endif

@@ -1,0 +1,86 @@
+From b10a5756ce8f6bf804c2f1ed943456eddea38772 Mon Sep 17 00:00:00 2001
+From: Karthik M <quic_karm@quicinc.com>
+Date: Tue, 12 Mar 2024 15:18:53 +0530
+Subject: [PATCH] control_app: fix phy interface name
+
+Currently radio are detected based on channel info
+fetched from phyN. It fails as the phy interface name
+changed to phy0N
+
+Add change to modify phy interface name from phyN to phy0N
+
+Signed-off-by: Karthik M <quic_karm@quicinc.com>
+---
+ vendor_specific_dut.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+--- a/vendor_specific_dut.c
++++ b/vendor_specific_dut.c
+@@ -102,23 +102,48 @@ static int get_radio_band(char *phy, cha
+     return ret;
+ }
+ 
++static int get_iface_name(char *phy, char *interface)
++{
++    FILE *fp;
++    char buffer[BUFFER_LEN];
++    char cmd[60];
++    int ret = -1;
++
++    snprintf(cmd, sizeof(cmd), "ls /sys/class/ieee80211/%s/device/net/ | head -1", phy);
++
++    fp = popen(cmd, "r");
++    if (fp) {
++        while (fgets(buffer, sizeof(buffer), fp) != NULL) {
++            strlcpy(interface, buffer, INTERFACE_LEN);
++            if (interface[strlen(interface) - 1] == '\n')
++                interface[strlen(interface) - 1] = '\0';
++
++            if (interface[0] != '\0')
++                ret = 0;
++        }
++        pclose(fp);
++    }
++
++    return ret;
++}
++
+ int detect_radios(char *buf, int buf_len) {
+     FILE *fp;
+     char buffer[BUFFER_LEN], *ptr;
+     char interface[INTERFACE_LEN], phy_name[PHY_LEN], band[BAND_LEN];
+     int iface_num, num_radios = 0, len = 0, i;
+ 
++    memset(interface, 0, sizeof(interface));
+     reset_radio_band();
+ 
+-    fp = popen("iw dev", "r");
++    fp = popen("iw phy", "r");
+     if (fp) {
+         while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+-            ptr = strstr(buffer, "phy");
++            ptr = strstr(buffer, "Wiphy phy");
+             if (ptr) {
+-                /* strip # from phy name from iw dev output */
++                ptr = strstr(ptr, "phy0");
+                 strlcpy(phy_name, ptr, PHY_LEN);
+-                phy_name[3] = phy_name[4];
+-                phy_name[4] = '\0';
++                phy_name[5] = '\0';
+ 
+                 printf("\nDetect Radio: New radio \'%s\' detected.", phy_name);
+ 
+@@ -127,8 +152,11 @@ int detect_radios(char *buf, int buf_len
+                            phy_name);
+                     continue;
+                 } else {
+-                    iface_num = phy_name[3] - '0';
+-                    snprintf(interface, sizeof(interface), "wlan%d", iface_num);
++                    if (get_iface_name(phy_name, interface)) {
++                        printf("\nDetect Radio: Can't get interface name of \'%s\'. Skipping.",
++                               phy_name);
++                        continue;
++                    }
+ 
+                     if (get_radio_band(phy_name, band)) {
+                         printf("\nDetect Radio: Can't get operating band of radio \'%s\'. Skipping.",

@@ -1,0 +1,27 @@
+From 332e6470700b5c2a9f3c0c1eef0d6e077137b9a9 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Tue, 20 May 2025 23:42:27 +0530
+Subject: [PATCH] phy: Add support for ARCH_IPQ platforms
+
+Change-Id: I38ebaa7733d9b0497df6f10e61c5c273825b619e
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/phy/qcom/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/phy/qcom/Kconfig b/drivers/phy/qcom/Kconfig
+index 61e5e2fca41..60799f6dc26 100644
+--- a/drivers/phy/qcom/Kconfig
++++ b/drivers/phy/qcom/Kconfig
+@@ -14,7 +14,7 @@ config PHY_QCOM_IPQ4019_USB
+ 
+ config PHY_QCOM_QMP_PCIE
+ 	tristate "Qualcomm QMP PCIe PHY driver"
+-	depends on PHY && ARCH_SNAPDRAGON
++	depends on PHY && (ARCH_SNAPDRAGON || ARCH_IPQ)
+ 	help
+ 	  Enable this to support the PCIe QMP PHY on various Qualcomm chipsets.
+ 
+-- 
+2.34.1
+

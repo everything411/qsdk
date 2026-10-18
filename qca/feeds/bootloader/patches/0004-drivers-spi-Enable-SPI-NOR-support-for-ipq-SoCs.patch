@@ -1,0 +1,110 @@
+From 86e726ea3de93ce5b4eae1b1d4e51675ae1c637d Mon Sep 17 00:00:00 2001
+From: Timple Raj M <quic_timple@quicinc.com>
+Date: Fri, 24 Jan 2025 21:13:01 +0530
+Subject: [PATCH] drivers: spi: Enable SPI-NOR support for ipq SoCs
+
+This patch enables the SPI-NOR support for the below listed
+IPQ SoCs.
+1. IPQ5332
+2. IPQ9574
+
+Change-Id: I3ae68d907598d70a0dd0ba7412e0b87b16541941
+Signed-off-by: Timple Raj M <quic_timple@quicinc.com>
+---
+ drivers/spi/Kconfig   |  2 +-
+ drivers/spi/spi-qup.c | 27 ++++++++++++++++++++++++++-
+ 2 files changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/spi/Kconfig b/drivers/spi/Kconfig
+index 96ea033082b..19b9c33ec93 100644
+--- a/drivers/spi/Kconfig
++++ b/drivers/spi/Kconfig
+@@ -406,7 +406,7 @@ config PL022_SPI
+ 
+ config SPI_QUP
+ 	bool "Qualcomm SPI controller with QUP interface"
+-	depends on ARCH_IPQ40XX
++	depends on ARCH_IPQ40XX || ARCH_IPQ
+ 	help
+ 	  Qualcomm Universal Peripheral (QUP) core is an AHB slave that
+ 	  provides a common data path (an output FIFO and an input FIFO)
+diff --git a/drivers/spi/spi-qup.c b/drivers/spi/spi-qup.c
+index dc001e6e4cc..1ea8d19a7ab 100644
+--- a/drivers/spi/spi-qup.c
++++ b/drivers/spi/spi-qup.c
+@@ -5,6 +5,7 @@
+  * mode support
+  *
+  * Copyright (c) 2020 Sartura Ltd.
++ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+  *
+  * Author: Robert Marko <robert.marko@sartura.hr>
+  * Author: Luka Kovacic <luka.kovacic@sartura.hr>
+@@ -179,14 +180,35 @@ struct qup_spi_priv {
+ 	struct gpio_desc cs_gpios[SPI_NUM_CHIPSELECTS];
+ 	bool cs_high;
+ 	u32 core_state;
++	bool force_cs;
+ };
+ 
++static void qup_write_force_cs(struct udevice *dev, int assert)
++{
++	struct qup_spi_priv *priv = dev_get_priv(dev);
++
++	if (assert)
++		clrsetbits_le32(priv->base + SPI_IO_CONTROL,
++				FORCE_CS_MSK, FORCE_CS_EN);
++	else
++		clrsetbits_le32(priv->base + SPI_IO_CONTROL,
++				FORCE_CS_MSK, FORCE_CS_DIS);
++
++        return;
++
++}
++
+ static int qup_spi_set_cs(struct udevice *dev, unsigned int cs, bool enable)
+ {
+ 	struct qup_spi_priv *priv = dev_get_priv(dev);
+ 
+ 	debug("%s: cs=%d enable=%d\n", __func__, cs, enable);
+ 
++	if (priv->force_cs) {
++		qup_write_force_cs(dev, !enable);
++		return 0;
++	}
++
+ 	if (cs >= SPI_NUM_CHIPSELECTS)
+ 		return -ENODEV;
+ 
+@@ -615,6 +637,7 @@ static int qup_spi_hw_init(struct udevice *dev)
+ {
+ 	struct udevice *bus = dev_get_parent(dev);
+ 	struct qup_spi_priv *priv = dev_get_priv(bus);
++	struct dm_spi_slave_plat *slave_plat = dev_get_parent_plat(dev);
+ 	int ret;
+ 
+ 	/* QUPn module configuration */
+@@ -669,10 +692,11 @@ static int qup_spi_hw_init(struct udevice *dev)
+ 				INPUT_BLOCK_MODE |
+ 				OUTPUT_BLOCK_MODE));
+ 
++	qup_spi_set_mode(bus, slave_plat->mode);
++
+ 	/* Disable Error mask */
+ 	writel(0, priv->base + SPI_ERROR_FLAGS_EN);
+ 	writel(0, priv->base + QUP_ERROR_FLAGS_EN);
+-	writel(0, priv->base + BLSP0_SPI_DEASSERT_WAIT_REG);
+ 
+ 	return ret;
+ }
+@@ -762,6 +786,7 @@ static int qup_spi_probe(struct udevice *dev)
+ 		return ret;
+ 
+ 	priv->num_cs = dev_read_u32_default(dev, "num-cs", 1);
++	priv->force_cs = dev_read_bool(dev, "force-cs");
+ 
+ 	ret = gpio_request_list_by_name(dev, "cs-gpios", priv->cs_gpios,
+ 					priv->num_cs, GPIOD_IS_OUT | GPIOD_IS_OUT_ACTIVE);
+-- 
+2.34.1
+

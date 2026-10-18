@@ -1,0 +1,108 @@
+From 00ff3443c3c06e2670edb8094eea6f716a3c8904 Mon Sep 17 00:00:00 2001
+From: Ramasamy Kaliappan <rkaliapp@qti.qualcomm.com>
+Date: Fri, 14 Nov 2025 10:57:07 +0530
+Subject: [PATCH 1/3] UPSTREAM:PROTOCOL:hostapd: Fix association response sent
+ on wrong band due to link address swap in MLD STA.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When a station initially connects as a 3-link STA, receiving
+auth/assoc frames from the same MLD STA with swapped link addresses
+can cause connectivity problems.
+
+If the station moves away and then returns, it may swap link addresses
+without disconnecting. In some cases, the station attempts to connect
+using its previous 6 GHz link address on the 5 GHz band.
+As a result, an association request received on the 5 GHz band may
+use a 6 GHz link address. This leads to the association response
+being sent on the 6 GHz band instead of the 5 GHz band, causing
+re-connectivity issues.
+
+Ensure the association response is sent on the same band where the
+association request was received, using the source address from the
+request
+
+Patch-dependency: None
+
+Signed-off-by: Ramasamy Kaliappan <rkaliapp@qti.qualcomm.com>
+---
+ src/ap/ieee802_11.c | 18 +++++-------------
+ 1 file changed, 5 insertions(+), 13 deletions(-)
+
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5595,7 +5595,7 @@ static int add_associated_sta(struct hos
+ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+ 			   const u8 *addr, u16 status_code, int reassoc,
+ 			   const u8 *ies, size_t ies_len, int rssi,
+-			   int omit_rsnxe, bool allow_mld_addr_trans)
++			   int omit_rsnxe)
+ {
+ 	int send_len;
+ 	u8 *buf;
+@@ -6042,8 +6042,7 @@ void fils_hlp_finish_assoc(struct hostap
+ 	reply_res = send_assoc_resp(hapd, sta, sta->addr, WLAN_STATUS_SUCCESS,
+ 				    sta->fils_pending_assoc_is_reassoc,
+ 				    sta->fils_pending_assoc_req,
+-				    sta->fils_pending_assoc_req_len, 0, 0,
+-				    true);
++				    sta->fils_pending_assoc_req_len, 0, 0);
+ 	os_free(sta->fils_pending_assoc_req);
+ 	sta->fils_pending_assoc_req = NULL;
+ 	sta->fils_pending_assoc_req_len = 0;
+@@ -6115,7 +6114,7 @@ static struct sta_info * handle_mlo_tran
+ 	wpa_printf(MSG_DEBUG, "MLD: assoc: mld=" MACSTR ", link=" MACSTR,
+ 		   MAC2STR(mld_addr), MAC2STR(mgmt->sa));
+ 
+-	return hostapd_ml_get_assoc_sta(hapd, sta, assoc_hapd);
++	return sta;
+ }
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -6250,7 +6249,6 @@ static void handle_assoc(struct hostapd_
+ #endif /* CONFIG_FILS */
+ 	int omit_rsnxe = 0;
+ 	bool set_beacon = false;
+-	bool mld_addrs_not_translated = false;
+ 
+ 	if (len < IEEE80211_HDRLEN + (reassoc ? sizeof(mgmt->u.reassoc_req) :
+ 				      sizeof(mgmt->u.assoc_req))) {
+@@ -6325,19 +6323,11 @@ static void handle_assoc(struct hostapd_
+ 
+ 		sta = handle_mlo_translate(hapd, mgmt, len, reassoc,
+ 					   &assoc_hapd);
+-		if (sta) {
+-			if (hapd != assoc_hapd) {
+-				wpa_printf(MSG_DEBUG,
+-					   "MLD: Switching to assoc hapd/station");
+-				hapd = assoc_hapd;
+-				mld_addrs_not_translated = true;
+-			}
+-			if (sta->sa_query_timed_out) {
+-				u8 link_id = hapd->mld_link_id;
++		if (sta && sta->sa_query_timed_out) {
++			u8 link_id = hapd->mld_link_id;
+ 
+-				os_memcpy(sta->mld_info.links[link_id].peer_addr,
+-					  mgmt->sa, ETH_ALEN);
+-			}
++			os_memcpy(sta->mld_info.links[link_id].peer_addr,
++					mgmt->sa, ETH_ALEN);
+ 		}
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+@@ -6767,11 +6757,9 @@ static void handle_assoc(struct hostapd_
+ 
+ 	if (resp >= 0)
+ 		reply_res = send_assoc_resp(hapd,
+-					    mld_addrs_not_translated ?
+-					    NULL : sta,
++					    sta,
+ 					    sa, resp, reassoc,
+-					    pos, left, rssi, omit_rsnxe,
+-					    !mld_addrs_not_translated);
++					    pos, left, rssi, omit_rsnxe);
+ 
+ 	if (set_beacon)
+ 		ieee802_11_update_beacons(hapd->iface);

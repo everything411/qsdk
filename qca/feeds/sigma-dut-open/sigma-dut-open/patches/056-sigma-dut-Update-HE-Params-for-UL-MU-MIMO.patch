@@ -1,0 +1,53 @@
+From 05b18b07b1c770412d914748734d2421aa67029e Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Thu, 14 Jul 2022 22:18:54 +0530
+Subject: [PATCH] sigma-dut: Update HE Params for UL MU-MIMO
+
+Update MU TX Beamformer, DL/UL OFDMA HE Parameters for UL MIMO
+test case.
+Disable FW optimization in UL MIMO path to force the same for WFA.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ ap.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 83886ba..fa59795 100644
+--- a/ap.c
++++ b/ap.c
+@@ -8050,6 +8050,17 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname)
+ 		fwtest_cmd_wrapper(dut, "-t 1 -m 0x0 -v 0 0x1D 0", ifname);
+ 	}
+ 
++	if (dut->ap_he_mimo == MIMO_UL) {
++		uint8_t he_param = 0x7F; /* Bit 7 is reserved, Bit 6 for UL MIMO */
++		/* Update HE Params for UL MIMO */
++		if (!dut->ap_mu_txBF)
++			he_param &= ~(1 << 3); /* Bit 3 for MU TxBF */
++		if (dut->ap_he_dlofdma != VALUE_ENABLED)
++			he_param &= ~(1 << 4); /* Bit 4 for DL OFDMA */
++		if (dut->ap_he_ulofdma != VALUE_ENABLED)
++			he_param &= ~(1 << 5); /* Bit 5 for UL OFDMA */
++		run_system_wrapper(dut, "ath11k-fwtest -t 1 -i %s -m 0x00 -v 0 32770 %d", ifname, he_param);
++	}
+ 	if (dut->ap_mbssid_mu == VALUE_ENABLED) {
+ 		/* To bias the scheduler to MU instead of SU, to ensure larger number
+ 		 * of broadcast triggers instead of unicast */
+@@ -14962,6 +14973,13 @@ static void mac80211_set_trigger_type_0(struct sigma_dut *dut, const char *ifnam
+ 		fwtest_cmd_wrapper(dut, "-m 0x48 -v 0 220 1131520", ifname);
+ 		/* Setting to enable UL MUMIMO for 2.4G - harmless if sent for 5G */
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 332 0", ifname);
++
++		/* Below 2 commands - Disable FW optimizations in UL MUMIMO added for
++		 * improving single pair TCP UL traffic for large number of clients
++		 * and force UL MUMIMO.
++		 */
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 430 0", ifname);
++		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 431 0", ifname);
+ 	} else {
+ 		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 43 6", ifname);
+ 	}
+-- 
+2.7.4
+

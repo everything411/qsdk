@@ -1,0 +1,55 @@
+From 3d262f893d2f7646987344d3d7ec38a05c040940 Mon Sep 17 00:00:00 2001
+From: Amith A <amitajit@qti.qualcomm.com>
+Date: Mon, 24 Nov 2025 09:31:09 +0530
+Subject: [PATCH 2/3] QSDK:PROTOCOL:hostapd: Add ESP IE support in Beacon and Probe
+ Response frames
+
+Add ESP Information element in Beacon and Probe response when the feature
+is enabled.
+
+Patch-dependency:
+Id8b873df53f ("QSDK:HOSTAPD:hostapd-extn: Add ESP support with vendor
+	      command and IE handling")
+
+Signed-off-by: Amith A <amitajit@qti.qualcomm.com>
+---
+ src/ap/beacon.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 7ca0b8a..429d557 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -861,6 +861,9 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
+ 	buflen += hostapd_get_rsnxe_override_len(hapd);
+ 	buflen += hostapd_wfa_cap_ie_len(hapd, NULL);
+ 
++	/* Estimated Service Parameters (ESP) IE */
++	buflen += hostapd_esp_ie_len_extn(hapd);
++
+ 	return buflen;
+ }
+ 
+@@ -1125,6 +1128,9 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+ 	pos = hostapd_get_rsne_override_2(hapd, pos, epos - pos);
+ 	pos = hostapd_get_rsnxe_override(hapd, pos, epos - pos);
+ 
++	/* Add Estimated Service Parameters (ESP) IE in Probe Response when enabled */
++	pos = hostapd_eid_esp_extn(hapd, pos, epos - pos);
++
+ 	if (hapd->conf->vendor_elements) {
+ 		os_memcpy(pos, wpabuf_head(hapd->conf->vendor_elements),
+ 			  wpabuf_len(hapd->conf->vendor_elements));
+@@ -2806,6 +2812,9 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 	tailpos = hostapd_get_rsnxe_override(hapd, tailpos,
+ 					     tail + tail_len - tailpos);
+ 
++	tailpos = hostapd_eid_esp_extn(hapd, tailpos,
++				       tail + tail_len - tailpos);
++
+ 	if (hapd->conf->vendor_elements) {
+ 		os_memcpy(tailpos, wpabuf_head(hapd->conf->vendor_elements),
+ 			  wpabuf_len(hapd->conf->vendor_elements));
+-- 
+2.34.1
+

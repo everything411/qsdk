@@ -1,0 +1,508 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+
+#ifndef _JHPPE_POLICER_REG_H_
+#define _JHPPE_POLICER_REG_H_
+
+/*[register] SAWF_FLOW_STATIS_CTRL0*/
+#define SAWF_FLOW_STATIS_CTRL0
+#define SAWF_FLOW_STATIS_CTRL0_ADDRESS 0x200
+#define SAWF_FLOW_STATIS_CTRL0_NUM     1
+#define SAWF_FLOW_STATIS_CTRL0_INC     0x8
+#define SAWF_FLOW_STATIS_CTRL0_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL0_DEFAULT 0x0
+	/*[field] SAMPLE_TIME_SAWF0*/
+	#define SAWF_FLOW_STATIS_CTRL0_SAMPLE_TIME_SAWF0
+	#define SAWF_FLOW_STATIS_CTRL0_SAMPLE_TIME_SAWF0_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL0_SAMPLE_TIME_SAWF0_LEN     32
+	#define SAWF_FLOW_STATIS_CTRL0_SAMPLE_TIME_SAWF0_DEFAULT 0x0
+	/*[field] SAMPLE_TIME_SAWF1*/
+	#define SAWF_FLOW_STATIS_CTRL0_SAMPLE_TIME_SAWF1
+	#define SAWF_FLOW_STATIS_CTRL0_SAMPLE_TIME_SAWF1_OFFSET  32
+	#define SAWF_FLOW_STATIS_CTRL0_SAMPLE_TIME_SAWF1_LEN     32
+	#define SAWF_FLOW_STATIS_CTRL0_SAMPLE_TIME_SAWF1_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl0 {
+	a_uint32_t  sample_time_sawf0:32;
+	a_uint32_t  sample_time_sawf1:32;
+};
+
+union sawf_flow_statis_ctrl0_u {
+	a_uint32_t val[2];
+	struct sawf_flow_statis_ctrl0 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL1*/
+#define SAWF_FLOW_STATIS_CTRL1
+#define SAWF_FLOW_STATIS_CTRL1_ADDRESS 0x224
+#define SAWF_FLOW_STATIS_CTRL1_NUM     1
+#define SAWF_FLOW_STATIS_CTRL1_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL1_TYPE    REG_TYPE_RO
+#define SAWF_FLOW_STATIS_CTRL1_DEFAULT 0x0
+	/*[field] CURRENT_TIME*/
+	#define SAWF_FLOW_STATIS_CTRL1_CURRENT_TIME
+	#define SAWF_FLOW_STATIS_CTRL1_CURRENT_TIME_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL1_CURRENT_TIME_LEN     32
+	#define SAWF_FLOW_STATIS_CTRL1_CURRENT_TIME_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl1 {
+	a_uint32_t  current_time:32;
+};
+
+union sawf_flow_statis_ctrl1_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl1 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL2*/
+#define SAWF_FLOW_STATIS_CTRL2
+#define SAWF_FLOW_STATIS_CTRL2_ADDRESS 0x228
+#define SAWF_FLOW_STATIS_CTRL2_NUM     1
+#define SAWF_FLOW_STATIS_CTRL2_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL2_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL2_DEFAULT 0x0
+	/*[field] SAWF0_DONE*/
+	#define SAWF_FLOW_STATIS_CTRL2_SAWF0_DONE
+	#define SAWF_FLOW_STATIS_CTRL2_SAWF0_DONE_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL2_SAWF0_DONE_LEN     1
+	#define SAWF_FLOW_STATIS_CTRL2_SAWF0_DONE_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl2 {
+	a_uint32_t  sawf0_done:1;
+	a_uint32_t  _reserved0:31;
+};
+
+union sawf_flow_statis_ctrl2_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl2 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL3*/
+#define SAWF_FLOW_STATIS_CTRL3
+#define SAWF_FLOW_STATIS_CTRL3_ADDRESS 0x22c
+#define SAWF_FLOW_STATIS_CTRL3_NUM     1
+#define SAWF_FLOW_STATIS_CTRL3_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL3_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL3_DEFAULT 0x0
+	/*[field] BURST_THRESHOLD*/
+	#define SAWF_FLOW_STATIS_CTRL3_BURST_THRESHOLD
+	#define SAWF_FLOW_STATIS_CTRL3_BURST_THRESHOLD_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL3_BURST_THRESHOLD_LEN     32
+	#define SAWF_FLOW_STATIS_CTRL3_BURST_THRESHOLD_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl3 {
+	a_uint32_t  burst_threshold:32;
+};
+
+union sawf_flow_statis_ctrl3_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl3 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL4*/
+#define SAWF_FLOW_STATIS_CTRL4
+#define SAWF_FLOW_STATIS_CTRL4_ADDRESS 0x230
+#define SAWF_FLOW_STATIS_CTRL4_NUM     1
+#define SAWF_FLOW_STATIS_CTRL4_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL4_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL4_DEFAULT 0x0
+	/*[field] BURST_SHORT_INTVL*/
+	#define SAWF_FLOW_STATIS_CTRL4_BURST_SHORT_INTVL
+	#define SAWF_FLOW_STATIS_CTRL4_BURST_SHORT_INTVL_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL4_BURST_SHORT_INTVL_LEN     32
+	#define SAWF_FLOW_STATIS_CTRL4_BURST_SHORT_INTVL_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl4 {
+	a_uint32_t  burst_short_intvl:32;
+};
+
+union sawf_flow_statis_ctrl4_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl4 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL5*/
+#define SAWF_FLOW_STATIS_CTRL5
+#define SAWF_FLOW_STATIS_CTRL5_ADDRESS 0x234
+#define SAWF_FLOW_STATIS_CTRL5_NUM     1
+#define SAWF_FLOW_STATIS_CTRL5_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL5_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL5_DEFAULT 0x0
+	/*[field] BURST_LONG_INTVL*/
+	#define SAWF_FLOW_STATIS_CTRL5_BURST_LONG_INTVL
+	#define SAWF_FLOW_STATIS_CTRL5_BURST_LONG_INTVL_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL5_BURST_LONG_INTVL_LEN     32
+	#define SAWF_FLOW_STATIS_CTRL5_BURST_LONG_INTVL_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl5 {
+	a_uint32_t  burst_long_intvl:32;
+};
+
+union sawf_flow_statis_ctrl5_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl5 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL6*/
+#define SAWF_FLOW_STATIS_CTRL6
+#define SAWF_FLOW_STATIS_CTRL6_ADDRESS 0x238
+#define SAWF_FLOW_STATIS_CTRL6_NUM     1
+#define SAWF_FLOW_STATIS_CTRL6_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL6_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL6_DEFAULT 0x0
+	/*[field] CYCLE_TRIGGER_EN*/
+	#define SAWF_FLOW_STATIS_CTRL6_CYCLE_TRIGGER_EN
+	#define SAWF_FLOW_STATIS_CTRL6_CYCLE_TRIGGER_EN_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL6_CYCLE_TRIGGER_EN_LEN     1
+	#define SAWF_FLOW_STATIS_CTRL6_CYCLE_TRIGGER_EN_DEFAULT 0x0
+	/*[field] CYCLE_TRIGGER_NUM*/
+	#define SAWF_FLOW_STATIS_CTRL6_CYCLE_TRIGGER_NUM
+	#define SAWF_FLOW_STATIS_CTRL6_CYCLE_TRIGGER_NUM_OFFSET  1
+	#define SAWF_FLOW_STATIS_CTRL6_CYCLE_TRIGGER_NUM_LEN     24
+	#define SAWF_FLOW_STATIS_CTRL6_CYCLE_TRIGGER_NUM_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl6 {
+	a_uint32_t  cycle_trigger_en:1;
+	a_uint32_t  cycle_trigger_num:24;
+	a_uint32_t  _reserved0:7;
+};
+
+union sawf_flow_statis_ctrl6_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl6 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL7*/
+#define SAWF_FLOW_STATIS_CTRL7
+#define SAWF_FLOW_STATIS_CTRL7_ADDRESS 0x23c
+#define SAWF_FLOW_STATIS_CTRL7_NUM     1
+#define SAWF_FLOW_STATIS_CTRL7_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL7_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL7_DEFAULT 0x1100
+	/*[field] CLEAR_MODE*/
+	#define SAWF_FLOW_STATIS_CTRL7_CLEAR_MODE
+	#define SAWF_FLOW_STATIS_CTRL7_CLEAR_MODE_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL7_CLEAR_MODE_LEN     1
+	#define SAWF_FLOW_STATIS_CTRL7_CLEAR_MODE_DEFAULT 0x0
+	/*[field] CNT_MODE*/
+	#define SAWF_FLOW_STATIS_CTRL7_CNT_MODE
+	#define SAWF_FLOW_STATIS_CTRL7_CNT_MODE_OFFSET  1
+	#define SAWF_FLOW_STATIS_CTRL7_CNT_MODE_LEN     2
+	#define SAWF_FLOW_STATIS_CTRL7_CNT_MODE_DEFAULT 0x0
+	/*[field] COMP_LEN*/
+	#define SAWF_FLOW_STATIS_CTRL7_COMP_LEN
+	#define SAWF_FLOW_STATIS_CTRL7_COMP_LEN_OFFSET  3
+	#define SAWF_FLOW_STATIS_CTRL7_COMP_LEN_LEN     5
+	#define SAWF_FLOW_STATIS_CTRL7_COMP_LEN_DEFAULT 0x0
+	/*[field] IAT_SHIFT_BIT*/
+	#define SAWF_FLOW_STATIS_CTRL7_IAT_SHIFT_BIT
+	#define SAWF_FLOW_STATIS_CTRL7_IAT_SHIFT_BIT_OFFSET  8
+	#define SAWF_FLOW_STATIS_CTRL7_IAT_SHIFT_BIT_LEN     5
+	#define SAWF_FLOW_STATIS_CTRL7_IAT_SHIFT_BIT_DEFAULT 0x11
+	/*[field] OVERFLOW_CTRL*/
+	#define SAWF_FLOW_STATIS_CTRL7_OVERFLOW_CTRL
+	#define SAWF_FLOW_STATIS_CTRL7_OVERFLOW_CTRL_OFFSET  13
+	#define SAWF_FLOW_STATIS_CTRL7_OVERFLOW_CTRL_LEN     1
+	#define SAWF_FLOW_STATIS_CTRL7_OVERFLOW_CTRL_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl7 {
+	a_uint32_t  clear_mode:1;
+	a_uint32_t  cnt_mode:2;
+	a_uint32_t  comp_len:5;
+	a_uint32_t  iat_shift_bit:5;
+	a_uint32_t  overflow_ctrl:1;
+	a_uint32_t  _reserved0:18;
+};
+
+union sawf_flow_statis_ctrl7_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl7 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_STATE*/
+#define SAWF_FLOW_STATIS_STATE
+#define SAWF_FLOW_STATIS_STATE_ADDRESS 0x240
+#define SAWF_FLOW_STATIS_STATE_NUM     1
+#define SAWF_FLOW_STATIS_STATE_INC     0x4
+#define SAWF_FLOW_STATIS_STATE_TYPE    REG_TYPE_RO
+#define SAWF_FLOW_STATIS_STATE_DEFAULT 0x0
+	/*[field] SAWF0_ACTIVE0*/
+	#define SAWF_FLOW_STATIS_STATE_SAWF0_ACTIVE0
+	#define SAWF_FLOW_STATIS_STATE_SAWF0_ACTIVE0_OFFSET  0
+	#define SAWF_FLOW_STATIS_STATE_SAWF0_ACTIVE0_LEN     1
+	#define SAWF_FLOW_STATIS_STATE_SAWF0_ACTIVE0_DEFAULT 0x0
+	/*[field] SAWF0_ACTIVE1*/
+	#define SAWF_FLOW_STATIS_STATE_SAWF0_ACTIVE1
+	#define SAWF_FLOW_STATIS_STATE_SAWF0_ACTIVE1_OFFSET  1
+	#define SAWF_FLOW_STATIS_STATE_SAWF0_ACTIVE1_LEN     1
+	#define SAWF_FLOW_STATIS_STATE_SAWF0_ACTIVE1_DEFAULT 0x0
+	/*[field] BYTES_ID*/
+	#define SAWF_FLOW_STATIS_STATE_BYTES_ID
+	#define SAWF_FLOW_STATIS_STATE_BYTES_ID_OFFSET  2
+	#define SAWF_FLOW_STATIS_STATE_BYTES_ID_LEN     4
+	#define SAWF_FLOW_STATIS_STATE_BYTES_ID_DEFAULT 0x0
+
+struct sawf_flow_statis_state {
+	a_uint32_t  sawf0_active0:1;
+	a_uint32_t  sawf0_active1:1;
+	a_uint32_t  bytes_id:4;
+	a_uint32_t  _reserved0:26;
+};
+
+union sawf_flow_statis_state_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_state bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL8*/
+#define SAWF_FLOW_STATIS_CTRL8
+#define SAWF_FLOW_STATIS_CTRL8_ADDRESS 0x284
+#define SAWF_FLOW_STATIS_CTRL8_NUM     1
+#define SAWF_FLOW_STATIS_CTRL8_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL8_TYPE    REG_TYPE_RO
+#define SAWF_FLOW_STATIS_CTRL8_DEFAULT 0x0
+	/*[field] SHORT_INTERVAL_TIME*/
+	#define SAWF_FLOW_STATIS_CTRL8_SHORT_INTERVAL_TIME
+	#define SAWF_FLOW_STATIS_CTRL8_SHORT_INTERVAL_TIME_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL8_SHORT_INTERVAL_TIME_LEN     32
+	#define SAWF_FLOW_STATIS_CTRL8_SHORT_INTERVAL_TIME_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl8 {
+	a_uint32_t  short_interval_time:32;
+};
+
+union sawf_flow_statis_ctrl8_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl8 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL9*/
+#define SAWF_FLOW_STATIS_CTRL9
+#define SAWF_FLOW_STATIS_CTRL9_ADDRESS 0x288
+#define SAWF_FLOW_STATIS_CTRL9_NUM     1
+#define SAWF_FLOW_STATIS_CTRL9_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL9_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL9_DEFAULT 0x0
+	/*[field] SAWF_DONE_MISS*/
+	#define SAWF_FLOW_STATIS_CTRL9_SAWF_DONE_MISS
+	#define SAWF_FLOW_STATIS_CTRL9_SAWF_DONE_MISS_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL9_SAWF_DONE_MISS_LEN     16
+	#define SAWF_FLOW_STATIS_CTRL9_SAWF_DONE_MISS_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl9 {
+	a_uint32_t  sawf_done_miss:16;
+	a_uint32_t  _reserved0:16;
+};
+
+union sawf_flow_statis_ctrl9_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl9 bf;
+};
+
+/*[register] SAWF_FLOW_STATIS_CTRL10*/
+#define SAWF_FLOW_STATIS_CTRL10
+#define SAWF_FLOW_STATIS_CTRL10_ADDRESS 0x28c
+#define SAWF_FLOW_STATIS_CTRL10_NUM     1
+#define SAWF_FLOW_STATIS_CTRL10_INC     0x4
+#define SAWF_FLOW_STATIS_CTRL10_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_STATIS_CTRL10_DEFAULT 0x0
+	/*[field] SAWF1_DONE*/
+	#define SAWF_FLOW_STATIS_CTRL10_SAWF1_DONE
+	#define SAWF_FLOW_STATIS_CTRL10_SAWF1_DONE_OFFSET  0
+	#define SAWF_FLOW_STATIS_CTRL10_SAWF1_DONE_LEN     1
+	#define SAWF_FLOW_STATIS_CTRL10_SAWF1_DONE_DEFAULT 0x0
+
+struct sawf_flow_statis_ctrl10 {
+	a_uint32_t  sawf1_done:1;
+	a_uint32_t  _reserved0:31;
+};
+
+union sawf_flow_statis_ctrl10_u {
+	a_uint32_t val;
+	struct sawf_flow_statis_ctrl10 bf;
+};
+
+/*[register] SAWF_FLOW_BLOCK_MAP*/
+#define SAWF_FLOW_BLOCK_MAP
+#define SAWF_FLOW_BLOCK_MAP_ADDRESS 0x300
+#define SAWF_FLOW_BLOCK_MAP_NUM     16
+#define SAWF_FLOW_BLOCK_MAP_INC     0x4
+#define SAWF_FLOW_BLOCK_MAP_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_BLOCK_MAP_DEFAULT 0x0
+	/*[field] VALID*/
+	#define SAWF_FLOW_BLOCK_MAP_VALID
+	#define SAWF_FLOW_BLOCK_MAP_VALID_OFFSET  0
+	#define SAWF_FLOW_BLOCK_MAP_VALID_LEN     1
+	#define SAWF_FLOW_BLOCK_MAP_VALID_DEFAULT 0x0
+
+struct sawf_flow_block_map {
+	a_uint32_t  valid:1;
+	a_uint32_t  _reserved0:31;
+};
+
+union sawf_flow_block_map_u {
+	a_uint32_t val;
+	struct sawf_flow_block_map bf;
+};
+
+/*[table] SAWF_FLOW_CNT_TBL*/
+#define SAWF_FLOW_CNT_TBL
+#define SAWF_FLOW_CNT_TBL_ADDRESS 0x48000
+#define SAWF_FLOW_CNT_TBL_NUM     512
+#define SAWF_FLOW_CNT_TBL_INC     0x40
+#define SAWF_FLOW_CNT_TBL_TYPE    REG_TYPE_RW
+#define SAWF_FLOW_CNT_TBL_DEFAULT 0x0
+	/*[field] PACKETS*/
+	#define SAWF_FLOW_CNT_TBL_PACKETS
+	#define SAWF_FLOW_CNT_TBL_PACKETS_OFFSET  0
+	#define SAWF_FLOW_CNT_TBL_PACKETS_LEN     25
+	#define SAWF_FLOW_CNT_TBL_PACKETS_DEFAULT 0x0
+	/*[field] BYTES*/
+	#define SAWF_FLOW_CNT_TBL_BYTES
+	#define SAWF_FLOW_CNT_TBL_BYTES_OFFSET  25
+	#define SAWF_FLOW_CNT_TBL_BYTES_LEN     33
+	#define SAWF_FLOW_CNT_TBL_BYTES_DEFAULT 0x0
+	/*[field] BYTES_MIN*/
+	#define SAWF_FLOW_CNT_TBL_BYTES_MIN
+	#define SAWF_FLOW_CNT_TBL_BYTES_MIN_OFFSET  58
+	#define SAWF_FLOW_CNT_TBL_BYTES_MIN_LEN     14
+	#define SAWF_FLOW_CNT_TBL_BYTES_MIN_DEFAULT 0x0
+	/*[field] BYTES_MAX*/
+	#define SAWF_FLOW_CNT_TBL_BYTES_MAX
+	#define SAWF_FLOW_CNT_TBL_BYTES_MAX_OFFSET  72
+	#define SAWF_FLOW_CNT_TBL_BYTES_MAX_LEN     14
+	#define SAWF_FLOW_CNT_TBL_BYTES_MAX_DEFAULT 0x0
+	/*[field] PACKET_IAT_SUM*/
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_SUM
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_SUM_OFFSET  86
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_SUM_LEN     14
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_SUM_DEFAULT 0x0
+	/*[field] PACKET_IAT_MIN*/
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_MIN
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_MIN_OFFSET  100
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_MIN_LEN     14
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_MIN_DEFAULT 0x0
+	/*[field] PACKET_IAT_MAX*/
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_MAX
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_MAX_OFFSET  114
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_MAX_LEN     14
+	#define SAWF_FLOW_CNT_TBL_PACKET_IAT_MAX_DEFAULT 0x0
+	/*[field] BURST_OC_BYTES*/
+	#define SAWF_FLOW_CNT_TBL_BURST_OC_BYTES
+	#define SAWF_FLOW_CNT_TBL_BURST_OC_BYTES_OFFSET  128
+	#define SAWF_FLOW_CNT_TBL_BURST_OC_BYTES_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_OC_BYTES_DEFAULT 0x0
+	/*[field] BURST_IS_BYTES*/
+	#define SAWF_FLOW_CNT_TBL_BURST_IS_BYTES
+	#define SAWF_FLOW_CNT_TBL_BURST_IS_BYTES_OFFSET  152
+	#define SAWF_FLOW_CNT_TBL_BURST_IS_BYTES_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_IS_BYTES_DEFAULT 0x0
+	/*[field] BURST_BYTES0*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES0
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES0_OFFSET  176
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES0_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES0_DEFAULT 0x0
+	/*[field] BURST_BYTES1*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES1
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES1_OFFSET  200
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES1_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES1_DEFAULT 0x0
+	/*[field] BURST_BYTES2*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES2
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES2_OFFSET  224
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES2_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES2_DEFAULT 0x0
+	/*[field] BURST_BYTES3*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES3
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES3_OFFSET  248
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES3_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES3_DEFAULT 0x0
+	/*[field] BURST_BYTES4*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES4
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES4_OFFSET  272
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES4_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES4_DEFAULT 0x0
+	/*[field] BURST_BYTES5*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES5
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES5_OFFSET  296
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES5_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES5_DEFAULT 0x0
+	/*[field] BURST_BYTES6*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES6
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES6_OFFSET  320
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES6_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES6_DEFAULT 0x0
+	/*[field] BURST_BYTES7*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES7
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES7_OFFSET  344
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES7_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES7_DEFAULT 0x0
+	/*[field] BURST_BYTES8*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES8
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES8_OFFSET  368
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES8_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES8_DEFAULT 0x0
+	/*[field] BURST_BYTES9*/
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES9
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES9_OFFSET  392
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES9_LEN     24
+	#define SAWF_FLOW_CNT_TBL_BURST_BYTES9_DEFAULT 0x0
+	/*[field] FLOW_TIMESTAMP*/
+	#define SAWF_FLOW_CNT_TBL_FLOW_TIMESTAMP
+	#define SAWF_FLOW_CNT_TBL_FLOW_TIMESTAMP_OFFSET  416
+	#define SAWF_FLOW_CNT_TBL_FLOW_TIMESTAMP_LEN     32
+	#define SAWF_FLOW_CNT_TBL_FLOW_TIMESTAMP_DEFAULT 0x0
+	/*[field] BURST_TIMESTAMP*/
+	#define SAWF_FLOW_CNT_TBL_BURST_TIMESTAMP
+	#define SAWF_FLOW_CNT_TBL_BURST_TIMESTAMP_OFFSET  448
+	#define SAWF_FLOW_CNT_TBL_BURST_TIMESTAMP_LEN     32
+	#define SAWF_FLOW_CNT_TBL_BURST_TIMESTAMP_DEFAULT 0x0
+	/*[field] BURST_FLAGS*/
+	#define SAWF_FLOW_CNT_TBL_BURST_FLAGS
+	#define SAWF_FLOW_CNT_TBL_BURST_FLAGS_OFFSET  480
+	#define SAWF_FLOW_CNT_TBL_BURST_FLAGS_LEN     3
+	#define SAWF_FLOW_CNT_TBL_BURST_FLAGS_DEFAULT 0x0
+
+struct sawf_flow_cnt_tbl {
+	a_uint32_t  packets:25;
+	a_uint32_t  bytes_0:7;
+	a_uint32_t  bytes_1:26;
+	a_uint32_t  bytes_min_0:6;
+	a_uint32_t  bytes_min_1:8;
+	a_uint32_t  bytes_max:14;
+	a_uint32_t  packet_iat_sum_0:10;
+	a_uint32_t  packet_iat_sum_1:4;
+	a_uint32_t  packet_iat_min:14;
+	a_uint32_t  packet_iat_max:14;
+	a_uint32_t  burst_oc_bytes:24;
+	a_uint32_t  burst_is_bytes_0:8;
+	a_uint32_t  burst_is_bytes_1:16;
+	a_uint32_t  burst_bytes0_0:16;
+	a_uint32_t  burst_bytes0_1:8;
+	a_uint32_t  burst_bytes1:24;
+	a_uint32_t  burst_bytes2:24;
+	a_uint32_t  burst_bytes3_0:8;
+	a_uint32_t  burst_bytes3_1:16;
+	a_uint32_t  burst_bytes4_0:16;
+	a_uint32_t  burst_bytes4_1:8;
+	a_uint32_t  burst_bytes5:24;
+	a_uint32_t  burst_bytes6:24;
+	a_uint32_t  burst_bytes7_0:8;
+	a_uint32_t  burst_bytes7_1:16;
+	a_uint32_t  burst_bytes8_0:16;
+	a_uint32_t  burst_bytes8_1:8;
+	a_uint32_t  burst_bytes9:24;
+	a_uint32_t  flow_timestamp:32;
+	a_uint32_t  burst_timestamp:32;
+	a_uint32_t  burst_flags:3;
+	a_uint32_t  _reserved0:29;
+};
+
+union sawf_flow_cnt_tbl_u {
+	a_uint32_t val[16];
+	struct sawf_flow_cnt_tbl bf;
+};
+
+#endif

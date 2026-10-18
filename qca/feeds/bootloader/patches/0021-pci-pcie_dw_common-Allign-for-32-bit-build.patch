@@ -1,0 +1,40 @@
+From 54f65003748b2359ab08ab8a3db6ccb1a8ff2dba Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Thu, 22 May 2025 13:06:06 +0530
+Subject: [PATCH] pci: pcie_dw_common: Allign for 32-bit build
+
+Fix format specifiers in dev_dbg to support
+both 32-bit and 64-bit architectures
+
+Change-Id: I0e6644cc0334bc99c2926baad39e29d4447075ad
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/pci/pcie_dw_common.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/pci/pcie_dw_common.c b/drivers/pci/pcie_dw_common.c
+index 78961271a8e..42facdb1df2 100644
+--- a/drivers/pci/pcie_dw_common.c
++++ b/drivers/pci/pcie_dw_common.c
+@@ -147,7 +147,7 @@ static uintptr_t set_cfg_address(struct pcie_dw *pcie,
+ 	d = PCI_MASK_BUS(d);
+ 	d = PCI_ADD_BUS(bus, d);
+ 	ret = pcie_dw_prog_outbound_atu_unroll(pcie, PCIE_ATU_REGION_INDEX1,
+-					       atu_type, (u64)pcie->cfg_base,
++					       atu_type, (uintptr_t)pcie->cfg_base,
+ 						d << 8, pcie->cfg_size);
+ 	if (ret)
+ 		return (uintptr_t)ret;
+@@ -379,7 +379,8 @@ void pcie_dw_setup_host(struct pcie_dw *pci)
+ 	}
+ 
+ 	dev_dbg(pci->dev, "Config space: [0x%llx - 0x%llx, size 0x%llx]\n",
+-		(u64)pci->cfg_base, (u64)pci->cfg_base + pci->cfg_size,
++		(uint64_t)(uintptr_t)pci->cfg_base,
++		(uint64_t)(uintptr_t)pci->cfg_base + pci->cfg_size,
+ 		(u64)pci->cfg_size);
+ 
+ 	dev_dbg(pci->dev, "IO space: [0x%llx - 0x%llx, size 0x%llx]\n",
+-- 
+2.34.1
+

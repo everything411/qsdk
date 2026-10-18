@@ -1,0 +1,490 @@
+From 799c5c11ccbcc97741126bc72dd3a4daf05d19d4 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Wed, 22 Jan 2025 11:20:32 +0530
+Subject: [PATCH] QSDK:PROTOCOL: sigma_dut: Add split phy support for
+ Wifi 7 testcases
+
+While validating Wifi 7 testcases, the link for which config is to be
+applied or CLI command to be run is determined using the Interface
+parameter which contains the band information. However, while
+validating the the same is split phy devices need additional WLAN_TAG
+parameter to identify the link as Interface parameter can not alone
+determine the link to be used as single band(5G) has two phy(5GL and
+5GH).
+
+Hence, added support for WLAN_TAGs to determine the link id in split
+phy devices for Wifi 7 testcases.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c        | 186 ++++++++++++++++++++++++++++++++++++----------------
+ sigma_dut.c |   2 +-
+ sigma_dut.h |  11 +++-
+ 3 files changed, 138 insertions(+), 61 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -117,6 +117,7 @@ extern char *sigma_hapd_ctrl;
+ extern char *ap_inet_addr;
+ extern char *ap_inet_mask;
+ extern char *sigma_radio_ifname[];
++extern int num_radio;
+ 
+ static int ath_ap_start_hostapd(struct sigma_dut *dut);
+ static void ath_ap_set_params(struct sigma_dut *dut);
+@@ -1296,8 +1297,12 @@ static enum sigma_cmd_result cmd_ap_set_
+ 			return STATUS_SENT;
+ 	        }
+ 
+-	        if (wlan_tag > 1)
++		if (wlan_tag > 1) {
+ 	                dut->ap_is_dual = 1;
++			if (dut->mld[wlan_tag - 2].ap_mode == AP_11be &&
++			    num_radio == MAX_RADIO)
++				dut->ap_is_mld = 1;
++		}
+ 
+ 	        if (dut->num_links < wlan_tag)
+ 	                dut->num_links = wlan_tag;
+@@ -1318,10 +1323,6 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
+-	val = get_param(cmd, "DTIM");
+-	if (val)
+-		dut->mld[link_id].dtim = atoi(val);
+-
+ 	val = get_param(cmd, "ChnlFreq");
+ 	if (val) {
+ 		/* ChnlFreq CAPI is specific to 6g */
+@@ -1350,6 +1351,10 @@ static enum sigma_cmd_result cmd_ap_set_
+ 
+ 	link_id = (wlan_tag) ? wlan_tag - 1 : dut->num_links - 1;
+ 
++	val = get_param(cmd, "DTIM");
++	if (val)
++		dut->mld[link_id].dtim = atoi(val);
++
+ 	if (dut->ap_is_mld)
+ 		dut->mld[link_id].ap_mode = dut->mld[dut->num_links - 2].ap_mode;
+ 
+@@ -10227,9 +10232,12 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 
+ 		if (check_band(dut, BAND_2G, link_id))
+ 			dut->band_to_link[0] = link_id;
+-		else if (check_band(dut, BAND_5G, link_id))
+-			dut->band_to_link[1] = link_id;
+-		else
++		else if (check_band(dut, BAND_5G, link_id)) {
++			if (dut->band_to_link[1] == -1)
++				dut->band_to_link[1] = link_id;
++			else
++				dut->band_to_link[3] = link_id;
++		} else
+ 			dut->band_to_link[2] = link_id;
+ 
+ 		ifname = get_hostapd_ifname(dut);
+@@ -12016,6 +12024,16 @@ skip_vht_parameters_set:
+ 	/* allow some time for hostapd to start before returning success */
+ 	usleep(500000);
+ 
++	/* To Do: For split phy cases(5GH + 5GL) cases HT scan doesn't
++	 * happen parallely, One of the radios(2nd) scan is handled through
++	 * a timer of 1 second, So that scan happens after 1st radio scan
++	 * completes. Hence adding a sleep of 1 second here. Once parallel
++	 * scan for this scenario is enabled in UD, this sleep can be
++	 * removed
++	 */
++	if (dut->ap_is_mld && (dut->band_to_link[3] != -1))
++		sleep(1);
++
+ 	if (dut->ap_txBF && strncmp(dut->device_driver, "ath12k", 6) == 0) {
+ 		/* Turn off disabling of TxBF feature*/
+ 		run_system_wrapper(dut, "ath11k-fwtest -i %s -m 0x47 -v 0 253 65535", ifname);
+@@ -12871,7 +12889,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_is_mld = 0;
+ 	dut->num_links = 1;
+ 	dut->security_links = 1;
+-	for(i = 0; i < 3; i++)
++	for (i = 0; i < MAX_RADIO; i++)
+ 		dut->band_to_link[i] = -1;
+ 	dut->ap_channel_1 = 0;
+ 
+@@ -14512,6 +14530,32 @@ static int return_subelem_id(const char
+ 		return -1;
+ }
+ 
++static int mac80211_process_wlan_tag(struct sigma_dut *dut, int wlan_tag,
++				     const char *ifname, int *link_id)
++{
++	if (wlan_tag < 1 || wlan_tag > 3) {
++		/*
++		 * The only valid WLAN Tags as of now as per the latest
++		 * WFA scripts are 1, 2, and 3.
++		 */
++		sigma_dut_print(dut, DUT_MSG_ERROR,
++			  "errorCode,Unsupported WLAN_TAG");
++		return -1;
++	}
++
++	/* For split phy and when mode is 11be, wlan_tags are used
++	 * to get the link_id of the interface defined through the particular
++	 * wlan_tag, other wise it is used to get the interface name of the
++	 * particular wlan_tag defined interface
++	 */
++	if (dut->mld[wlan_tag - 1].ap_mode == AP_11be && num_radio == MAX_RADIO)
++		*link_id = wlan_tag - 1;
++	else if (ifname != NULL)
++		get_if_name(dut, (char *) ifname, 50, wlan_tag);
++
++	return 0;
++}
++
+ static void mac80211_bcn_rpt_prepare_buf(char *buf, size_t buf_size,
+ 					 const char *param, char *param_val,
+ 					 uint8_t len)
+@@ -14549,6 +14593,14 @@ static int mac80211_ap_send_frame_bcn_rp
+ 			link_id = dut->band_to_link[2];
+ 	}
+ 
++	str_val = get_param(cmd, "WLAN_TAG");
++	if (str_val) {
++		int wlan_tag = atoi(str_val);
++
++		if (mac80211_process_wlan_tag(dut, wlan_tag, ifname, &link_id) == -1)
++			return -1;
++	}
++
+ 	if (dut->program == PROGRAM_EHT) {
+ 		snprintf(link_param, sizeof(link_param), "-l %d", link_id);
+ 		link_set = true;
+@@ -14697,6 +14749,14 @@ static int mac80211_ap_send_frame_btm_re
+ 			link_id = dut->band_to_link[2];
+ 	}
+ 
++	val = get_param(cmd, "WLAN_TAG");
++	if (val) {
++		int wlan_tag = atoi(val);
++
++		if (mac80211_process_wlan_tag(dut, wlan_tag, ifname, &link_id) == -1)
++			return -1;
++	}
++
+ 	val = get_param(cmd, "Dest_MAC");
+ 	if (!val || parse_mac_address(dut, val, mac_addr) < 0) {
+ 		sigma_dut_print(dut, DUT_MSG_ERROR,
+@@ -14908,20 +14968,24 @@ static int mac80211_ap_send_frame_mbo(st
+ 				      struct sigma_cmd *cmd)
+ {
+ 	const char *val;
+-	const char *ifname;
++	char ifname[50];
+ 
+-	ifname = get_main_ifname(dut);
++	if (snprintf(ifname, sizeof(ifname), "%s", get_main_ifname(dut)) < 0) {
++		send_resp(dut, conn, SIGMA_ERROR,
++			  "errorCode,Invalid interface name");
++		return STATUS_SENT_ERROR;
++	}
+ 
+ 	val = get_param(cmd, "FrameName");
+ 	if (!val)
+ 		return -1;
+ 
+ 	if (strcasecmp(val, "BTMReq") == 0)
+-		mac80211_ap_send_frame_btm_req(dut, conn, cmd, ifname);
++		mac80211_ap_send_frame_btm_req(dut, conn, cmd, (const char *)ifname);
+ 	else if (strcasecmp(val, "BcnRptReq") == 0)
+-		mac80211_ap_send_frame_bcn_rpt_req(dut, cmd, ifname);
++		mac80211_ap_send_frame_bcn_rpt_req(dut, cmd, (const char *)ifname);
+ 	else if (strcasecmp(val, "disassoc") == 0)
+-		mac80211_ap_send_frame_disassoc(dut, cmd, ifname);
++		mac80211_ap_send_frame_disassoc(dut, cmd, (const char *)ifname);
+ 	else
+ 		return -1;
+ 
+@@ -15153,7 +15217,9 @@ static int get_interface_handler(struct
+ 	struct nlattr *tb_msg[NL80211_ATTR_MAX + 1];
+ 	struct nlattr *attrs, *link[NL80211_ATTR_MAX + 1];
+ 	uint32_t freq;
++	uint8_t link_id;
+ 	int ret = 0;
++	enum if_band band;
+ 
+ 	nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
+ 		  genlmsg_attrlen(gnlh, 0), NULL);
+@@ -15163,7 +15229,8 @@ static int get_interface_handler(struct
+ 		     info->ifname) == 0))))
+ 		return 0;
+ 
+-	if (!(tb_msg[NL80211_ATTR_MLO_LINKS] && info->band != BAND_UNKNOWN)) {
++	if (info->attr == NL80211_ATTR_WIPHY_FREQ &&
++	    !(tb_msg[NL80211_ATTR_MLO_LINKS] && info->value != BAND_UNKNOWN)) {
+ 		memcpy(info->addr, nla_data(tb_msg[NL80211_ATTR_MAC]), ETH_ALEN);
+ 		return 0;
+ 	}
+@@ -15172,7 +15239,13 @@ static int get_interface_handler(struct
+ 		nla_parse_nested(link, NL80211_ATTR_MAX, attrs, NULL);
+ 		if (link[NL80211_ATTR_MLO_LINK_ID]) {
+ 			freq = nla_get_u32(link[NL80211_ATTR_WIPHY_FREQ]);
+-			if ((get_band(freq) == info->band) &&
++			band = get_band(freq);
++			link_id = nla_get_u8(link[NL80211_ATTR_MLO_LINK_ID]);
++
++			if (((info->attr == NL80211_ATTR_WIPHY_FREQ &&
++			      band == info->value) ||
++			     (info->attr == NL80211_ATTR_MLO_LINK_ID &&
++			      link_id == info->value)) &&
+ 			    link[NL80211_ATTR_MAC]) {
+ 				memcpy(info->addr,
+ 				       nla_data(link[NL80211_ATTR_MAC]),
+@@ -15187,15 +15260,17 @@ static int get_interface_handler(struct
+ 
+ static int fetch_ap_mac_address_nl(struct sigma_dut *dut,
+ 				   struct sigma_conn *conn, const char *ifname,
+-				   const enum if_band band, unsigned char *addr,
+-				   char *resp, const size_t resp_len)
++				   enum nl80211_attrs attr, int value,
++				   unsigned char *addr, char *resp,
++				   const size_t resp_len)
+ {
+ 	int flags = NLM_F_DUMP;
+ 	struct nl_msg *msg;
+ 	struct get_mac_addr_info arg;
+ 
+ 	arg.ifname = (char *)ifname;
+-	arg.band = band;
++	arg.attr = attr;
++	arg.value = value;
+ 	arg.addr = addr;
+ 
+ 	if (!(msg = nl80211_drv_msg(dut, dut->nl_ctx, if_nametoindex(ifname), flags,
+@@ -15259,21 +15334,20 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	const char *val;
+ 	int mld_id = 0;
+ 	int non_tx_bss_idx = 0;
++	int link_id = -1;
+ 
+ 	val = get_param(cmd, "WLAN_TAG");
+ 	if (val) {
+ 		wlan_tag = atoi(val);
+-		if (wlan_tag < 1 || wlan_tag > 3) {
+-			/*
+-			 * The only valid WLAN Tags as of now as per the latest
+-			 * WFA scripts are 1, 2, and 3.
+-			 */
+-			send_resp(dut, conn, SIGMA_ERROR,
+-				  "errorCode,Unsupported WLAN_TAG");
+-			return 0;
+-		}
++		if (mac80211_process_wlan_tag(dut, wlan_tag, ifname, &link_id) == -1)
++			return -1;
+ 	}
+ 
++	if ((wlan_tag > 1) && (link_id >= 0))
++		get_if_name(dut, ifname, sizeof(ifname), 1);
++	else
++		get_if_name(dut, ifname, sizeof(ifname), wlan_tag);
++
+ 	val = get_param(cmd, "Interface");
+ #ifdef NL80211_SUPPORT
+ 	/*
+@@ -15285,7 +15359,7 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	 */
+ 	enum if_band band = BAND_UNKNOWN;
+ 
+-	if (val) {
++	if (val && link_id == -1) {
+ 		if (strcasecmp(val, "6G") == 0)
+ 			band = BAND_6G;
+ 		else if (strcasecmp(val, "5G") == 0)
+@@ -15294,9 +15368,7 @@ static enum sigma_cmd_result cmd_ap_get_
+ 			band = BAND_2G;
+ 	}
+ #else
+-	int link_id = -1;
+-
+-	if (val) {
++	if (val && link_id == -1) {
+ 		if (strcasecmp(val, "6G") == 0)
+ 			link_id = dut->band_to_link[2];
+ 		else if (strcasecmp(val, "5G") == 0)
+@@ -15308,8 +15380,6 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	}
+ #endif /* NL80211_SUPPORT */
+ 
+-	get_if_name(dut, ifname, sizeof(ifname), wlan_tag);
+-
+ 	val = get_param(cmd, "MLD_ID");
+ 	if (val) {
+ 		mld_id = atoi(val);
+@@ -15409,8 +15479,15 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	}
+ 
+ #ifdef NL80211_SUPPORT
+-	if (fetch_ap_mac_address_nl(dut, conn, ifname, band, addr, resp, sizeof(resp)) < 0)
+-		return -1;
++	if (link_id == -1) {
++		if (fetch_ap_mac_address_nl(dut, conn, ifname, NL80211_ATTR_WIPHY_FREQ,
++					    band, addr, resp, sizeof(resp)) < 0)
++			return -1;
++	} else {
++		if (fetch_ap_mac_address_nl(dut, conn, ifname, NL80211_ATTR_MLO_LINK_ID,
++					    link_id, addr, resp, sizeof(resp)) < 0)
++			return -1;
++	}
+ 
+ 	if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 &&
+ 	    addr[3] == 0 && addr[4] == 0 && addr[5] == 0) {
+@@ -15521,45 +15598,20 @@ enum sigma_cmd_result cmd_dev_ap_get_par
+ 		if (get_driver_type(dut) == DRIVER_MAC80211 &&
+ 		    (dut->program == PROGRAM_EHT || dut->program == PROGRAM_WPA3) &&
+ 		    dut->ap_is_dual) {
+-			if ((dut->ap_interface_2g) && (dut->ap_interface_5g)) {
+-				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_2G, addr,
+-							    resp, sizeof(resp)) < 0)
+-					return -1;
+-				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_5G, addr_2,
+-							    resp, sizeof(resp)) < 0)
+-					return -1;
+-			} else if ((dut->ap_interface_2g) && (dut->ap_interface_6g)) {
+-				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_2G, addr,
+-							    resp, sizeof(resp)) < 0)
+-					return -1;
+-				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_6G, addr_2,
+-							    resp, sizeof(resp)) < 0)
+-					return -1;
+-			} else if ((dut->ap_interface_5g) && (dut->ap_interface_6g)) {
+-				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_5G, addr,
+-							    resp, sizeof(resp)) < 0)
+-					return -1;
+-				if (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_6G, addr_2,
+-							    resp, sizeof(resp)) < 0)
+-					return -1;
+-			}
++			if (fetch_ap_mac_address_nl(dut, conn, ifname, NL80211_ATTR_MLO_LINK_ID,
++						    0, addr, resp, sizeof(resp)) < 0)
++				return -1;
++			if (fetch_ap_mac_address_nl(dut, conn, ifname, NL80211_ATTR_MLO_LINK_ID,
++						    1, addr_2, resp, sizeof(resp)) < 0)
++				return -1;
+ 
+ 			snprintf(resp, sizeof(resp),
+ 				 "FT_BSS_LIST,%02x:%02x:%02x:%02x:%02x:%02x %02x:%02x:%02x:%02x:%02x:%02x",
+ 				 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5],
+ 				 addr_2[0], addr_2[1], addr_2[2], addr_2[3], addr_2[4], addr_2[5]);
+ 		} else {
+-			if ((dut->ap_interface_2g) &&
+-			    (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_2G, addr,
+-						     resp, sizeof(resp)) < 0))
+-				return -1;
+-			else if ((dut->ap_interface_5g) &&
+-			         (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_5G, addr,
+-							  resp, sizeof(resp)) < 0))
+-				return -1;
+-			else if ((dut->ap_interface_6g) &&
+-				 (fetch_ap_mac_address_nl(dut, conn, ifname, BAND_6G, addr,
+-							  resp, sizeof(resp)) < 0))
++			if (fetch_ap_mac_address_nl(dut, conn, ifname, NL80211_ATTR_MLO_LINK_ID,
++						    0, addr, resp, sizeof(resp)) < 0)
+ 				return -1;
+ 
+ 			snprintf(resp, sizeof(resp), "FT_BSS_LIST,%02x:%02x:%02x:%02x:%02x:%02x",
+@@ -18716,6 +18768,10 @@ static enum sigma_cmd_result mac80211_he
+ 			mode = "5";
+ 		else if (link_id == dut->band_to_link[2])
+ 			mode = "6";
++		else if (link_id == dut->band_to_link[3])
++			mode = "5";
++		else
++			return STATUS_SENT_ERROR;
+ 	} else {
+ 		mode = dut->ap_band_6g ? "6" : dut->use_5g ? "5" : "2.4";
+ 	}
+@@ -19284,6 +19340,21 @@ static enum sigma_cmd_result mac80211_ap
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "WLAN_TAG");
++	if (val) {
++		int wlan_tag = atoi(val);
++		if (snprintf(ifname2, sizeof(ifname2), "%s", ifname) < 0) {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,Invalid interface name");
++			return STATUS_SENT_ERROR;
++		}
++
++		if (mac80211_process_wlan_tag(dut, wlan_tag, ifname2, &link_id) == -1)
++			return -1;
++
++		ifname = ifname2;
++	}
++
+ 	val = get_param(cmd, "RTS_FORCE");
+ 	if (val)
+ 		mac80211_config_rts_force(dut, ifname, val, link_id);
+--- a/sigma_dut.c
++++ b/sigma_dut.c
+@@ -38,6 +38,7 @@ char *sigma_cert_path = "/etc/wpa_suppli
+  * otherwise default WMM-PS 0 */
+ int sigma_wmm_ac = 0;
+ 
++int num_radio;
+ 
+ #ifdef ANDROID
+ #include <android/log.h>
+@@ -1089,6 +1090,7 @@ int main(int argc, char *argv[])
+ 
+ 	memset(&sigma_dut, 0, sizeof(sigma_dut));
+ 	set_defaults(&sigma_dut);
++	num_radio = 0;
+ 
+ 	for (;;) {
+ 		c = getopt(argc, argv,
+@@ -1182,7 +1184,6 @@ int main(int argc, char *argv[])
+ 			}
+ 			break;
+ 		case 'R': {
+-			static int num_radio = 0;
+ 			static char **radio_ptr = sigma_radio_ifname;
+ 
+ 			num_radio++;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -103,7 +103,7 @@
+ struct sigma_dut;
+ 
+ #define MAX_PARAMS 100
+-#define MAX_RADIO 3
++#define MAX_RADIO 4
+ #ifndef MAX_NUM_MLO_LINKS
+ #define MAX_NUM_MLO_LINKS 15
+ #endif
+@@ -1366,8 +1366,8 @@ struct sigma_dut {
+ 
+ 	int ap_is_mld;
+ 	unsigned int num_links;
+-	/* Index 0: 2.4G, 1: 5G, 2: 6G */
+-	int band_to_link[3];
++	/* Index 0: 2.4G, 1: 5G, 2: 6G, 3: 5G(split phy) */
++	int band_to_link[MAX_RADIO];
+ 	int i2rlmr_iftmr;
+ 	int i2rlmrpolicy;
+ 	int rnm_mfp;
+@@ -1412,12 +1412,14 @@ struct sigma_dut {
+  * struct get_mac_addr_info - to pass as argument to the callback function
+  *                            of GET_INTERFACE nl message
+  * ifname: interface name for which mac address needs to be fetched.
+- * band:   band of the AP which is needed to identify the link for MLD.
++ * attr:   NL attribute based on which the address needs to be fetched.
++ * value:  Value to used for comparision for the specified attr
+  * addr:   Out param - The mac address which is requested
+  */
+ struct get_mac_addr_info {
+ 	char *ifname;
+-	enum if_band band;
++	enum nl80211_attrs attr;
++	int value;
+ 	unsigned char *addr;
+ };
+ #endif /* NL80211_SUPPORT */

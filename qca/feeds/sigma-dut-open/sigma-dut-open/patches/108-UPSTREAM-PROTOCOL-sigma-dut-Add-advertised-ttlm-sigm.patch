@@ -1,0 +1,127 @@
+From 3e9b0467140b3fab4081f0715eee318f4e8bdd8d Mon Sep 17 00:00:00 2001
+From: Shwetha G K <kshwetha@qti.qualcomm.com>
+Date: Tue, 22 Jul 2025 14:43:26 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma-dut: Add advertised ttlm sigma dut
+ support
+
+Adding support for WiFi 7 APUT advertised Tid-to-link mapping
+feature in sigma dut. Advertised TTLM feature can be used to
+disable the links.
+
+Signed-off-by: Shwetha G K <kshwetha@qti.qualcomm.com>
+---
+ ap.c | 38 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+--- a/ap.c
++++ b/ap.c
+@@ -3094,6 +3094,22 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "T2LM_Negotiation_Support");
++	if (val) {
++		int ttlm = 0;
++
++		ttlm = atoi(val);
++		if (ttlm == 1)
++			dut->ap_ttlm = VALUE_ENABLED;
++		else if (ttlm == 0)
++			dut->ap_ttlm = VALUE_DISABLED;
++		else {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode, Unsupported TTLM value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
+ 	return SUCCESS_SEND_STATUS;
+ }
+ 
+@@ -12125,6 +12141,9 @@ skip_vht_parameters_set:
+ 		else if (dut->ap_btwt == VALUE_ENABLED)
+ 			fprintf(f, "twt_responder_caps=2\n");
+ 
++		if (dut->ap_ttlm == VALUE_ENABLED)
++			fprintf(f, "ttlm_enable=1\n");
++
+ 		fclose(f);
+ 	}
+ 
+@@ -13663,6 +13682,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 		dut->ap_beacon_prot = 1;
+ 		dut->nontrigger_txbf = VALUE_NOT_SET;
+ 		dut->switch_he_eht = 0;
++		dut->ap_ttlm = VALUE_NOT_SET;
+ 	}
+ 
+ 	if (dut->ap_mode == AP_11be)
+@@ -20111,6 +20131,11 @@ static enum sigma_cmd_result mac80211_ap
+ #ifdef NL80211_SUPPORT
+ 	char phy_name[PHY_NAME_SIZE];
+ #endif /* NL80211_SUPPORT */
++	int switchtime = 0;
++	int exp_dur = 0;
++	int link_map_value = 0;
++	int i;
++
+ 	ifname = get_main_ifname(dut);
+ 
+ 	val = get_param(cmd, "Interface");
+@@ -20735,6 +20760,27 @@ static enum sigma_cmd_result mac80211_ap
+ 			return res;
+ 	}
+ 
++	val = get_param(cmd, "AffiliatedAP_ExpectedDuration");
++	if (val) {
++		char affl_ap_exp_dur[50];
++
++		if (strlen(val) >= sizeof(affl_ap_exp_dur))
++			return INVALID_SEND_STATUS;
++		strlcpy(affl_ap_exp_dur, val, sizeof(affl_ap_exp_dur));
++		//exp_dur = (atoi(affl_ap_exp_dur) * 1000);
++		exp_dur = (int) ((atof(affl_ap_exp_dur) * 1000000)/1024);
++	}
++
++	val = get_param(cmd, "AffiliatedAP_MappingSwitchTime");
++	if (val) {
++		char affl_ap_map_time[50];
++
++		if (strlen(val) >= sizeof(affl_ap_map_time))
++			return INVALID_SEND_STATUS;
++		strlcpy(affl_ap_map_time, val, sizeof(affl_ap_map_time));
++		switchtime = (int)((atof(affl_ap_map_time) * 1000000)/1024);
++	}
++
+ 	val = get_param(cmd, "AffiliatedAP_Action");
+ 	if (val) {
+ 		if (dut->program == PROGRAM_EHT) {
+@@ -20758,6 +20804,18 @@ static enum sigma_cmd_result mac80211_ap
+ 					 ifname, dut->sigma_tmpdir, file);
+ #endif /* NL80211_SUPPORT */
+ 				run_system(dut, buf);
++			} else if (strcasecmp(val, "LinkDisable") == 0) {
++				for (i = 0; i < dut->num_links; i++)
++					link_map_value |= BIT(i);
++
++				link_map_value &= ~BIT(link_id);
++				if (switchtime) {
++					run_system_wrapper(dut, "hostapd_cli -i %s advertised_ttlm ieee_link_map=%d map_switch_time=%d expected_dur=%d link_mapping_size=1",
++							   ifname, link_map_value, switchtime, exp_dur);
++				} else {
++					run_system_wrapper(dut, "hostapd_cli -i %s advertised_ttlm ieee_link_map=%d map_switch_time=5000 expected_dur=%d link_mapping_size=1",
++							   ifname, link_map_value, exp_dur);
++				}
+ 			}
+ 		} else {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1494,6 +1494,7 @@ struct sigma_dut {
+ 	enum value_not_set_enabled_disabled ap_trigsubfb;
+ 	enum value_not_set_enabled_disabled ap_dscp_cap;
+ 	enum value_not_set_enabled_disabled ap_epcs;
++	enum value_not_set_enabled_disabled ap_ttlm;
+ };
+ 
+ #ifdef NL80211_SUPPORT

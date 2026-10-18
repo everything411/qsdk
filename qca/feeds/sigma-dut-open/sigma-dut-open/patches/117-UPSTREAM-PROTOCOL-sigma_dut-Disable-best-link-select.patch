@@ -1,0 +1,49 @@
+From c3e99412ef482dc298b0452c2fdf822c6b53b864 Mon Sep 17 00:00:00 2001
+From: Muna Sinada <muna.sinada@oss.qualcomm.com>
+Date: Tue, 24 Feb 2026 14:33:31 -0800
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma_dut: Disable best link selection
+ algorithm
+
+When single link eMLSR is enabled on 6G, traffic is not being observed
+during traffic test. This is due to best link selection algorithm for
+eMLSR mode, where in case of different BW , only the link with higher
+bw and lower interference will be enabled for transmission.
+
+The best link selection algorithm was brought up with the
+consideration that in eMLSR mode there will always be minimum of two
+active links. Therefore, this algorithm does not work for single link
+eMLSR and results in traffic issues.
+
+When single_link_emlsr is enabled, disable best link selection
+algorithm using ath11k-fwtest command as part of
+fwtest_set_eht_params().
+
+Patch-dependency: I1602d2151 (UPSTREAM:PROTOCOL:sigma_dut: add support for Single Link eMLSR)
+
+Patch-work: None
+
+Fixes: None
+
+Signed-off-by: Muna Sinada <muna.sinada@oss.qualcomm.com>
+---
+ ap.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 09a8754..9fc2122 100644
+--- a/ap.c
++++ b/ap.c
+@@ -10056,6 +10056,10 @@ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 63 1000", ifname, link_id);
+ 	/* Enable mix bw */
+ 	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 141 1", ifname, link_id);
++
++	/* Disable best link selection algorithm for emlsr mode */
++	if (dut->single_link_emlsr == VALUE_ENABLED)
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 1023 1", ifname, link_id);
+ }
+ 
+ #define IEEE80211_VHT_CAP_TXSTBC                               ((u32) (1 << 7))
+-- 
+2.34.1
+

@@ -1,0 +1,60 @@
+From f09041fed07201864b84050fe9be0243a860a7b4 Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 12 Jun 2025 11:38:32 +0530
+Subject: [PATCH] sigma_dut: Remove fwtestcmd that disables MU MIMO scheduling
+
+For DL OFDMA, fwtest command which was used to increase min TX time
+limit for MU MIMO to disable MU MIMO scheduling is present. The
+command is now removed as airtime_min_mu_us variable has been
+deprecated in the firmware.
+
+Due to this change, the config for eht_mu_beamformer is also no longer
+needed. Hence, avoiding this configuration for DL OFDMA testcases.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 14 ++++----------
+ 1 file changed, 4 insertions(+), 10 deletions(-)
+
+diff --git a/ap.c b/ap.c
+index 6073635..c721d71 100644
+--- a/ap.c
++++ b/ap.c
+@@ -9548,10 +9548,6 @@ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int
+ 		fwtest_cmd_wrapper(dut, "-m 0x00 -v 0 32770 153", ifname);
+ 		/* enable the equal RU allocation */
+ 		fwtest_cmd_wrapper(dut, "-m 0x4b -v 0 0 1", ifname);
+-		/* Increase the min TX time limit for MU MIMO to
+-		 * disable MU MIMO scheduling.
+-		 */
+-		fwtest_cmd_wrapper(dut, "-m 0x47 -v 0 11 1000000", ifname);
+ 		/* Increase the max TX time limit for DL OFDMA
+ 		 * to enable OFDMA scheduling.
+ 		 */
+@@ -9729,10 +9725,6 @@ static void fwtest_set_eht_params(struct sigma_dut *dut, const char *ifname,
+ 		/* boolean for each link (primary / secondary) where scheduling is allowed */
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 580 1 1", ifname, link_id);
+ 
+-		/* Increase the min TX time limit for MU MIMO to
+-		 * disable MU MIMO scheduling.
+-		 */
+-		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 11 1000000", ifname, link_id);
+ 		/* Increase the max TX time limit for DL OFDMA
+ 		 * to enable OFDMA scheduling.
+ 		 */
+@@ -11492,8 +11484,10 @@ skip_vht_parameters_set:
+ 
+ 			if (dut->program == PROGRAM_EHT) {
+ 				fprintf(f, "eht_su_beamformer=%d\n", dut->ap_txBF);
+-				fprintf(f, "eht_mu_beamformer=%d\n", dut->ap_mu_txBF);
+-				fprintf(f, "eht_mu_beamformer=%d\n", dut->ap_su_txBF);
++				if (dut->ap_he_dlofdma != VALUE_ENABLED) {
++					fprintf(f, "eht_mu_beamformer=%d\n", dut->ap_mu_txBF);
++					fprintf(f, "eht_mu_beamformer=%d\n", dut->ap_su_txBF);
++				}
+ 				fprintf(f, "eht_ulmumimo_80mhz=%d\n", dut->ap_ulmumimo_80mhz);
+ 				fprintf(f, "eht_ulmumimo_160mhz=%d\n", dut->ap_ulmumimo_160mhz);
+ 				fprintf(f, "eht_ulmumimo_320mhz=%d\n", dut->ap_ulmumimo_320mhz);
+-- 
+2.34.1
+

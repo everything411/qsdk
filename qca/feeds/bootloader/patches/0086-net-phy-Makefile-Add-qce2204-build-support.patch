@@ -1,0 +1,39 @@
+From 9cf2942e0cb2623bab73034616901fe71b81d130 Mon Sep 17 00:00:00 2001
+From: Gurumoorthy Santhakumar <gsanthak@qti.qualcomm.com>
+Date: Thu, 26 Feb 2026 18:17:13 +0530
+Subject: [PATCH] net: phy: Makefile: Add qce2204 build support
+
+Change-Id: I82b007ae3a149e0015462544738fa6f87805c979
+Signed-off-by: Gurumoorthy Santhakumar  <gsanthak@qti.qualcomm.com>
+---
+ drivers/net/phy/Kconfig  | 4 ++++
+ drivers/net/phy/Makefile | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
+index d7201517960..3cfb50eb81c 100644
+--- a/drivers/net/phy/Kconfig
++++ b/drivers/net/phy/Kconfig
+@@ -418,3 +418,7 @@ config PHY_QCE_1204
+ 	---help---
+ 	Adds support for the QCA Ethernet QCE1204 PHY with QUSGMII interface.
+ 
++config PHY_QCE_2204
++	bool "QCA Ethernet 4 port QCE2204 switch mode support"
++	---help---
++	Adds support for the QCA Ethernet QCE2204 SWITCH with 10G-BaseR interface.
+diff --git a/drivers/net/phy/Makefile b/drivers/net/phy/Makefile
+index 2c4c5a72f2d..51947d8f021 100644
+--- a/drivers/net/phy/Makefile
++++ b/drivers/net/phy/Makefile
+@@ -34,6 +34,7 @@ obj-$(CONFIG_PHY_QCA_8081) += qcom_qca8081.o
+ obj-$(CONFIG_PHY_QCA_81XX) += qcom_qca81xx.o
+ obj-$(CONFIG_PHY_QCA_8033) += qcom_qca8033.o
+ obj-$(CONFIG_PHY_QCE_1204) += qcom_qce1204.o
++obj-$(CONFIG_PHY_QCE_2204) += qcom_qce2204_ppe.o qcom_qce2204_ppe_mac.o
+ obj-$(CONFIG_PHY_QCA_8337) += qcom_qca8337.o
+ obj-$(CONFIG_PHY_REALTEK) += realtek.o
+ obj-$(CONFIG_PHY_SMSC) += smsc.o
+-- 
+2.34.1
+

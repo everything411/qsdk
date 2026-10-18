@@ -1,0 +1,30 @@
+From bfa534e4192b42a6160ae521360acff1058dde9d Mon Sep 17 00:00:00 2001
+From: Badhrinath S <badhrina@qti.qualcomm.com>
+Date: Tue, 7 Apr 2026 16:22:43 +0530
+Subject: [PATCH] drivers: pci: Fix NULL pointer check in probe
+
+Ensure 'ops' is validated before accessing its 'sku' field to avoid
+potential NULL pointer dereference during probe.
+
+Change-Id: Idb43fc3305b3389e51568941fbeae17c70aff4df
+Signed-off-by: Badhrinath S <badhrina@qti.qualcomm.com>
+---
+ drivers/pci/pcie_dw_qcom.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/pci/pcie_dw_qcom.c b/drivers/pci/pcie_dw_qcom.c
+index 24762d5b3f4..6f707778ca5 100644
+--- a/drivers/pci/pcie_dw_qcom.c
++++ b/drivers/pci/pcie_dw_qcom.c
+@@ -606,7 +606,7 @@ static int qcom_pcie_probe(struct udevice *dev)
+ 	if (ret)
+ 		return ret;
+ 
+-	if (ops->sku && !(is_pcie_available(priv, ops->sku)))
++	if (ops && ops->sku && !(is_pcie_available(priv, ops->sku)))
+ 		return -ENXIO;
+ 
+ 	ret = qcom_pcie_init_port(dev);
+-- 
+2.34.1
+

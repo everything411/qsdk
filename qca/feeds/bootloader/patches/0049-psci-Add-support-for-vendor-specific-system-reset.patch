@@ -1,0 +1,62 @@
+From 28df8af90b025334a4312f9979093530dd8ce86b Mon Sep 17 00:00:00 2001
+From: Sridharan S N <sridsn@qti.qualcomm.com>
+Date: Sun, 15 Jun 2025 20:37:30 +0530
+Subject: [PATCH] psci: Add support for vendor-specific system reset
+
+This patch introduces a vendor-defined reset mechanism
+using PSCI, enabling platform-specific reset behavior.
+
+Change-Id: I63bac49a8be89c40bf6667e3a303ccca5751d5ed
+Signed-off-by: Sridharan S N <sridsn@qti.qualcomm.com>
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/firmware/psci.c | 12 +++++++++++-
+ include/sysreset.h      |  2 ++
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/firmware/psci.c b/drivers/firmware/psci.c
+index 2e3223e1c32..335e0094ba1 100644
+--- a/drivers/firmware/psci.c
++++ b/drivers/firmware/psci.c
+@@ -23,6 +23,7 @@
+ #include <linux/printk.h>
+ #include <linux/psci.h>
+ #include <power-domain-uclass.h>
++#include <asm/psci.h>
+ 
+ #define DRIVER_NAME "psci"
+ 
+@@ -284,7 +285,16 @@ void psci_sys_reset(u32 type)
+ 
+ 	reset2_supported = psci_is_system_reset2_supported();
+ 
+-	if (type == SYSRESET_WARM && reset2_supported) {
++	if (type == SYSRESET_VENDOR && reset2_supported) {
++		/*
++		 * reset_type[31] = 1 (architectural)
++		 * reset_type[30:0] = 1 (SYSTEM_VENDOR_RESET)
++		 * cookie = 0 (ignored by the implementation)
++		 */
++		invoke_psci_fn(PSCI_FN_NATIVE(1_1, SYSTEM_RESET2),
++				PSCI_RESET2_TYPE_VENDOR, 1, 0);
++
++	} else if (type == SYSRESET_WARM && reset2_supported) {
+ 		/*
+ 		 * reset_type[31] = 0 (architectural)
+ 		 * reset_type[30:0] = 0 (SYSTEM_WARM_RESET)
+diff --git a/include/sysreset.h b/include/sysreset.h
+index ff20abdeed3..a3981e1757f 100644
+--- a/include/sysreset.h
++++ b/include/sysreset.h
+@@ -21,6 +21,8 @@ enum sysreset_t {
+ 	SYSRESET_POWER,
+ 	/** @SYSRESET_POWER_OFF: turn off power */
+ 	SYSRESET_POWER_OFF,
++	/** @SYSRESET_VENDOR: Vendor specific reset */
++	SYSRESET_VENDOR,
+ 	/** @SYSRESET_COUNT: number of available reset types */
+ 	SYSRESET_COUNT,
+ };
+-- 
+2.34.1
+

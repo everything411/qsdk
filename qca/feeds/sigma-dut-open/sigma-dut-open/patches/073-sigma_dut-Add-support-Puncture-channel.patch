@@ -1,0 +1,174 @@
+From 424a97728371fedef992f873d7b74072eb4fbdb4 Mon Sep 17 00:00:00 2001
+From: Ramasamy Kaliappan <quic_rkaliapp@quicinc.com>
+Date: Tue, 21 Nov 2023 12:36:36 +0530
+Subject: [PATCH] sigma_dut: Add WFA testcase support for 6 GHz channels puncturing
+
+Adds support for WFA testcases for static ru puncturing of 6 GHz channels.
+
+Signed-off-by: Ramasamy Kaliappan <quic_rkaliapp@quicinc.com>
+---
+ ap.c        | 22 ++++++++++++++++++++++
+ sigma_dut.c |  3 ++-
+ sigma_dut.h |  1 +
+ 3 files changed, 25 insertions(+), 1 deletion(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -1001,7 +1001,7 @@ static int get_bitmap_from_punct_chlist(
+ 		center_chan_idx = freq_to_chan(dut->ap_center_freq);
+ 	else
+ 		center_chan_idx = get_oper_centr_freq_seq_idx(dut, chwidth,
+-							      dut->ap_channel);
++							      dut->mld[link_id].ap_channel);
+ 	if (center_chan_idx < 0) {
+ 		sigma_dut_print(dut, DUT_MSG_ERROR,
+ 				"%s: couldn't get center channel index",
+@@ -2921,7 +2921,6 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		dut->ap_mu_txBF = 1;
+ 	}
+ 
+-
+ 	val = get_param(cmd, "PunctChannel");
+ 	if (val) {
+ 		dut->ap_punct_bitmap = get_bitmap_from_punct_chlist(dut, val);
+@@ -11278,6 +11277,9 @@ skip_vht_parameters_set:
+ 	if (dtim)
+ 		fprintf(f, "dtim_period=%d\n", dtim);
+ 
++	if (dut->ap_punct_bitmap && check_band(dut, BAND_6G, conf_counter))
++		fprintf (f, "punct_bitmap=%d\n", dut->ap_punct_bitmap);
++
+ 	fclose(f);
+ 
+ 	if (dut->ap_is_dual && conf_counter == 0) {
+@@ -18048,7 +18050,7 @@ static enum sigma_cmd_result mac80211_ap
+ 	int ap_he_ackpolicy;
+ 	int link_id = 0;
+ 	int param;
+-	char buf[100];
++	char buf[200];
+ 	int val_bw = -1;
+ 	const char *value_bw;
+ 	char link_param[10];
+@@ -18335,6 +18337,110 @@ static enum sigma_cmd_result mac80211_ap
+ 		link_set = true;
+ 	}
+ 
++	val = get_param(cmd, "PunctChannel");
++	if (val) {
++		if (dut->program == PROGRAM_EHT) {
++			unsigned int punct_index = 0;
++			char *punctchannel_val;
++			char *saveptr;
++			char *punct_channel = NULL;
++			int n, i = 0;
++			int chwidth, chan = 0;
++			int sec_ch_offset = 0;
++			int center_freq, center_freq_idx;
++
++			punct_channel = strdup(val);
++			if (!punct_channel)
++				return STATUS_SENT_ERROR;
++
++			punctchannel_val = strtok_r(punct_channel, " ", &saveptr);
++
++			if (dut->ap_link_chwidth[link_id] == AP_80) {
++				int punct_80[] = {33, 37, 41, 45};
++
++				chwidth = 80;
++				while (punctchannel_val != NULL) {
++					n = atoi(punctchannel_val);
++					for (i = 0; i < 4; i++) {
++						if (n == punct_80[i])
++							punct_index |= 1 << i;
++					}
++					punctchannel_val = strtok_r(NULL, " ", &saveptr);
++				}
++			} else if (dut->ap_link_chwidth[link_id] == AP_160) {
++				int punct_160[] = {33, 37, 41, 45, 49, 53, 57, 61};
++
++				chwidth = 160;
++
++				while (punctchannel_val != NULL) {
++					n = atoi(punctchannel_val);
++					for (i = 0; i < 8; i++) {
++						if (n == punct_160[i])
++							punct_index |= 1 << i;
++					}
++					punctchannel_val = strtok_r(NULL, " ", &saveptr);
++				}
++			} else {
++				chwidth = 320;
++				if (dut->cfreq == 6105) {
++					int punct_320_1[] = {1, 5, 9, 13, 17, 21, 25, 29, 33, 37,
++							     41, 45, 49, 53, 57, 61};
++
++					while (punctchannel_val != NULL) {
++						n = atoi(punctchannel_val);
++						for (i = 0; i < 16; i++) {
++							if (n == punct_320_1[i])
++								punct_index |= 1 << i;
++						}
++						punctchannel_val = strtok_r(NULL, " ", &saveptr);
++					}
++				} else {
++					int punct_320_2[] = {33, 37, 41, 45, 49, 53, 57, 61, 65,
++							     69, 73, 77, 81, 85, 89, 93};
++
++					while (punctchannel_val != NULL) {
++						n = atoi(punctchannel_val);
++						for (i = 0; i < 16; i++) {
++							if (n == punct_320_2[i])
++								punct_index |= 1 << i;
++						}
++						punctchannel_val = strtok_r(NULL, " ", &saveptr);
++					}
++				}
++			}
++			dut->ap_punct_bitmap = punct_index;
++			if (dut->ap_punct_bitmap) {
++				sigma_dut_print(dut, DUT_MSG_DEBUG, "punct_bitmap=0x%04x",
++						dut->ap_punct_bitmap);
++			}
++
++			chan = channel_to_freq(dut, dut->ap_channel);
++			center_freq_idx = get_oper_center_freq_6g(chwidth, dut->ap_channel);
++			center_freq = channel_to_freq(dut, center_freq_idx);
++
++			if (dut->cfreq == 0)
++				sec_ch_offset = 0;
++			else if (chan < dut->cfreq)
++				sec_ch_offset = 1;
++			else
++				sec_ch_offset = -1;
++
++			center_freq_idx = get_oper_center_freq_6g(chwidth, dut->ap_channel);
++			center_freq = channel_to_freq(dut, center_freq_idx);
++
++			res = snprintf(buf, sizeof(buf),
++					" -i %s %s chan_switch 10 %d sec_channel_offset=%d center_freq1=%d bandwidth=%d punct_bitmap=%d blocktx %s",
++				ifname, link_set ? link_param : "", chan,
++				sec_ch_offset, center_freq, chwidth, dut->ap_punct_bitmap, "eht");
++
++			if (res < 0 || res >= sizeof(buf) || run_hostapd_cli(dut, buf) != 0) {
++				sigma_dut_print(dut, DUT_MSG_ERROR,
++						"hostapd_cli chan_switch failed");
++			}
++			free(punct_channel);
++		}
++	}
++
+ 	val = get_param(cmd, "STA_WMMPE_ECWmin_BK");
+ 	if (val) {
+ 		param = atoi(val);
+--- a/utils.c
++++ b/utils.c
+@@ -320,6 +320,8 @@ unsigned int channel_to_freq(struct sigm
+ 		return 0;
+ 	}
+ 
++	if (dut->ap_band_6g)
++		return 5950 + 5 * channel;
+ 	if (channel >= 1 && channel <= 13)
+ 		return 2407 + 5 * channel;
+ 	if (channel == 14)

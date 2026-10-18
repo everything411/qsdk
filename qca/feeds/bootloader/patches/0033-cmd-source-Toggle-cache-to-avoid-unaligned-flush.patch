@@ -1,0 +1,37 @@
+From 23c0e7eed60fa3d0c470434dc57200b81e27386d Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 28 May 2025 22:45:15 +0530
+Subject: [PATCH] cmd: source: Toggle cache to avoid unaligned flush
+
+This patch introduces logic to temporarily disable and re-enable
+cache during script execution to prevent unaligned cache flush
+issues. This ensures safer memory operations when sourcing
+scripts that may not be aligned to cache line boundaries.
+
+Change-Id: Icc4b1e857b542784209123ce16ec9504579365af
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ cmd/source.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/cmd/source.c b/cmd/source.c
+index c9b5f8e400a..f3134df93ba 100644
+--- a/cmd/source.c
++++ b/cmd/source.c
+@@ -49,7 +49,13 @@ static int do_source(struct cmd_tbl *cmdtp, int flag, int argc,
+ 	}
+ 
+ 	printf ("## Executing script at %08lx\n", addr);
++#ifdef CONFIG_ARM64
++	run_command("dcache off", 0);
++#endif
+ 	rcode = cmd_source_script(addr, fit_uname, confname);
++#ifdef CONFIG_ARM64
++	run_command("dcache on", 0);
++#endif
+ 	return rcode;
+ }
+ 
+-- 
+2.34.1
+

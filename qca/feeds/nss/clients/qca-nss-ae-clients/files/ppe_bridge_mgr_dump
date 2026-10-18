@@ -1,0 +1,49 @@
+#!/bin/sh
+#
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: ISC
+#
+
+BRIDGE_MGR_DUMP_FILE=${1:-ppe_bridge_mgr_dump}
+BRIDGE_MGR_DUMP_ROOT=/dev/qca-nss-ppe-clients
+
+#
+# usage: ppe_bridge_mgr_dump
+#
+module_state_mount() {
+	local bridge_mgr_dump_file=$1
+	local bridge_mgr_dump_dir=$2
+	local stats_file="/sys/kernel/debug/qca-nss-ppe/clients/bridge/ppe_bridge_mgr_dump"
+
+	if [ -e "${bridge_mgr_dump_dir}/${bridge_mgr_dump_file}" ]
+	then
+		#echo "already mounted"
+		return 0
+	fi
+
+	if [ ! -e "$stats_file" ]
+	then
+		#echo "... Dump not supported"
+		return 1
+	fi
+
+	local major_num="`cat $stats_file`"
+	#echo "... Mounting stats $stats_file with major_num: $major_num"
+	mknod "${bridge_mgr_dump_dir}/${bridge_mgr_dump_file}" c $major_num 0
+}
+
+
+# all states files are mounted under MOUNT_ROOT, so make sure it exists
+mkdir -p ${BRIDGE_MGR_DUMP_ROOT}
+
+#
+# attempt to mount state files for the requested module and cat it
+# if the mount succeeded
+#
+module_state_mount ${BRIDGE_MGR_DUMP_FILE} ${BRIDGE_MGR_DUMP_ROOT} && {
+	cat ${BRIDGE_MGR_DUMP_ROOT}/${BRIDGE_MGR_DUMP_FILE}
+	exit 0
+}
+
+exit 2
+

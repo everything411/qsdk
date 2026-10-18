@@ -1,0 +1,330 @@
+From 13def27cdc9e6d5c7cb1f535503d56cda2a55694 Mon Sep 17 00:00:00 2001
+From: Balaganapathy Palanisamy <bpalanis@qti.qualcomm.com>
+Date: Thu, 4 Dec 2025 12:16:01 +0530
+Subject: [PATCH] hostapd-extn: Retrieve and assign interface and link vendor
+ address
+
+Retrieve and assign BSSID from vendor driver
+   -Add new config param "use_driver_vendor_addr=0|1",
+    defaults to 0, to enable this feature
+   -Add new config param "bss_index=0..15",
+    used when this feature is enabled for retrieving BSSID from
+    vendor driver.
+   -Use the first free bss_index when not configured.
+   -For 6 GHz MBSSID, use the mbssid_index instead of bss_index
+   -Assign the retrieved BSSIDs for BSSs when enabled and BSSID is
+    not configured.
+
+Signed-off-by: Balaganapathy Palanisamy <bpalanis@qti.qualcomm.com>
+---
+ hostapd/config_file.c   |  6 +++++
+ hostapd/hostapd.conf    | 12 +++++++++
+ hostapd/main.c          |  8 ++++++
+ src/ap/ap_config.c      |  5 ++++
+ src/ap/ap_config.h      | 16 ++++++++++++
+ src/ap/hostapd.c        | 54 +++++++++++++++++++++++++++++++++++++++++
+ src/ap/hostapd.h        | 11 +++++++++
+ src/common/qca-vendor.h | 40 ++++++++++++++++++++++++++++++
+ 8 files changed, 152 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 0d5c947..0d083f1 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3415,6 +3415,12 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 				   line);
+ 			return 1;
+ 		}
++#ifdef CONFIG_QCN_EXTN
++	} else if (os_strcmp(buf, "bss_index") == 0) {
++		bss->bss_index = atoi(pos);
++	} else if (os_strcmp(buf, "use_driver_vendor_addr") == 0) {
++		conf->use_driver_vendor_addr = atoi(pos);
++#endif /* CONFIG_QCN_EXTN */
+ 	} else if (os_strcmp(buf, "use_driver_iface_addr") == 0) {
+ 		conf->use_driver_iface_addr = atoi(pos);
+ 	} else if (os_strcmp(buf, "ieee80211w") == 0) {
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index c45ade7..4ec0e77 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -3530,6 +3530,18 @@ own_ip_addr=127.0.0.1
+ # Alternatively, the 'use_driver_iface_addr' parameter can be used to request
+ # hostapd to use the driver auto-generated interface address (e.g., to use the
+ # exact MAC addresses allocated to the device).
++# use_driver_iface_addr=0|1
++#
++# or, the 'use_driver_vendor_addr' parameter can be used to request hostapd to
++# derive per-BSS MAC addresses using a vendor-specific command
++# ('hostapd_drv_get_bssid'). This enables driver-provided MAC derivation
++# when 'bssid' is not explicitly configured.
++# use_driver_vendor_addr=0|1
++#
++# Optional: For non-MBSSID cases, you can override the index used when
++# deriving a vendor BSSID by setting per-BSS 'bss_index'. When unset or
++# negative, hostapd uses the first BSS index available on the interface.
++# bss_index=-1
+ #
+ # Not all drivers support multiple BSSes. The exact mechanism for determining
+ # the driver capabilities is driver specific. With the current (i.e., a recent
+diff --git a/hostapd/main.c b/hostapd/main.c
+index 1350745..2d9e32d 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -332,6 +332,16 @@ pre_setup_mld:
+ setup_mld:
+ #endif /* CONFIG_IEEE80211BE */
+ 
++#ifdef CONFIG_QCN_EXTN
++	if (b && is_zero_ether_addr(b))
++		b = NULL;
++	if (!b && iface->conf->use_driver_vendor_addr) {
++		if (hostapd_drv_fetch_and_set_vendor_bssid_extn(hapd))
++			wpa_printf(MSG_DEBUG,
++				   "Fetch and set vendor BSSID failed");
++	}
++#endif /* CONFIG_QCN_EXTN */
++
+ 	if (hapd->driver->get_capa &&
+ 	    hapd->driver->get_capa(hapd->drv_priv, &capa) == 0) {
+ 		struct wowlan_triggers *triggs;
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 925326b..295335b 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -112,6 +112,11 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ 	/* Set to -1 as defaults depends on HT in setup */
+ 	bss->wmm_enabled = -1;
+ 
++#ifdef CONFIG_QCN_EXTN
++	/* Not set by default; use runtime available BSS index */
++	bss->bss_index = -1;
++#endif /* CONFIG_QCN_EXTN */
++
+ #ifdef CONFIG_IEEE80211R_AP
+ 	bss->ft_over_ds = 1;
+ 	bss->rkh_pos_timeout = 86400;
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 0eba825..7aaa07f 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -996,6 +996,16 @@ struct hostapd_bss_config {
+ #endif /* CONFIG_IEEE80211BE */
+ 	int mbssid_index;
+ 
++#ifdef CONFIG_QCN_EXTN
++	/*
++	 * Override index used to derive vendor BSSID for
++	 * non-MBSSID cases when 'use_driver_vendor_addr=1'.
++	 * -1 means not set and hostapd will use the interface
++	 * BSS index available.
++	 */
++	int bss_index;
++#endif /* CONFIG_QCN_EXTN */
++
+ 	bool spp_amsdu;
+ 	enum {
+ 		FILS_UBPR_USER_DISABLED,
+@@ -1192,6 +1202,12 @@ struct hostapd_config {
+ 
+ 	/* Use driver-generated interface addresses when adding multiple BSSs */
+ 	u8 use_driver_iface_addr;
++
++#ifdef CONFIG_QCN_EXTN
++	/* Use vendor-generated BSSID */
++	u8 use_driver_vendor_addr;
++#endif /* CONFIG_QCN_EXTN */
++
+ 	u8 skip_unii1_dfs_switch;
+ 	u8 ext_cap_len;
+ 
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 6fa81e7..f069ac5 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1377,6 +1377,10 @@ void hostapd_bss_deinit_no_free(struct hostapd_data *hapd)
+ #ifdef CONFIG_WEP
+ 	hostapd_clear_wep(hapd);
+ #endif /* CONFIG_WEP */
++
++#ifdef CONFIG_QCN_EXTN
++	hostapd_free_bss_index_extn(hapd);
++#endif /* CONFIG_QCN_EXTN */
+ }
+ 
+ 
+@@ -1400,6 +1404,11 @@ static int hostapd_validate_bssid_configuration(struct hostapd_iface *iface)
+ 	if (iface->conf->use_driver_iface_addr)
+ 		return 0;
+ 
++#ifdef CONFIG_QCN_EXTN
++	if (iface->conf->use_driver_vendor_addr)
++		return 0;
++#endif /* CONFIG_QCN_EXTN */
++
+ 	/* Generate BSSID mask that is large enough to cover the BSSIDs. */
+ 
+ 	/* Determine the bits necessary to cover the number of BSSIDs. */
+@@ -1937,6 +1946,10 @@ int hostapd_setup_bss(struct hostapd_data *hapd, int first, bool start_beacon)
+ 			}
+ 		} else if (hapd->iconf->use_driver_iface_addr) {
+ 			addr = NULL;
++#ifdef CONFIG_QCN_EXTN
++		} else if (hapd->iconf->use_driver_vendor_addr) {
++			addr = NULL;
++#endif /* CONFIG_QCN_EXTN */
+ 		} else {
+ 			/* Allocate the next available BSSID. */
+ 			do {
+@@ -1986,6 +1999,20 @@ int hostapd_setup_bss(struct hostapd_data *hapd, int first, bool start_beacon)
+ 		if (!addr)
+ 			os_memcpy(hapd->own_addr, if_addr, ETH_ALEN);
+ 
++#ifdef CONFIG_QCN_EXTN
++		/*
++		 * When BSSID is not configured, try to derive a per-BSS address
++		 * via vendor command for both Non-MLD and first MLD BSS.
++		 * For Non-MLD, also update the netdev MAC to keep it in sync.
++		 */
++		if (is_zero_ether_addr(conf->bssid) &&
++		    hapd->iconf->use_driver_vendor_addr) {
++			if (hostapd_drv_fetch_and_set_vendor_bssid_extn(hapd))
++				wpa_printf(MSG_DEBUG,
++					   "fetch and set vendor BSSID failed");
++		}
++#endif /* CONFIG_QCN_EXTN */
++
+ #ifdef CONFIG_IEEE80211BE
+ 		if (hapd->conf->mld_ap) {
+ 			wpa_printf(MSG_DEBUG,
+@@ -2006,6 +2033,16 @@ setup_mld:
+ 			   hapd->mld_link_id, MAC2STR(hapd->mld->mld_addr),
+ 			   MAC2STR(hapd->own_addr));
+ 
++#ifdef CONFIG_QCN_EXTN
++		/* Get per-link BSSID using vendor cmd (non-first links) */
++		if (is_zero_ether_addr(conf->bssid) &&
++		    hapd->iconf->use_driver_vendor_addr) {
++			if (hostapd_drv_fetch_and_set_vendor_bssid_extn(hapd))
++				wpa_printf(MSG_DEBUG,
++					   "fetch and set vendor BSSID failed");
++		}
++#endif /* CONFIG_QCN_EXTN */
++
+ 		if (hostapd_drv_link_add(hapd, hapd->mld_link_id,
+ 					 hapd->own_addr)) {
+ 			wpa_printf(MSG_ERROR,
+@@ -3311,6 +3348,19 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+ 			goto fail;
+ 		}
+ 
++#ifdef CONFIG_QCN_EXTN
++		/*
++		 * If vendor BSSID was deferred (e.g., multiple radios and no
++		 * channel at driver init), fetch and apply it now.
++		 */
++		if (hapd && is_zero_ether_addr(hapd->conf->bssid) &&
++		    hapd->iconf->use_driver_vendor_addr) {
++			if (hostapd_drv_fetch_and_set_vendor_bssid_extn(hapd))
++				wpa_printf(MSG_DEBUG,
++					   "fetch and set vendor BSSID failed");
++		}
++#endif /* CONFIG_QCN_EXTN */
++
+ #ifdef NEED_AP_MLME
+ 		/* Handle DFS only if it is not offloaded to the driver */
+ 		if (!(iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
+@@ -3999,6 +4049,10 @@ struct hostapd_iface * hostapd_alloc_iface(void)
+ 
+ 	hapd_iface->is_afc_power_event_received = false;
+ 
++#ifdef CONFIG_QCN_EXTN
++	hapd_iface->vendor_bssid_used_mask = 0;
++#endif /* CONFIG_QCN_EXTN */
++
+ 	return hapd_iface;
+ }
+ 
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index f543545..e73df81 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -312,6 +312,12 @@ struct hostapd_data {
+ 
+ 	u8 own_addr[ETH_ALEN];
+ 
++#ifdef CONFIG_QCN_EXTN
++	/* Vendor BSSID derivation bookkeeping for non-MBSSID */
++	u8 vendor_bss_index;
++	bool vendor_bss_index_valid;
++#endif /* CONFIG_QCN_EXTN */
++
+ 	/* OpenWrt specific statistics */
+ 	struct hostapd_openwrt_stats openwrt_stats;
+ 
+@@ -733,6 +739,11 @@ struct hostapd_iface {
+ 	size_t num_bss;
+ 	struct hostapd_data **bss;
+ 
++#ifdef CONFIG_QCN_EXTN
++	/* Bitmask of used vendor BSSID indices (non-MBSSID) */
++	u32 vendor_bssid_used_mask;
++#endif /* CONFIG_QCN_EXTN */
++
+ 	unsigned int wait_channel_update:1;
+ 	unsigned int cac_started:1;
+ #ifdef CONFIG_FST
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 09fb605..4c9112a 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -19119,6 +19120,46 @@ enum qca_wlan_vendor_attr_iface_reload {
+ 	QCA_WLAN_VENDOR_ATTR_IFACE_RELOAD_AFTER_LAST - 1,
+ };
+ 
++/**
++ * enum qca_wlan_vendor_attr_mac_config - vendor MAC address derivation
++ * used by QCA_NL80211_VENDOR_SUBCMD_DERIVE_LINK_BSS_ADDR.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_RADIO_INDEX: radio id for which
++ * MAC address is derived.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_RADIO_BSS_ID: bss id for which
++ * MAC address is derived, this is expected to be in range
++ * [0..15] or [0..0..group_size-1] for multi mbssid.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_MAC_ADDR: Derived MAC address
++ *
++ * @QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_IFTYPE: 32-bit unsigned value.
++ * Interface type from enum nl80211_iftype
++ * (e.g., NL80211_IFTYPE_STATION, NL80211_IFTYPE_AP, etc.).
++ *
++ * @QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_MBSSID_GRP_ID: 8-bit unsigned value.
++ * MBSSID group identifier for 6 GHz.
++ * Used with QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_MBSSID_GRP_SIZE to
++ * derive 6 GHz link bss MAC addresses.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_MBSSID_GRP_SIZE: 8-bit unsigned value.
++ * Number of VAPs in the MBSSID group.
++ * BSS IDs are expected to be in range [0..group_size-1].
++ */
++enum qca_wlan_vendor_attr_mac_config {
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_RADIO_INDEX = 1,
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_RADIO_BSS_ID,
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_MAC_ADDR,
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_IFTYPE,
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_FLAGS,
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_MBSSID_GRP_ID,
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_MBSSID_GRP_SIZE,
++
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_AFTER_LAST,
++	QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_MAX =
++		QCA_WLAN_VENDOR_ATTR_MAC_CONFIG_AFTER_LAST - 1,
++};
++
+ enum qca_wlan_vendor_attr_atf_offload_ops {
+ 	QCA_WLAN_VENDOR_ATTR_ATF_OFFLOAD_INVALID = 0,
+ 	QCA_WLAN_VENDOR_ATTR_ATF_OFFLOAD_RADIO_INDEX = 1,
+-- 
+2.34.1
+

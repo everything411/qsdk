@@ -1,0 +1,300 @@
+From ead389cef072c42cb2edee9d558052c10fd0c766 Mon Sep 17 00:00:00 2001
+From: Gokul Sriram Palanisamy <gokul.sriram.p@oss.qualcomm.com>
+Date: Tue, 1 Jul 2025 09:13:49 +0530
+Subject: [PATCH] qdl: add support for mhi firehose device
+
+enable flashing of SDX over mhi firehose channel. when using MHI, SAHARA
+transfer is handled by MHI sysfs. So skipping sahara_run().
+
+while SDX enters EDL, firehose device programmer can be loaded over BHI
+which can execute on device and opens MHI firehose channel which can be
+used to communicae with the programmer to transfer the binaries and
+flash SDX meta.
+
+Signed-off-by: Gokul Sriram Palanisamy <gokul.sriram.p@oss.qualcomm.com>
+---
+ Makefile  |  4 +--
+ io.c      |  3 ++
+ mhi.c     | 86 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ program.c |  2 +-
+ qdl.c     | 33 +++++++++++++++++----
+ qdl.h     |  8 +++++-
+ 6 files changed, 127 insertions(+), 9 deletions(-)
+ create mode 100644 mhi.c
+
+diff --git a/Makefile b/Makefile
+index ddd06c9..aa9f95c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -9,10 +9,10 @@ LDFLAGS += -lws2_32
+ endif
+ prefix := /usr/local
+ 
+-QDL_SRCS := firehose.c io.c qdl.c sahara.c util.c patch.c program.c read.c sha2.c sim.c ufs.c usb.c ux.c oscompat.c vip.c sparse.c
++QDL_SRCS := firehose.c io.c qdl.c sahara.c util.c patch.c program.c read.c sha2.c sim.c ufs.c usb.c mhi.c ux.c oscompat.c vip.c sparse.c
+ QDL_OBJS := $(QDL_SRCS:.c=.o)
+ 
+-RAMDUMP_SRCS := ramdump.c sahara.c io.c sim.c usb.c util.c ux.c oscompat.c
++RAMDUMP_SRCS := ramdump.c sahara.c io.c sim.c usb.c mhi.c util.c ux.c oscompat.c
+ RAMDUMP_OBJS := $(RAMDUMP_SRCS:.c=.o)
+ 
+ KS_OUT := ks
+diff --git a/io.c b/io.c
+index 5b1d36e..a792e2a 100644
+--- a/io.c
++++ b/io.c
+@@ -11,6 +11,9 @@ struct qdl_device *qdl_init(enum QDL_DEVICE_TYPE type)
+ 	if (type == QDL_DEVICE_USB)
+ 		return usb_init();
+ 
++	if (type == QDL_DEVICE_MHI)
++		return mhi_init();
++
+ 	if (type == QDL_DEVICE_SIM)
+ 		return sim_init();
+ 
+diff --git a/mhi.c b/mhi.c
+new file mode 100644
+index 0000000..b3bfc4c
+--- /dev/null
++++ b/mhi.c
+@@ -0,0 +1,86 @@
++#include <errno.h>
++#include <fcntl.h>
++#include <poll.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++
++#include "oscompat.h"
++#include "qdl.h"
++
++#define MHI_DEVICE_PATH "/dev/wwan0firehose0"
++
++struct qdl_device_mhi {
++	struct qdl_device base;
++};
++
++static int mhi_open(struct qdl_device *qdl, const char *serial)
++{
++	if (access(qdl->device_path, F_OK) != 0) {
++		err(1, "cannot find %s", qdl->device_path);
++		return -ENODEV;
++	}
++
++	qdl->fd = open(qdl->device_path, O_RDWR | O_NOCTTY | O_NONBLOCK);
++
++	return 0;
++}
++
++static void mhi_close(struct qdl_device *qdl)
++{
++	int ret;
++
++	ret = close(qdl->fd);
++
++	if(ret)
++		perror("mhi firehose device failed to close");
++}
++
++static int mhi_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
++{
++	int ret;
++	struct pollfd pollfds[] = {{qdl->fd, POLLIN, 0}};
++
++	ret = poll(pollfds, 1, timeout);
++	if (ret <= 0)
++		return ret;
++
++	return read(qdl->fd, buf, len);
++}
++
++static int mhi_write(struct qdl_device *qdl, const void *buf, size_t nbytes)
++{
++	int ret;
++	struct pollfd pollfds[] = {{qdl->fd, POLLOUT, 0}};
++
++	ret = poll(pollfds, 1, 5000);
++	if (ret <= 0)
++		return ret;
++
++	return write(qdl->fd, buf, nbytes);
++}
++
++void mhi_device_update(struct qdl_device *qdl, const char *path)
++{
++	qdl->device_path = path;
++}
++
++struct qdl_device *mhi_init(void)
++{
++	struct qdl_device *qdl = malloc(sizeof(struct qdl_device_mhi));
++
++	if (!qdl)
++		return NULL;
++
++	memset(qdl, 0, sizeof(struct qdl_device_mhi));
++
++	qdl->dev_type = QDL_DEVICE_MHI;
++	qdl->open = mhi_open;
++	qdl->read = mhi_read;
++	qdl->write = mhi_write;
++	qdl->close = mhi_close;
++	qdl->device_path = MHI_DEVICE_PATH;
++
++	return qdl;
++}
+diff --git a/program.c b/program.c
+index a8163a5..6f58a61 100644
+--- a/program.c
++++ b/program.c
+@@ -32,7 +32,7 @@ static int load_erase_tag(xmlNode *node, bool is_nand)
+ 
+ 	program->sector_size = attr_as_unsigned(node, "SECTOR_SIZE_IN_BYTES", &errors);
+ 	program->num_sectors = attr_as_unsigned(node, "num_partition_sectors", &errors);
+-	program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
++//	program->partition = attr_as_unsigned(node, "physical_partition_number", &errors);
+ 	program->start_sector = attr_as_string(node, "start_sector", &errors);
+ 	if (is_nand) {
+ 		program->pages_per_block = attr_as_unsigned(node, "PAGES_PER_BLOCK", &errors);
+diff --git a/qdl.c b/qdl.c
+index 43ee3f2..686fd02 100644
+--- a/qdl.c
++++ b/qdl.c
+@@ -95,6 +95,7 @@ static void print_usage(FILE *out)
+ 	fprintf(out, " -u, --out-chunk-size=T\t\tOverride chunk size for transaction with T\n");
+ 	fprintf(out, " -t, --create-digests=T\t\tGenerate table of digests in the T folder\n");
+ 	fprintf(out, " -D, --vip-table-path=T\t\tUse digest tables in the T folder for VIP\n");
++	fprintf(out, " -m, --use-mhi=T\t\t\tUse MHI FIREHOSE device. This option is invalid when -n or -t is specified\n");
+ 	fprintf(out, " -h, --help\t\t\tPrint this usage info\n");
+ 	fprintf(out, "\n");
+ 	fprintf(out, "Example: %s prog_firehose_ddr.elf rawprogram*.xml patch*.xml\n", __progname);
+@@ -107,15 +108,17 @@ int main(int argc, char **argv)
+ 	char *serial = NULL;
+ 	const char *vip_generate_dir = NULL;
+ 	const char *vip_table_path = NULL;
++	const char *mhi_device_path = NULL;
+ 	int type;
+ 	int ret;
+ 	int opt;
+ 	bool qdl_finalize_provisioning = false;
+ 	bool allow_fusing = false;
+ 	bool allow_missing = false;
++	bool use_mhi = false;
+ 	long out_chunk_size = 0;
+ 	struct qdl_device *qdl = NULL;
+-	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_USB;
++	enum QDL_DEVICE_TYPE qdl_dev_type = QDL_DEVICE_UNKNOWN;
+ 
+ 	static struct option options[] = {
+ 		{"debug", no_argument, 0, 'd'},
+@@ -130,11 +133,12 @@ int main(int argc, char **argv)
+ 		{"allow-fusing", no_argument, 0, 'c'},
+ 		{"dry-run", no_argument, 0, 'n'},
+ 		{"create-digests", required_argument, 0, 't'},
++		{"use-mhi", optional_argument, 0, 'm'},
+ 		{"help", no_argument, 0, 'h'},
+ 		{0, 0, 0, 0}
+ 	};
+ 
+-	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:h", options, NULL)) != -1) {
++	while ((opt = getopt_long(argc, argv, "dvi:lu:S:D:s:fcnt:m::h", options, NULL)) != -1) {
+ 		switch (opt) {
+ 		case 'd':
+ 			qdl_debug = true;
+@@ -174,6 +178,11 @@ int main(int argc, char **argv)
+ 		case 'D':
+ 			vip_table_path = optarg;
+ 			break;
++		case 'm':
++			use_mhi = true;
++			if (optarg)
++				mhi_device_path = optarg;
++			break;
+ 		case 'h':
+ 			print_usage(stdout);
+ 			return 0;
+@@ -189,12 +198,24 @@ int main(int argc, char **argv)
+ 		return 1;
+ 	}
+ 
++	if (qdl_dev_type == QDL_DEVICE_UNKNOWN) {
++		if (use_mhi)
++			qdl_dev_type = QDL_DEVICE_MHI;
++		else
++			qdl_dev_type = QDL_DEVICE_USB;
++	} else if (use_mhi && qdl_dev_type == QDL_DEVICE_SIM) {
++		errx(1, "Error: -m option is invalid when -n or -t is specified");
++	}
++
+ 	qdl = qdl_init(qdl_dev_type);
+ 	if (!qdl) {
+ 		ret = -1;
+ 		goto out_cleanup;
+ 	}
+ 
++	if (mhi_device_path)
++		mhi_device_update(qdl, mhi_device_path);
++
+ 	if (vip_table_path) {
+ 		if (vip_generate_dir)
+ 			errx(1, "VIP mode and VIP table generation can't be enabled together\n");
+@@ -260,9 +281,11 @@ int main(int argc, char **argv)
+ 		goto out_cleanup;
+ 
+ 	qdl->mappings[0] = prog_mbn;
+-	ret = sahara_run(qdl, qdl->mappings, true, NULL, NULL);
+-	if (ret < 0)
+-		goto out_cleanup;
++	if (qdl_dev_type != QDL_DEVICE_MHI) { //Sahara transfer is handled by MHI driver sysfs
++		ret = sahara_run(qdl, qdl->mappings, true, NULL, NULL);
++		if (ret < 0)
++			goto out_cleanup;
++	}
+ 
+ 	ret = firehose_run(qdl, incdir, storage, allow_missing);
+ 	if (ret < 0)
+diff --git a/qdl.h b/qdl.h
+index 96dc30d..86d7693 100644
+--- a/qdl.h
++++ b/qdl.h
+@@ -29,7 +29,9 @@
+ #define MAPPING_SZ 64
+ 
+ enum QDL_DEVICE_TYPE {
+-	QDL_DEVICE_USB,
++	QDL_DEVICE_UNKNOWN = -1,
++	QDL_DEVICE_USB = 0,
++	QDL_DEVICE_MHI,
+ 	QDL_DEVICE_SIM,
+ };
+ 
+@@ -49,6 +51,7 @@ struct qdl_device {
+ 	char *mappings[MAPPING_SZ]; // array index is the id from the device
+ 
+ 	struct vip_transfer_data vip_data;
++	const char *device_path;
+ };
+ 
+ struct libusb_device_handle;
+@@ -63,6 +66,7 @@ void qdl_set_out_chunk_size(struct qdl_device *qdl, long size);
+ int qdl_vip_transfer_enable(struct qdl_device *qdl, const char *vip_table_path);
+ 
+ struct qdl_device *usb_init(void);
++struct qdl_device *mhi_init(void);
+ struct qdl_device *sim_init(void);
+ 
+ int firehose_run(struct qdl_device *qdl, const char *incdir, const char *storage, bool allow_missing);
+@@ -80,6 +84,8 @@ void ux_log(const char *fmt, ...);
+ void ux_debug(const char *fmt, ...);
+ void ux_progress(const char *fmt, unsigned int value, unsigned int size, ...);
+ 
++void mhi_device_update(struct qdl_device *qdl, const char *path);
++
+ void print_version(void);
+ 
+ extern bool qdl_debug;
+-- 
+2.34.1
+

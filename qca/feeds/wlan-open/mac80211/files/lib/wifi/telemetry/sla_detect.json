@@ -1,0 +1,24 @@
+{
+	"x_packet": {
+		"delay":0,
+		"msdu_loss":0,
+		"ttl_drop":0
+	},
+	"1_second": {
+		"min_throutput": 1,
+		"max_throughput":1,
+		"packet_error_rate":1,
+		"mcs_min_threshold":1,
+		"mcs_max_threshold":1,
+		"retries_threshold":1
+	},
+	"mov_average": {
+		"delay":0
+	},
+	"x_second":{
+		"service_interval":1,
+		"burst_size":1,
+		"msdu_loss":1,
+		"ttl_drop":1
+	}
+}

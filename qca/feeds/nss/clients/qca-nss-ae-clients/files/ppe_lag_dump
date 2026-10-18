@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: ISC
+#
+
+LAG_DUMP_FILE=${1:-ppe_lag_dump}
+LAG_DUMP_ROOT=/dev/qca-nss-ppe-clients
+
+#
+# usage: ppe_lag_dump
+#
+module_state_mount() {
+	local lag_dump_file=$1
+	local lag_dump_dir=$2
+	local stats_file="/sys/kernel/debug/qca-nss-ppe/clients/lag/ppe_lag_dump"
+
+	if [ -e "${lag_dump_dir}/${lag_dump_file}" ]
+	then
+		#echo "already mounted"
+		return 0
+	fi
+
+	if [ ! -e "$stats_file" ]
+	then
+		#echo "... Dump not supported"
+		return 1
+	fi
+
+	local major_num="`cat $stats_file`"
+	#echo "... Mounting stats $stats_file with major_num: $major_num"
+	mknod "${lag_dump_dir}/${lag_dump_file}" c $major_num 0
+}
+
+
+# all states files are mounted under MOUNT_ROOT, so make sure it exists
+mkdir -p ${LAG_DUMP_ROOT}
+
+#
+# attempt to mount state files for the requested module and cat it
+# if the mount succeeded
+#
+module_state_mount ${LAG_DUMP_FILE} ${LAG_DUMP_ROOT} && {
+	cat ${LAG_DUMP_ROOT}/${LAG_DUMP_FILE}
+	exit 0
+}
+
+exit 2

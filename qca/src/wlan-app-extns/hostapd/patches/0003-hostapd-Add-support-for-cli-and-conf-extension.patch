@@ -1,0 +1,159 @@
+From 0cbc89f56794abe5a8e62717cea0e98b0455821f Mon Sep 17 00:00:00 2001
+From: Sri Vidya Gunturi <sgunturi@qti.qualcomm.com>
+Date: Thu, 4 Dec 2025 16:57:10 +0530
+Subject: [PATCH] hostapd: Add support for cli and conf extension
+
+Add HOSTAPD_CLI_CMDS_EXTN macro to allow adding extension
+CLI commands in hostapd_cli.
+Update hostapd_cli structure to include extension CLI commands via this
+macro injection.
+
+Add new extension structures:
+hostapd_config_extn for per-radio configuration.
+hostapd_bss_config_extn for per-BSS configuration.
+
+Implement hooks for extension handling:
+hostapd_config_defaults_extn() and hostapd_config_fill_extn()
+	- for config parsing.
+hostapd_ctrl_iface_receive_process_extn()
+	- for custom control interface commands.
+
+Signed-off-by: Sri Vidya Gunturi <sgunturi@qti.qualcomm.com>
+---
+ hostapd/Makefile      |  9 +++++----
+ hostapd/config_file.c |  2 ++
+ hostapd/ctrl_iface.c  |  5 +++++
+ hostapd/hostapd_cli.c | 11 +++++++----
+ src/ap/ap_config.c    |  3 +++
+ src/ap/ap_config.h    |  2 ++
+ 6 files changed, 24 insertions(+), 8 deletions(-)
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index 78877fe..bd48465 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -69,10 +69,6 @@ OBJS += radius.o
+ endif
+ endif
+ 
+-ifdef CONFIG_QCN_EXTN
+-include ../qcn_extns/Makefile
+-endif
+-
+ OBJS += ../src/ap/hostapd.o
+ OBJS += ../src/ap/wpa_auth_glue.o
+ OBJS += ../src/ap/drv_callbacks.o
+@@ -102,6 +98,11 @@ OBJS_c += ../src/common/wpa_ctrl.o
+ OBJS_c += ../src/utils/os_$(CONFIG_OS).o
+ OBJS_c += ../src/common/cli.o
+ 
++ifdef CONFIG_QCN_EXTN
++OBJS_c += qcn_extns/hostapd_cli_extn.o
++include ../qcn_extns/Makefile
++endif
++
+ NEED_RC4=y
+ NEED_AES=y
+ NEED_MD5=y
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index d2db615..300ee4b 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -5220,6 +5220,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		bss->mscs = atoi(pos);
+ #endif /* CONFIG_IEEE80211AX */
+ 	} else {
++		if (!hostapd_config_fill_extn(conf, bss, buf, pos, line))
++			return 0;
+ 		wpa_printf(MSG_ERROR,
+ 			   "Line %d: unknown configuration item '%s'",
+ 			   line, buf);
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 8f25e6e..e3d8a62 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -6763,6 +6763,12 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 			reply_len = -1;
+ #endif /* CONFIG_IEEE80211AX */
+ 	} else {
++		if (!hostapd_ctrl_iface_receive_process_extn(hapd, buf, reply,
++							     reply_size,
++							     from, fromlen,
++							     &reply_len))
++			return reply_len;
++
+ 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
+ 		reply_len = 16;
+ 	}
+diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
+index 7ec9c98..49a9aec 100644
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -11,6 +11,7 @@
+ 
+ #include "common/wpa_ctrl.h"
+ #include "common/ieee802_11_defs.h"
++#include "../qcn_extns/hostapd_cli_extn.h"
+ #include "utils/common.h"
+ #include "utils/eloop.h"
+ #include "utils/edit.h"
+@@ -231,9 +232,11 @@ static inline int wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd)
+ 	return _wpa_ctrl_command(ctrl, cmd, 1);
+ }
+ 
+-
+-static int hostapd_cli_cmd(struct wpa_ctrl *ctrl, const char *cmd,
+-			   int min_args, int argc, char *argv[])
++#ifndef CONFIG_QCN_EXTN
++static
++#endif
++int hostapd_cli_cmd(struct wpa_ctrl *ctrl, const char *cmd,
++		    int min_args, int argc, char *argv[])
+ {
+ 	char buf[4096];
+ 
+@@ -2375,6 +2375,9 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+ 	  "=Add/Delete/Show/Clear accept MAC ACL" },
+ 	{ "deny_acl", hostapd_cli_cmd_deny_macacl, NULL,
+ 	  "=Add/Delete/Show/Clear deny MAC ACL" },
++
++	HOSTAPD_CLI_CMDS_EXTN
++
+ 	{ "poll_sta", hostapd_cli_cmd_poll_sta, hostapd_complete_stations,
+ 	  "<addr> = poll a STA to check connectivity with a QoS null frame" },
+ 	{ "channel_bw", hostapd_cli_cmd_channel_bw, NULL,
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 17f45dc..77144d6 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -376,6 +376,7 @@ struct hostapd_config * hostapd_config_defaults(void)
+ 	conf->afc_chan_sel_config = HOSTAPD_AFC_CHAN_SEL_ALL;
+ 
+ 	hostapd_set_and_check_bw320_offset(conf, 0);
++	hostapd_config_defaults_extn(conf);
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	/* set ML max rec links as Invalid */
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 30daed8..676eabb 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -291,6 +291,7 @@ struct hostapd_bss_config {
+ 	char snoop_iface[IFNAMSIZ + 1];
+ 	char vlan_bridge[IFNAMSIZ + 1];
+ 	char wds_bridge[IFNAMSIZ + 1];
++	struct hostapd_bss_config_extn bss_extn;
+ 	int bridge_hairpin; /* hairpin_mode on bridge members */
+ 
+ 	enum hostapd_logger_level logger_syslog_level, logger_stdout_level;
+@@ -1098,6 +1099,7 @@ struct hostapd_config {
+ 	struct hostapd_bss_config **bss, *last_bss;
+ 	size_t num_bss;
+ 
++	struct hostapd_config_extn conf_extn;
+ 	u16 beacon_int;
+ 	int rts_threshold;
+ 	int fragm_threshold;
+-- 
+2.34.1
+

@@ -1,0 +1,45 @@
+From 9fed140adc2c5f3072ee1ed182d778f2250ca5dd Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 5 Feb 2026 11:50:37 +0530
+Subject: [PATCH] sigma_dut: fix mld_ap config for CoHosted BSS and MBSS
+ testcases
+
+CoHosted BSS and MBSS testcases run in both EHT and HE programs, but
+mld_ap was being set unconditionally for both. Recent hostapd changes
+require mld_ap to be configured only when 11be mode is enabled, which
+caused VAP bringup failures in HE program testcases.
+
+Add a condition to apply mld_ap only for EHT / 11be mode testcases.
+
+Fixes: Icb668e5e0(UPSTREAM:PROTOCOL: sigma_dut: Fixes for CoHostedBSS
+support)
+Patch-dependency: 073-sigma-dut-Add-support-for-CoHosted-BSS.patch
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -11999,7 +11999,8 @@ skip_vht_parameters_set:
+ 					fprintf(f, "wpa_passphrase=%s\n", dut->mbss.conf[i].psk);
+ 				}
+ 
+-				fprintf(f, "mld_ap=1\n");
++				if (mode == AP_11be)
++					fprintf(f, "mld_ap=1\n");
+ 			}
+ 		}
+ 
+@@ -12125,7 +12126,9 @@ skip_vht_parameters_set:
+ 
+ 				if (dut->multi_mbssid == VALUE_ENABLED)
+ 					fprintf(f, "dtim_period=1\n");
+-				fprintf(f, "mld_ap=1\n");
++
++				if (mode == AP_11be)
++					fprintf(f, "mld_ap=1\n");
+ 			}
+ 		}
+ 

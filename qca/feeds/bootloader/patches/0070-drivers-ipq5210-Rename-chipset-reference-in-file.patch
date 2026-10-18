@@ -1,0 +1,108 @@
+From 192c4c641e86df020ed5c47e860ad9df4222cd0e Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Tue, 23 Dec 2025 13:03:31 +0530
+Subject: [PATCH] drivers: ipq5210: Rename chipset reference in file
+
+Update the file to replace the chipset reference
+from ipq5200 to ipq5210 for consistency.
+
+Change-Id: Ie8cb0cf1e0d5708b248da8c1aa7506c785a289df
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ drivers/clk/qcom/Kconfig      | 6 +++---
+ drivers/clk/qcom/Makefile     | 2 +-
+ drivers/pci/pcie_dw_qcom.c    | 4 ++--
+ drivers/pinctrl/qcom/Kconfig  | 6 +++---
+ drivers/pinctrl/qcom/Makefile | 2 +-
+ 5 files changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index b77e138a136..58e5290634e 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -47,12 +47,12 @@ config CLK_QCOM_IPQ5424
+ 	  on the Snapdragon IPQ5424 SoC. This driver supports the clocks
+ 	  and resets exposed by the GCC hardware block.
+ 
+-config CLK_QCOM_IPQ5200
+-	bool "Qualcomm IPQ5200 GCC"
++config CLK_QCOM_IPQ5210
++	bool "Qualcomm IPQ5210 GCC"
+ 	select CLK_QCOM
+ 	help
+ 	  Say Y here to enable support for the Global Clock Controller
+-	  on the Snapdragon IPQ5200 SoC. This driver supports the clocks
++	  on the Snapdragon IPQ5210 SoC. This driver supports the clocks
+ 	  and resets exposed by the GCC hardware block.
+ 
+ config CLK_QCOM_IPQ9670
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index cd1f7ac3310..d5d680af083 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -9,7 +9,7 @@ obj-$(CONFIG_CLK_QCOM_APQ8096) += clock-apq8096.o
+ obj-$(CONFIG_CLK_QCOM_IPQ4019) += clock-ipq4019.o
+ obj-$(CONFIG_CLK_QCOM_IPQ5332) += clock-ipq5332.o
+ obj-$(CONFIG_CLK_QCOM_IPQ5424) += clock-ipq5424.o
+-obj-$(CONFIG_CLK_QCOM_IPQ5200) += clock-ipq5200.o
++obj-$(CONFIG_CLK_QCOM_IPQ5210) += clock-ipq5210.o
+ obj-$(CONFIG_CLK_QCOM_IPQ9574) += clock-ipq9574.o
+ obj-$(CONFIG_CLK_QCOM_IPQ9670) += clock-ipq9670.o
+ obj-$(CONFIG_CLK_QCOM_QCM2290) += clock-qcm2290.o
+diff --git a/drivers/pci/pcie_dw_qcom.c b/drivers/pci/pcie_dw_qcom.c
+index a2f158ff730..c19964528b9 100644
+--- a/drivers/pci/pcie_dw_qcom.c
++++ b/drivers/pci/pcie_dw_qcom.c
+@@ -728,7 +728,7 @@ static const struct qcom_pcie_ops ops_ipq5424 = {
+ 	.clear_sid = qcom_pcie_clear_sidtable,
+ };
+ 
+-static const struct qcom_pcie_ops ops_ipq5200 = {
++static const struct qcom_pcie_ops ops_ipq5210 = {
+ 	.config_sid = NULL,
+ 	.sku = NULL,
+ 	.clear_sid = qcom_pcie_clear_sidtable,
+@@ -749,7 +749,7 @@ static const struct udevice_id qcom_pcie_ids[] = {
+ 	{ .compatible = "qcom,pcie-sm8550", .data = (ulong)&ops_1_9_0 },
+ 	{ .compatible = "qcom,pcie-x1e80100", .data = (ulong)&ops_1_9_0 },
+ 	{ .compatible = "qcom,pcie-ipq9574", .data = (ulong) &ops_ipq9574},
+-	{ .compatible = "qcom,pcie-ipq5200", .data = (ulong) &ops_ipq5200},
++	{ .compatible = "qcom,pcie-ipq5210", .data = (ulong) &ops_ipq5210},
+ 	{ .compatible = "qcom,pcie-ipq5332", .data = (ulong) &ops_ipq5332},
+ 	{ .compatible = "qcom,pcie-ipq5424", .data = (ulong) &ops_ipq5424},
+ 	{ }
+diff --git a/drivers/pinctrl/qcom/Kconfig b/drivers/pinctrl/qcom/Kconfig
+index a3deec5f263..f9d87523ba8 100644
+--- a/drivers/pinctrl/qcom/Kconfig
++++ b/drivers/pinctrl/qcom/Kconfig
+@@ -41,11 +41,11 @@ config PINCTRL_QCOM_IPQ5424
+ 	  Say Y here to enable support for pinctrl on the IPQ5424 SoC,
+ 	  as well as the associated GPIO driver.
+ 
+-config PINCTRL_QCOM_IPQ5200
+-	bool "Qualcomm IPQ5200 GCC"
++config PINCTRL_QCOM_IPQ5210
++	bool "Qualcomm IPQ5210 GCC"
+ 	select PINCTRL_QCOM
+ 	help
+-	  Say Y here to enable support for pinctrl on the IPQ5200 SoC,
++	  Say Y here to enable support for pinctrl on the IPQ5210 SoC,
+ 	  as well as the associated GPIO driver.
+ 
+ config PINCTRL_QCOM_IPQ9670
+diff --git a/drivers/pinctrl/qcom/Makefile b/drivers/pinctrl/qcom/Makefile
+index b02701586fe..0fd0c44d36d 100644
+--- a/drivers/pinctrl/qcom/Makefile
++++ b/drivers/pinctrl/qcom/Makefile
+@@ -5,7 +5,7 @@
+ obj-$(CONFIG_PINCTRL_QCOM) += pinctrl-qcom.o
+ obj-$(CONFIG_PINCTRL_QCOM_APQ8016) += pinctrl-apq8016.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ4019) += pinctrl-ipq4019.o
+-obj-$(CONFIG_PINCTRL_QCOM_IPQ5200) += pinctrl-ipq5200.o
++obj-$(CONFIG_PINCTRL_QCOM_IPQ5210) += pinctrl-ipq5210.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5332) += pinctrl-ipq5332.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ5424) += pinctrl-ipq5424.o
+ obj-$(CONFIG_PINCTRL_QCOM_IPQ9574) += pinctrl-ipq9574.o
+-- 
+2.34.1
+

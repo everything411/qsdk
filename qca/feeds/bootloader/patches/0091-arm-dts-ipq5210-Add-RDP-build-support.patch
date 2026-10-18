@@ -1,0 +1,30 @@
+From b98105b6453faaefaf6a63660fe6f60ea6261990 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Tue, 24 Mar 2026 20:58:02 +0530
+Subject: [PATCH] arm: dts: ipq5210: Add RDP build support
+
+Enable build support for the RDP511 and RDP512
+reference design platforms.
+
+Change-Id: I268418a7a109e38c40a7e2bbe169883fea8ae8a2
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index e809587ae6c..dd881118231 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -10,6 +10,8 @@ dtb-$(CONFIG_TARGET_IPQ5210) += ipq5210-emulation.dtb \
+ 				ipq5210-rdp503.dtb \
+ 				ipq5210-rdp504.dtb \
+ 				ipq5210-rdp505.dtb \
++				ipq5210-rdp511.dtb \
++				ipq5210-rdp512.dtb \
+ 				ipq5210-db-hm01.1.dtb \
+ 				ipq5210-db-hm02.1.dtb
+ 
+-- 
+2.34.1
+

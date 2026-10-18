@@ -1,0 +1,364 @@
+From 01e7c3429219101939ada1be5e99f5277bd1e4c5 Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Tue, 28 May 2024 12:45:31 +0530
+Subject: [PATCH] sigma_dut: Enable support for adding AKMSuites and PMF
+for each interface.
+
+Since mixed mode is supported, AKMSuite and PMF also
+needs to be saved per interface instead of the whole MLD.
+
+Add support to get and update the security configs for each link
+separately for mixed mode.
+
+Sample CAPI command:(which is given in MLD level)
+sigma_dut -l ap_set_security,NAME,ATH-CSU1-Cad65,KEYMGNT,SAE,
+PSK,12345678
+
+Sample CAPI command in which security modes are configured for each
+link differently:(mixed mode)
+
+sigma_dut -l ap_set_security,NAME,APUT,Interface,5G,PSK,12345678,
+AKMSuiteType,"2;4;6;8;9;24;25",PairwiseCipher,"AES-CCMP-128 AES-GCMP-256",
+GroupCipher,AES-CCMP-128,GroupMgntCipher,BIP-CMAC-128,PMF,Optional,
+BeaconProtection,1,ECGroupID,"19 20"
+
+sigma_dut -l ap_set_security,NAME,APUT,Interface,6G,PSK,12345678,
+AKMSuiteType,"8;9;24;25",PairwiseCipher,"AES-CCMP-128 AES-GCMP-256",
+GroupCipher,AES-CCMP-128,GroupMgntCipher,BIP-CMAC-128,PMF,Required,
+BeaconProtection,1,ECGroupID,"19 20"
+
+Patch dependency: 065-sigma-dut-Add-EHT-program.patch
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c        | 83 ++++++++++++++++++++++++++++++++++++++++++-----------
+ sigma_dut.h |  1 +
+ 2 files changed, 67 insertions(+), 17 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -170,6 +170,22 @@ static int ap_ft_enabled(struct sigma_du
+ 		  (1 << AKM_FT_FILS_SHA384)));
+ }
+ 
++static int ap_ft_enabled_link(struct sigma_dut *dut, int akm_values)
++{
++	return dut->ap_ft_oa == 1 ||
++		dut->ap_ft_ds == VALUE_ENABLED ||
++		dut->ap_key_mgmt == AP_WPA2_FT_EAP ||
++		dut->ap_key_mgmt == AP_WPA2_FT_PSK ||
++		dut->ap_key_mgmt == AP_WPA2_ENT_FT_EAP ||
++		(akm_values &
++		 ((1 << AKM_FT_EAP) |
++		  (1 << AKM_FT_PSK) |
++		  (1 << AKM_FT_SAE) |
++		  (1 << AKM_FT_SAE_EXT_KEY) |
++		  (1 << AKM_FT_SUITE_B) |
++		  (1 << AKM_FT_FILS_SHA256) |
++		  (1 << AKM_FT_FILS_SHA384)));
++}
+ 
+ static enum sigma_cmd_result cmd_ap_ca_version(struct sigma_dut *dut,
+ 					       struct sigma_conn *conn,
+@@ -3021,6 +3037,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	unsigned int wlan_tag = 1;
+ 	const char *security;
+ 	bool pmf_set = false;
++	int akm_values = 0;
++	int link_specific = 0;
+ 
+ 	val = get_param(cmd, "WLAN_TAG");
+ 	if (val) {
+@@ -3032,6 +3050,15 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		}
+ 	}
+ 
++	val = get_param(cmd, "Interface");
++	if (val)
++		link_specific = 1;
++
++	if (link_specific)
++		akm_values = dut->ap_akm_link_values[dut->num_links - 1];
++	else
++		akm_values = dut->ap_akm_values;
++
+ 	security = get_param(cmd, "Security");
+ 
+ 	if (wlan_tag > 1) {
+@@ -3199,14 +3226,14 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		if (strcasecmp(val, "WPA2-PSK") == 0 ||
+ 		    (security && strcasecmp(security, "PSK") == 0 &&
+ 		     strcasecmp(val, "WPA2") == 0)) {
+-			if (ap_ft_enabled(dut))
++			if (ap_ft_enabled_link(dut, akm_values))
+ 				dut->ap_key_mgmt = AP_WPA2_FT_PSK;
+ 			else
+ 				dut->ap_key_mgmt = AP_WPA2_PSK;
+ 			dut->ap_cipher = AP_CCMP;
+ 		} else if (strcasecmp(val, "WPA2-EAP") == 0 ||
+ 			   strcasecmp(val, "WPA2-Ent") == 0) {
+-			if (ap_ft_enabled(dut))
++			if (ap_ft_enabled_link(dut, akm_values))
+ 				dut->ap_key_mgmt = AP_WPA2_ENT_FT_EAP;
+ 			else
+ 				dut->ap_key_mgmt = AP_WPA2_EAP;
+@@ -3492,7 +3519,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		val = get_param(cmd, "passphrase");
+ 	if (val) {
+ 		if (dut->ap_key_mgmt != AP_WPA2_SAE &&
+-		    (dut->ap_akm_values & (AKM_WPA_PSK | AKM_SAE)) !=
++		    (akm_values & (AKM_WPA_PSK | AKM_SAE)) !=
+ 		    AKM_SAE &&
+ 		    strlen(val) > 64) {
+ 			sigma_dut_print(dut, DUT_MSG_ERROR,
+@@ -3520,9 +3547,15 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		if (strcasecmp(val, "Disabled") == 0) {
+ 			dut->ap_pmf = AP_PMF_DISABLED;
+ 		} else if (strcasecmp(val, "Optional") == 0) {
+-			dut->ap_pmf = AP_PMF_OPTIONAL;
++			if (link_specific)
++				dut->ap_pmf_link[dut->num_links - 1] = AP_PMF_OPTIONAL;
++			else
++				dut->ap_pmf = AP_PMF_OPTIONAL;
+ 		} else if (strcasecmp(val, "Required") == 0) {
+-			dut->ap_pmf = AP_PMF_REQUIRED;
++			if (link_specific)
++				dut->ap_pmf_link[dut->num_links - 1] = AP_PMF_REQUIRED;
++			else
++				dut->ap_pmf = AP_PMF_REQUIRED;
+ 		} else {
+ 			send_resp(dut, conn, SIGMA_INVALID,
+ 				  "errorCode,Unsupported PMF");
+@@ -3562,8 +3595,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 	val = get_param(cmd, "AKMSuiteType");
+ 	if (val) {
+ 		const char *in_pos = val;
+-
+-		dut->ap_akm_values = 0;
++		int akm_values = 0;
+ 		while (*in_pos) {
+ 			int akm = atoi(in_pos);
+ 
+@@ -3573,7 +3605,7 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				return STATUS_SENT;
+ 			}
+ 
+-			dut->ap_akm_values |= 1 << akm;
++			akm_values |= 1 << akm;
+ 
+ 			in_pos = strchr(in_pos, ';');
+ 			if (!in_pos)
+@@ -3582,13 +3614,23 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				in_pos++;
+ 		}
+ 		dut->ap_akm = 1;
+-		if (dut->ap_akm_values & (1 << 14))
++		if (akm_values & (1 << 14))
+ 			dut->ap_add_sha384 = 1;
+-		if (dut->ap_akm_values & (1 << 15))
++		if (akm_values & (1 << 15))
+ 			dut->ap_add_sha384 = 1;
++
++		if (link_specific)
++			dut->ap_akm_link_values[dut->num_links - 1] = akm_values;
++		else
++			dut->ap_akm_values = akm_values;
+ 	}
+ 
+-	if (dut->ap_key_mgmt == AP_OPEN && !dut->ap_akm_values) {
++	if (link_specific)
++		akm_values = dut->ap_akm_link_values[dut->num_links - 1];
++	else
++		akm_values = dut->ap_akm_values;
++
++	if (dut->ap_key_mgmt == AP_OPEN && !akm_values) {
+ 		dut->ap_hs2 = 0;
+ 		dut->ap_pmf = AP_PMF_DISABLED;
+ 	}
+@@ -9483,6 +9525,8 @@ enum sigma_cmd_result cmd_ap_config_comm
+ 	bool mld_sae_set = false;
+ 	int chwidth_temp;
+ 	int j;
++	int akm_values;
++	int ap_pmf;
+ 
+ 	drv = get_driver_type(dut);
+ 	mode = dut->ap_mode;
+@@ -9550,6 +9594,24 @@ write_conf:
+ 		dtim = dut->dtim;
+ 		chan = dut->ap_tag_channel[0];
+ 		offset = dut->ap_chwidth_offset_1;
++
++		/* Use akm_values in ap_config_commit as it
++		 * holds the values correctly in case of link specific
++		 * cases or whole MLD level/legcay cases.
++		 */
++		if (dut->ap_akm_link_values[conf_counter] != VALUE_NOT_SET)
++			akm_values = dut->ap_akm_link_values[conf_counter];
++		else
++			akm_values = dut->ap_akm_values;
++
++		/* Use ap_pmf in ap_config_commit as it
++		 * holds the values correctly in case of link specific
++		 * cases or whole MLD level/legcay cases.
++		 */
++		if (dut->ap_pmf_link[conf_counter] != -1)
++			ap_pmf = dut->ap_pmf_link[conf_counter];
++		else
++			ap_pmf = dut->ap_pmf;
+ #ifdef ANDROID
+ 		if (chmod(f2, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP) < 0)
+ 			sigma_dut_print(dut, DUT_MSG_ERROR,
+@@ -9575,6 +9637,16 @@ write_conf:
+ 		dtim = dut->dtim_1;
+ 		chan = dut->ap_channel;
+ 		offset = dut->ap_chwidth_offset;
++
++		if (dut->ap_akm_link_values[conf_counter] != VALUE_NOT_SET)
++			akm_values = dut->ap_akm_link_values[0];
++		else
++			akm_values = dut->ap_akm_values;
++
++		if (dut->ap_pmf_link[conf_counter] != -1)
++			ap_pmf = dut->ap_pmf_link[0];
++		else
++			ap_pmf = dut->ap_pmf;
+ 	}
+ 
+ 	if (drv == DRIVER_MAC80211) {
+@@ -9883,7 +9955,7 @@ write_conf:
+ 	else
+ 		fprintf(f, ":%02x:%02x\n", main_bssid[4], main_bssid[5]);
+ 
+-	if (dut->ap_akm_values) {
++	if (akm_values) {
+ 		struct {
+ 			int akm;
+ 			const char *str;
+@@ -9911,7 +9983,7 @@ write_conf:
+ 
+ 		fprintf(f, "wpa_key_mgmt=");
+ 		for (i = 0; i < ARRAY_SIZE(akms); i++) {
+-			if (dut->ap_akm_values & (1 << akms[i].akm)) {
++			if (akm_values & (1 << akms[i].akm)) {
+ 				fprintf(f, "%s%s", first ? "" : " ",
+ 					akms[i].str);
+ 				first = 0;
+@@ -9927,15 +9999,15 @@ write_conf:
+ 				hostapd_cipher_name(dut->ap_group_cipher));
+ 		if (write_hostapd_conf_password(
+ 			    dut, f,
+-			    (dut->ap_akm_values &
++			    (akm_values &
+ 			     ((1 << AKM_SAE) | (1 << AKM_FT_SAE))) &&
+-			    !(dut->ap_akm_values &
++			    !(akm_values &
+ 			      ((1 << AKM_WPA_PSK) | (1 << AKM_FT_PSK))) &&
+ 			    dut->ap_passphrase[0]) < 0) {
+ 			fclose(f);
+ 			return ERROR_SEND_STATUS;
+ 		}
+-		if (dut->ap_akm_values & ((1 << AKM_WPA_EAP) |
++		if (akm_values & ((1 << AKM_WPA_EAP) |
+ 					  (1 << AKM_FT_EAP) |
+ 					  (1 << AKM_EAP_SHA256) |
+ 					  (1 << AKM_SUITE_B) |
+@@ -10007,7 +10079,7 @@ write_conf:
+ 			key_mgmt = "WPA-PSK FT-PSK";
+ 		else
+ 			key_mgmt = "WPA-PSK";
+-		switch (dut->ap_pmf) {
++		switch (ap_pmf) {
+ 		case AP_PMF_DISABLED:
+ 			fprintf(f, "wpa_key_mgmt=%s%s\n", key_mgmt,
+ 				dut->ap_add_sha256 ? " WPA-PSK-SHA256" : "");
+@@ -10059,7 +10131,7 @@ write_conf:
+ 			fprintf(f, "wpa=3\n");
+ 		else
+ 			fprintf(f, "wpa=1\n");
+-		switch (dut->ap_pmf) {
++		switch (ap_pmf) {
+ 		case AP_PMF_DISABLED:
+ 			if (dut->ap_add_sha256)
+ 				fprintf(f, "wpa_key_mgmt=WPA-EAP WPA-EAP-SHA256\n");
+@@ -10197,13 +10269,13 @@ skip_key_mgmt:
+ 	if (dut->ap_ocvc == 1 || dut->ap_ocvc == 0)
+ 		fprintf(f, "ocv=%d\n", dut->ap_ocvc);
+ 
+-	switch (dut->ap_pmf) {
++	switch (ap_pmf) {
+ 	case AP_PMF_DISABLED:
+ 		break;
+ 	case AP_PMF_OPTIONAL:
+ 		fprintf(f, "ieee80211w=1\n");
+ 		if (dut->ap_key_mgmt == AP_WPA2_PSK_SAE ||
+-		    (dut->ap_akm_values & (AKM_SAE | AKM_WPA_PSK)) ==
++		    (akm_values & (AKM_SAE | AKM_WPA_PSK)) ==
+ 		    (AKM_SAE | AKM_WPA_PSK))
+ 			fprintf(f, "sae_require_mfp=1\n");
+ 		break;
+@@ -10212,13 +10284,13 @@ skip_key_mgmt:
+ 		break;
+ 	}
+ 
+-	if ((dut->ap_pmf != AP_PMF_DISABLED || dut->program == PROGRAM_EHT) &&
++	if ((ap_pmf != AP_PMF_DISABLED || dut->program == PROGRAM_EHT) &&
+ 	    dut->ap_group_mgmt_cipher != AP_NO_GROUP_MGMT_CIPHER_SET)
+ 		fprintf(f, "group_mgmt_cipher=%s\n",
+ 			hostapd_group_mgmt_cipher_name(
+ 				dut->ap_group_mgmt_cipher));
+ 
+-	if (ap_ft_enabled(dut)) {
++	if (ap_ft_enabled_link(dut, akm_values)) {
+ 		unsigned char own_addr[ETH_ALEN], ap2_addr[ETH_ALEN];
+ 		char own_addr_str[20];
+ 
+@@ -12025,6 +12097,10 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_interface_5g = 0;
+ 	dut->ap_interface_2g = 0;
+ 	dut->ap_pmf = AP_PMF_DISABLED;
++	/* Resetting this interface specific pmf value to -1, as it will
++	 * get changed only for interface specific cases as given by the user
++	 */
++	memset(dut->ap_pmf_link, -1, sizeof(dut->ap_pmf_link));
+ 
+ 	dut->wsc_fragment = 0;
+ 	dut->eap_fragment = 0;
+@@ -12059,6 +12135,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->ap_tnc_time_stamp = 0;
+ 
+ 	dut->ap_akm_values = 0;
++	memset(dut->ap_akm_link_values, VALUE_NOT_SET, sizeof(dut->ap_akm_link_values));
+ 	free(dut->ap_sae_passwords);
+ 	dut->ap_sae_passwords = NULL;
+ 	dut->ap_sae_pk = 0;
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -738,6 +738,7 @@ struct sigma_dut {
+ 	int ap_add_sha256;
+ 	int ap_add_sha384;
+ 	int ap_rsn_preauth;
++	/*Use ap_pmf for whole MLD level or legacy cases*/
+ 	enum ap_pmf {
+ 		AP_PMF_DISABLED,
+ 		AP_PMF_OPTIONAL,
+@@ -917,6 +918,7 @@ struct sigma_dut {
+ 	int ap_ul_availcap;
+ 	int ap_dl_availcap;
+ 	int ap_akm;
++	/*Use ap_akm_values for whole MLD level or legacy cases*/
+ 	unsigned int ap_akm_values;
+ 	int ap_pmksa;
+ 	int ap_pmksa_caching;
+@@ -1267,6 +1269,11 @@ struct sigma_dut {
+ 	int btm_ml_link;
+ #define MAX_MLD_SUPPORTED 2
+ 	enum ap_chwidth ap_link_chwidth[MAX_MLD_SUPPORTED];
++	/*Use ap_akm_link_values for interfcae specific cases*/
++	int ap_akm_link_values[MAX_MLD_SUPPORTED];
++
++	/*Use ap_pmf_link for interface specific cases*/
++	enum ap_pmf ap_pmf_link[MAX_MLD_SUPPORTED];
+ };
+ 
+ 

@@ -1,0 +1,346 @@
+# Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+
+#!/bin/sh
+
+cmd=$1
+parastr=$2
+
+ppe_switch_port=$(echo "$(cat /sys/kernel/debug/qca-nss-dp/mht_tx_fcgrp)" | \
+	grep -oE 'macid:[0-9]+' | awk -F: '{print $2}' | tr '\n' ' ')
+
+# Detect DSA driver type
+detect_dsa_driver() {
+	# Check device tree compatible property
+	compatible=$(cat /proc/device-tree/soc@0/*/switch0@*/compatible 2>/dev/null)
+
+	if [ -n "$compatible" ]; then
+		if echo "$compatible" | grep -q "qce2204"; then
+			echo "qce2204_dsa"
+			return
+		elif echo "$compatible" | grep -q "qca83"; then
+			echo "qca8k"
+			return
+		fi
+	fi
+
+	# Fallback to module detection if DTS check fails
+	if [ -d /sys/module/qca8k ]; then
+		echo "qca8k"
+	elif [ -d /sys/module/qce2204_dsa ]; then
+		echo "qce2204_dsa"
+	else
+		echo "none"
+	fi
+}
+
+get_numbers() {
+	input=$(cat /sys/kernel/debug/qca-nss-dp/mht_tx_fcgrp)
+	numbers=$(echo "$input" | grep -oE '[0-9]+:[0-9]+' | awk -F: '{print $2}' | tr '\n' ',')
+	numbers=${numbers%,}
+	echo "$numbers"
+}
+
+get_tagging_file() {
+	# Get master device
+	local mdev=$(ip link show | grep 'lan1@' | awk -F'[@:]' '{print $3}')
+	if [ -z "$mdev" ]; then
+		mdev=$(ip link show | grep 'lan0@' | awk -F'[@:]' '{print $3}')
+	fi
+
+	if [ -z "$mdev" ]; then
+		echo "Error: No DSA master device found." >&2
+		return 1
+	fi
+
+	local tagging_file="/sys/class/net/${mdev}/dsa/tagging"
+	if [ ! -f "$tagging_file" ]; then
+		echo "Error: Tagging file not found: $tagging_file" >&2
+		return 1
+	fi
+
+	echo "$tagging_file"
+	return 0
+}
+
+get_current_tagging() {
+	local tagging_file=$(get_tagging_file 2>&1)
+	if [ $? -ne 0 ]; then
+		echo "$tagging_file" >&2
+		return 1
+	fi
+
+	cat "$tagging_file"
+	return 0
+}
+
+delete_dsa_vlan_interfaces() {
+	interfaces=$(ip -o link show | grep 'lan[0-9]\.\d*@' | awk -F': ' '{print $2}' | cut -d'@' -f1)
+
+	for iface in $interfaces; do
+		ip link delete $iface
+	done
+}
+
+remove_dsa_interfaces_from_bridge() {
+	interfaces=$(bridge link | grep -E 'lan[0-9]' | grep -v 'wlan' | awk -F': ' '{print $2}' | cut -d'@' -f1)
+
+	for iface in $interfaces; do
+		ip link set "$iface" nomaster
+	done
+}
+
+bring_down_dsa_interfaces() {
+	interfaces=$(ip -o link show | grep 'lan[0-9]\d*@' | awk -F': ' '{print $2}' | cut -d'@' -f1)
+
+	for iface in $interfaces; do
+		ip link set "$iface" down
+	done
+}
+
+bring_up_dsa_interfaces() {
+	interfaces=$(ip -o link show | grep 'lan[0-9]\d*@' | awk -F': ' '{print $2}' | cut -d'@' -f1)
+
+	for iface in $interfaces; do
+		ip link set "$iface" up
+	done
+}
+
+handle_proto() {
+	local driver_type=$(detect_dsa_driver)
+
+	if [ "$driver_type" = "none" ]; then
+		echo "need to start dsa firstly."
+		return 1
+	fi
+
+	proto_value=$(echo $cmd | cut -d'=' -f2)
+
+	# Validate protocol value - must be one of the three supported protocols
+	if [ "$proto_value" != "qca_8021q" ] && [ "$proto_value" != "qca_4b" ] && [ "$proto_value" != "none" ]; then
+		echo "Invalid protocol: $proto_value. Supported protocols: qca_8021q, qca_4b, none"
+		return 1
+	fi
+
+	# Get tagging file path
+	tagging_file=$(get_tagging_file)
+	if [ $? -ne 0 ] || [ -z "$tagging_file" ]; then
+		echo "Failed to get tagging file."
+		return 1
+	fi
+
+	# Get current tagging
+	current_tagging=$(cat "$tagging_file")
+	if [ "$proto_value" = "$current_tagging" ]; then
+		echo "proto is not changed, skipping."
+		return 1
+	fi
+
+	# Get master device from tagging file path
+	mdev=$(echo "$tagging_file" | awk -F'/' '{print $5}')
+
+	bring_down_dsa_interfaces
+	ifconfig "$mdev" down
+
+	# Changing proto via sysfs won't unregister the interfaces,
+	#  delete all DSA VLAN interfaces if any to avoid VLAN as VP configuration residue in PPE driver,
+	#  remove all DSA interfaces from bridge to avoid legacy configuration residue with bridge.
+	# ALL configuration need to cover manually/network script after DSA commands.
+	delete_dsa_vlan_interfaces
+	remove_dsa_interfaces_from_bridge
+
+	if [ "$proto_value" = "qca_8021q" ]; then
+		echo qca_8021q >> "$tagging_file"
+	elif [ "$proto_value" = "qca_4b" ]; then
+		echo qca_4b >> "$tagging_file"
+	elif [ "$proto_value" = "none" ]; then
+		echo none >> "$tagging_file"
+	else
+		echo "not support"
+		return 1
+	fi
+
+	ifconfig "$mdev" up
+	bring_up_dsa_interfaces
+
+	# For qca8k driver, return for dsa interfaces are not in network config by default
+	if [ "$driver_type" = "qca8k" ]; then
+		return 0
+	fi
+
+	if [ "$proto_value" = "qca_8021q" ] || [ "$proto_value" = "qca_4b" ]; then
+		# For qca_8021q and qca_4b, restart network
+		echo "Restarting network for protocol $proto_value..."
+		/etc/init.d/network restart
+	elif [ "$proto_value" = "none" ]; then
+		# For none protocol, add master device to br-lan
+		echo "Adding $mdev to bridge br-lan..."
+		brctl addif br-lan "$mdev" 2>/dev/null || ip link set "$mdev" master br-lan
+	fi
+
+	return 0
+}
+
+load_qca8k() {
+	local kernel_version=$(uname -r)
+
+	[ -e "/lib/modules/$kernel_version/qca8k.ko" ] && {
+		if [ "$parastr" = "mht_holb" ]; then
+			numbers=$(get_numbers)
+			[ -d /sys/module/qca8k ] || insmod qca8k fc_group_arr=$numbers
+		else
+			[ -d /sys/module/qca8k ] || insmod qca8k
+		fi
+	}
+}
+
+unload_qca8k() {
+	[ -d /sys/module/qca8k ] && rmmod qca8k
+}
+
+turn_off_masterdev_cksm_offloading() {
+	mdev=`ip link show  | grep lan1@ | awk -F'[@:]' '{print $3}'`
+	if grep -q "qca_4b" /sys/class/net/"$mdev"/dsa/tagging\
+	   || [ "$(cat /sys/module/qca_nss_dp/parameters/nss_dp_mht_multi_txring)" -eq 1 ]
+	then
+		ethtool -K "$mdev" tx off
+	fi
+}
+
+turn_on_masterdev_cksm_offloading() {
+	mdev=`ip link show  | grep lan1@ | awk -F'[@:]' '{print $3}'`
+	if grep -q "qca_4b" /sys/class/net/"$mdev"/dsa/tagging \
+	   || [ "$(cat /sys/module/qca_nss_dp/parameters/nss_dp_mht_multi_txring)" -eq 1 ]
+	then
+		ethtool -K "$mdev" tx on
+	fi
+}
+
+turn_off_hw_ath_adding() {
+	if [ "$(cat /sys/module/qca_nss_dp/parameters/nss_dp_mht_multi_txring)" -eq 1 ]; then
+		echo 0 >> /sys/ssdk/dev_id
+		ssdk_sh athtag tx set $ppe_switch_port n 0 v3 normal n n
+	fi
+}
+
+turn_on_hw_ath_adding() {
+	local ath_type=$1
+	if [ "$(cat /sys/module/qca_nss_dp/parameters/nss_dp_mht_multi_txring)" -eq 1 ]; then
+		echo 0 >> /sys/ssdk/dev_id
+		ssdk_sh athtag tx set $ppe_switch_port y $ath_type v3 normal n n
+	fi
+}
+
+turn_off_ssdk_polling() {
+	echo 1 >> /sys/ssdk/dev_id
+	echo 0 >> /sys/ssdk/mac_polling
+	echo 0 >> /sys/ssdk/dev_id
+	ssdk_sh fdb entry flush 1
+}
+
+turn_on_ssdk_polling() {
+	echo 1 >> /sys/ssdk/dev_id
+	echo 1 >> /sys/ssdk/mac_polling
+	echo 0 >> /sys/ssdk/dev_id
+}
+
+handle_qce2204_holb_config() {
+	if ! grep -qE "ipq5[34]" /tmp/sysinfo/board_name 2>/dev/null; then
+		return 0
+	fi
+
+	if [ "$(cat /sys/module/qca_nss_dp/parameters/nss_dp_mht_multi_txring)" -ne 1 ]; then
+		return 0
+	fi
+
+	local driver_type=$(detect_dsa_driver)
+	if [ "$driver_type" != "qce2204_dsa" ]; then
+		return 0
+	fi
+
+	# Get current tagging
+	local proto_value=$(get_current_tagging)
+	if [ $? -ne 0 ]; then
+		echo "Failed to get current tagging."
+		return 1
+	fi
+
+	bring_down_dsa_interfaces
+
+	if [ "$parastr" = "htt_holb" ]; then
+		if [ "$proto_value" = "qca_8021q" ] || [ "$proto_value" = "qca_4b" ]; then
+			numbers=$(get_numbers)
+			echo "$numbers" > /sys/module/qce2204_dsa/parameters/qce2204_fcgroup
+			turn_off_hw_ath_adding
+		elif [ "$proto_value" = "none" ]; then
+			echo "0xff,0xff,0xff,0xff,0xff" > /sys/module/qce2204_dsa/parameters/qce2204_fcgroup
+			turn_on_hw_ath_adding 0xfefe
+		fi
+	else
+		echo "Error: missing htt_holb when the HOLB is enabled"
+	fi
+
+	bring_up_dsa_interfaces
+
+	return 0
+}
+
+qca_dsa_start() {
+	turn_off_ssdk_polling
+	turn_off_hw_ath_adding
+	load_qca8k
+}
+
+qca_dsa_stop() {
+	unload_qca8k
+	turn_on_hw_ath_adding 0xaaaa
+	turn_on_ssdk_polling
+}
+
+if [[ $cmd = "start" ]]
+then
+	driver_type=$(detect_dsa_driver)
+	if [ "$driver_type" = "qce2204_dsa" ]; then
+		handle_qce2204_holb_config
+	else
+		qca_dsa_start
+		turn_off_masterdev_cksm_offloading
+	fi
+fi
+
+if [[ $cmd = "stop" ]]
+then
+	driver_type=$(detect_dsa_driver)
+	if [ "$driver_type" = "qce2204_dsa" ]; then
+		echo "stop command is not supported for qce2204_dsa driver."
+	else
+		turn_on_masterdev_cksm_offloading
+		qca_dsa_stop
+	fi
+fi
+
+if [[ $cmd == *"chg_proto="* ]]
+then
+	if grep -q "ipq95" /tmp/sysinfo/board_name
+	then
+		echo "change tag proto is not support on ipq95xx."
+	else
+		handle_proto
+		if [ $? -eq 0 ]; then
+			handle_qce2204_holb_config
+			turn_off_masterdev_cksm_offloading
+		fi
+	fi
+fi

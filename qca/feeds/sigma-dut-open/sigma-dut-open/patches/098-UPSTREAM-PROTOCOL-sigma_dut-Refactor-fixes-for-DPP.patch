@@ -1,0 +1,383 @@
+From b043e335b4a31ec844e0bf8c97a15da212f5f281 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Mon, 25 Nov 2024 15:43:38 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL: sigma_dut: Refactor fixes for DPP
+
+During refactoring ap_channel and ap_mode parameters in sigma_dut
+structure have been moved within the mld structure. DPP files were
+still using the old parameters. Hence, the configs were not getting
+reflected during cmd_ap_config_commit called while executing
+dev_exec_action.
+
+Updating the dpp functions to use new ap_channel and ap_mode
+parameters to start hostapd with the expected configs.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c  |  2 +-
+ dpp.c | 32 ++++++++++++++++----------------
+ 2 files changed, 17 insertions(+), 17 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -19825,11 +19825,12 @@ cmd_ap_preset_testparameters(struct sigm
+ 			     struct sigma_cmd *cmd)
+ {
+ 	const char *val;
++	int link_id = 0;
+ 
+ 	val = get_param(cmd, "Oper_Chn");
+ 	if (val) {
+ 		dut->ap_oper_chn = 1;
+-		dut->ap_channel = atoi(val);
++		dut->mld[link_id].ap_channel = atoi(val);
+ 	}
+ 
+ 	val = get_param(cmd, "DPPConfiguratorAddress");
+--- a/dpp.c
++++ b/dpp.c
+@@ -546,7 +546,8 @@ static int sigma_dut_is_ap(struct sigma_
+ }
+ 
+ 
+-static int dpp_hostapd_run(struct sigma_dut *dut, bool chirp_chan)
++static int dpp_hostapd_run(struct sigma_dut *dut, bool chirp_chan,
++			   int link_id)
+ {
+ 	if (dut->hostapd_running)
+ 		return 0;
+@@ -563,9 +564,9 @@ static int dpp_hostapd_run(struct sigma_
+ 			"Starting hostapd in unconfigured state for DPP");
+ 	snprintf(dut->ap_ssid, sizeof(dut->ap_ssid), "unconfigured");
+ 	if (!dut->ap_oper_chn)
+-		dut->ap_channel = chirp_chan ? 6 : 11;
++		dut->mld[link_id].ap_channel = chirp_chan ? 6 : 11;
+ 	dut->ap_is_dual = 0;
+-	dut->ap_mode = dut->ap_channel <= 14 ? AP_11ng : AP_11na;
++	dut->mld[link_id].ap_mode = dut->mld[link_id].ap_channel <= 14 ? AP_11ng : AP_11na;
+ 	dut->ap_key_mgmt = AP_OPEN;
+ 	dut->ap_cipher = AP_PLAIN;
+ 	return cmd_ap_config_commit(dut, NULL, NULL) == 1 ? 0 : -1;
+@@ -614,7 +615,8 @@ static const char * dpp_get_curve(struct
+ 
+ static enum sigma_cmd_result
+ dpp_get_local_bootstrap(struct sigma_dut *dut, struct sigma_conn *conn,
+-			struct sigma_cmd *cmd, int send_result, int *success)
++			struct sigma_cmd *cmd, int send_result, int link_id,
++			int *success)
+ {
+ 	const char *curve = dpp_get_curve(cmd, "DPPCryptoIdentifier");
+ 	const char *bs = get_param(cmd, "DPPBS");
+@@ -740,7 +742,7 @@ dpp_get_local_bootstrap(struct sigma_dut
+ 			pos++;
+ 	}
+ 
+-	if (sigma_dut_is_ap(dut) && dpp_hostapd_run(dut, false) < 0) {
++	if (sigma_dut_is_ap(dut) && dpp_hostapd_run(dut, false, link_id) < 0) {
+ 		send_resp(dut, conn, SIGMA_ERROR,
+ 			  "errorCode,Failed to start hostapd");
+ 		return STATUS_SENT_ERROR;
+@@ -779,7 +781,7 @@ dpp_get_local_bootstrap(struct sigma_dut
+ 		/* Default channel list (normal DUT case) */
+ 		if (sigma_dut_is_ap(dut) && dut->hostapd_running &&
+ 		    dut->ap_oper_chn) {
+-			channel = dut->ap_channel;
++			channel = dut->mld[link_id].ap_channel;
+ 			if (channel <= 14) {
+ 				res = snprintf(buf, sizeof(buf),
+ 					       "DPP_BOOTSTRAP_GEN type=%s curve=%s chan=81/%d%s%s%s%s%s",
+@@ -816,7 +818,7 @@ dpp_get_local_bootstrap(struct sigma_dut
+ 	if (dut->dpp_mdns == DPP_MDNS_CONTROLLER) {
+ 		/* Update mDNS advertisement since the local boostrapping key
+ 		 * has changed. */
+-		dpp_mdns_start(dut, DPP_MDNS_CONTROLLER);
++		dpp_mdns_start(dut, DPP_MDNS_CONTROLLER, link_id);
+ 	}
+ 
+ 	if (send_result) {
+@@ -1000,7 +1002,7 @@ static enum sigma_cmd_result dpp_set_pee
+ 
+ static int dpp_hostapd_conf_update(struct sigma_dut *dut,
+ 				   struct sigma_conn *conn, const char *ifname,
+-				   struct wpa_ctrl *ctrl)
++				   struct wpa_ctrl *ctrl, int link_id)
+ {
+ 	int res;
+ 	char buf[2000], buf2[2500], *pos, *pos2;
+@@ -1251,8 +1253,8 @@ static int dpp_hostapd_conf_update(struc
+ 	if (dut->ap_oper_chn) {
+ 		sigma_dut_print(dut, DUT_MSG_INFO,
+ 				"Set AP operating channel %d",
+-				dut->ap_channel);
+-		snprintf(buf, sizeof(buf), "SET channel %d", dut->ap_channel);
++				dut->mld[link_id].ap_channel);
++		snprintf(buf, sizeof(buf), "SET channel %d", dut->mld[link_id].ap_channel);
+ 		wpa_command(ifname, buf);
+ 	}
+ 	if (wpa_command(ifname, "DISABLE") < 0 ||
+@@ -1962,7 +1964,8 @@ static bool dpp_peer_uri_available(struc
+ 
+ static enum sigma_cmd_result dpp_automatic_dpp(struct sigma_dut *dut,
+ 					       struct sigma_conn *conn,
+-					       struct sigma_cmd *cmd)
++					       struct sigma_cmd *cmd,
++					       int link_id)
+ {
+ 	const char *bs = get_param(cmd, "DPPBS");
+ 	const char *type = get_param(cmd, "DPPActionType");
+@@ -2134,7 +2137,7 @@ static enum sigma_cmd_result dpp_automat
+ 		}
+ 		ifname = dut->hostapd_ifname;
+ 
+-		if (dpp_hostapd_run(dut, pb) < 0) {
++		if (dpp_hostapd_run(dut, pb, link_id) < 0) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+ 				  "errorCode,Failed to start hostapd");
+ 			return STATUS_SENT_ERROR;
+@@ -2238,26 +2241,26 @@ static enum sigma_cmd_result dpp_automat
+ 
+ 	pkex_identifier[0] = '\0';
+ 	if (is_pkex_bs(bs)) {
+-		if (sigma_dut_is_ap(dut) && (dut->ap_channel != 6) &&
+-			(dut->ap_channel != 44) && (dut->ap_channel != 149)) {
++		if (sigma_dut_is_ap(dut) && (dut->mld[link_id].ap_channel != 6) &&
++			(dut->mld[link_id].ap_channel != 44) && (dut->mld[link_id].ap_channel != 149)) {
+ 			/* For now, have to make operating channel match DPP
+ 			 * listen channel. This should be removed once hostapd
+ 			 * has support for DPP listen on non-operating channel.
+ 			 */
+ 			sigma_dut_print(dut, DUT_MSG_INFO,
+ 					"Update hostapd operating channel to match listen needs");
+-			if (dut->ap_channel <= 14)
+-				dut->ap_channel = 6;
++			if (dut->mld[link_id].ap_channel <= 14)
++				dut->mld[link_id].ap_channel = 6;
+ 			else
+-				dut->ap_channel = 44;
++				dut->mld[link_id].ap_channel = 44;
+ 
+ 			if (get_driver_type(dut) == DRIVER_OPENWRT) {
+ 				snprintf(buf, sizeof(buf),
+ 					 "iwconfig %s channel %d",
+-					 dut->hostapd_ifname, dut->ap_channel);
++					 dut->hostapd_ifname, dut->mld[link_id].ap_channel);
+ 				run_system(dut, buf);
+ 			}
+-			snprintf(buf, sizeof(buf), "SET channel %d", dut->ap_channel);
++			snprintf(buf, sizeof(buf), "SET channel %d", dut->mld[link_id].ap_channel);
+ 			if (wpa_command(ifname, buf) < 0 ||
+ 			    wpa_command(ifname, "DISABLE") < 0 ||
+ 			    wpa_command(ifname, "ENABLE") < 0) {
+@@ -3030,11 +3033,11 @@ static enum sigma_cmd_result dpp_automat
+ 
+ 		if (sigma_dut_is_ap(dut) && dut->hostapd_running &&
+ 		    dut->ap_oper_chn)
+-			freq = channel_to_freq(dut, dut->ap_channel);
++			freq = channel_to_freq(dut, dut->mld[link_id].ap_channel);
+ 
+ 		if (is_pkex_bs(bs)) {
+ 			/* default: channel 6 or 44 for PKEX */
+-			if (dut->ap_channel <= 14)
++			if (dut->mld[link_id].ap_channel <= 14)
+ 				freq = 2437;
+ 			else
+ 				freq = 5220;
+@@ -3056,7 +3059,7 @@ static enum sigma_cmd_result dpp_automat
+ 
+ 			if (sigma_dut_is_ap(dut) && !chirp &&
+ 			    dut->ap_start_disabled &&
+-			    atoi(val) != dut->ap_channel) {
++			    atoi(val) != dut->mld[link_id].ap_channel) {
+ 				sigma_dut_print(dut, DUT_MSG_INFO,
+ 						"Use requested listen channel as the initial operating channel");
+ 				snprintf(buf, sizeof(buf), "SET channel %d",
+@@ -3622,7 +3625,7 @@ static enum sigma_cmd_result dpp_automat
+ 	} else if (sigma_dut_is_ap(dut) &&
+ 		   strcasecmp(prov_role, "Enrollee") == 0) {
+ 	update_ap:
+-		res = dpp_hostapd_conf_update(dut, conn, ifname, ctrl);
++		res = dpp_hostapd_conf_update(dut, conn, ifname, ctrl, link_id);
+ 		if (res == 0)
+ 			goto out;
+ 		if (res < 0) {
+@@ -3769,7 +3772,8 @@ err:
+ 
+ static enum sigma_cmd_result dpp_manual_dpp(struct sigma_dut *dut,
+ 					    struct sigma_conn *conn,
+-					    struct sigma_cmd *cmd)
++					    struct sigma_cmd *cmd,
++					    int link_id)
+ {
+ 	const char *auth_role = get_param(cmd, "DPPAuthRole");
+ 	const char *self_conf = get_param(cmd, "DPPSelfConfigure");
+@@ -3791,11 +3795,11 @@ static enum sigma_cmd_result dpp_manual_
+ 	}
+ 
+ 	if (strcasecmp(bs, "NFC") == 0) {
+-		res = dpp_automatic_dpp(dut, conn, cmd);
++		res = dpp_automatic_dpp(dut, conn, cmd, link_id);
+ 		goto out;
+ 	}
+ 
+-	res = dpp_get_local_bootstrap(dut, conn, cmd, 0, &success);
++	res = dpp_get_local_bootstrap(dut, conn, cmd, 0, link_id, &success);
+ 	if (res != STATUS_SENT || !success)
+ 		goto out;
+ 
+@@ -3813,7 +3817,7 @@ static enum sigma_cmd_result dpp_manual_
+ 			goto out;
+ 		}
+ 
+-		res = dpp_automatic_dpp(dut, conn, cmd);
++		res = dpp_automatic_dpp(dut, conn, cmd, link_id);
+ 		goto out;
+ 	}
+ 
+@@ -3827,7 +3831,7 @@ static enum sigma_cmd_result dpp_manual_
+ 			}
+ 		}
+ 
+-		res = dpp_automatic_dpp(dut, conn, cmd);
++		res = dpp_automatic_dpp(dut, conn, cmd, link_id);
+ 		goto out;
+ 	}
+ 
+@@ -4418,7 +4422,7 @@ static void mdns_callback(DNSServiceRef
+ 
+ #define AVAHI_SERVICE "/etc/avahi/services/sigma_dut-dpp.service"
+ 
+-int dpp_mdns_start(struct sigma_dut *dut, enum dpp_mdns_role role)
++int dpp_mdns_start(struct sigma_dut *dut, enum dpp_mdns_role role, int link_id)
+ {
+ 	const char *org = "Qualcomm DPP testing";
+ 	const char *location = "Somewhere in the test network";
+@@ -4486,7 +4490,7 @@ int dpp_mdns_start(struct sigma_dut *dut
+ 	}
+ 
+ 	if (role == DPP_MDNS_RELAY) {
+-		chan = dut->ap_channel;
++		chan = dut->mld[link_id].ap_channel;
+ 		if (!chan)
+ 			chan = 11;
+ 		if (chan >= 1 && chan <= 13)
+@@ -4613,16 +4617,17 @@ void dpp_mdns_stop(struct sigma_dut *dut
+ static enum sigma_cmd_result dpp_set_mdns_advertise(struct sigma_dut *dut,
+ 						    struct sigma_conn *conn,
+ 						    struct sigma_cmd *cmd,
+-						    const char *role)
++						    const char *role,
++						    int link_id)
+ {
+ 	int ret = -1;
+ 
+ 	if (strcasecmp(role, "Relay") == 0) {
+-		ret = dpp_mdns_start(dut, DPP_MDNS_RELAY);
++		ret = dpp_mdns_start(dut, DPP_MDNS_RELAY, link_id);
+ 	} else if (strcasecmp(role, "Controller") == 0) {
+ 		const char *curve = dpp_get_curve(cmd, "DPPCryptoIdentifier");
+ 
+-		if (sigma_dut_is_ap(dut) && dpp_hostapd_run(dut, false) < 0) {
++		if (sigma_dut_is_ap(dut) && dpp_hostapd_run(dut, false, link_id) < 0) {
+ 			send_resp(dut, conn, SIGMA_ERROR,
+ 				  "errorCode,Failed to start hostapd");
+ 			return STATUS_SENT_ERROR;
+@@ -4656,9 +4661,9 @@ static enum sigma_cmd_result dpp_set_mdn
+ 			}
+ 			dut->dpp_local_bootstrap = atoi(resp);
+ 		}
+-		ret = dpp_mdns_start(dut, DPP_MDNS_CONTROLLER);
++		ret = dpp_mdns_start(dut, DPP_MDNS_CONTROLLER, link_id);
+ 	} else if (strcasecmp(role, "Bootstrapping") == 0) {
+-		ret = dpp_mdns_start(dut, DPP_MDNS_BOOTSTRAPPING);
++		ret = dpp_mdns_start(dut, DPP_MDNS_BOOTSTRAPPING, link_id);
+ 	} else {
+ 		sigma_dut_print(dut, DUT_MSG_INFO,
+ 				"Unsupported DPPmDNSAdvertise role: %s", role);
+@@ -4689,14 +4694,15 @@ static int dpp_check_mdns_discovery_resu
+ 
+ static enum sigma_cmd_result dpp_set_parameter(struct sigma_dut *dut,
+ 					       struct sigma_conn *conn,
+-					       struct sigma_cmd *cmd)
++					       struct sigma_cmd *cmd,
++					       int link_id)
+ {
+ 	const char *val;
+ 	enum sigma_cmd_result res = SUCCESS_SEND_STATUS;
+ 
+ 	val = get_param(cmd, "DPPmDNSAdvertise");
+ 	if (val &&
+-	    dpp_set_mdns_advertise(dut, conn, cmd, val) < 0)
++	    dpp_set_mdns_advertise(dut, conn, cmd, val, link_id) < 0)
+ 		res = ERROR_SEND_STATUS;
+ 
+ 	val = get_param(cmd, "DPPmDNSEnable");
+@@ -4746,7 +4752,8 @@ static enum sigma_cmd_result dpp_get_pee
+ 
+ enum sigma_cmd_result dpp_dev_exec_action(struct sigma_dut *dut,
+ 					  struct sigma_conn *conn,
+-					  struct sigma_cmd *cmd)
++					  struct sigma_cmd *cmd,
++					  int link_id)
+ {
+ 	const char *type = get_param(cmd, "DPPActionType");
+ 	const char *bs = get_param(cmd, "DPPBS");
+@@ -4760,7 +4767,7 @@ enum sigma_cmd_result dpp_dev_exec_actio
+ 	if (strcasecmp(type, "DPPReconfigure") == 0)
+ 		return dpp_reconfigure(dut, conn, cmd);
+ 	if (strcasecmp(type, "SetParameter") == 0)
+-		return dpp_set_parameter(dut, conn, cmd);
++		return dpp_set_parameter(dut, conn, cmd, link_id);
+ 	if (strcasecmp(type, "GetPeerBootstrap") == 0)
+ 		return dpp_get_peer_bootstrap(dut, conn, cmd);
+ 
+@@ -4771,13 +4778,13 @@ enum sigma_cmd_result dpp_dev_exec_actio
+ 	}
+ 
+ 	if (strcasecmp(type, "GetLocalBootstrap") == 0)
+-		return dpp_get_local_bootstrap(dut, conn, cmd, 1, NULL);
++		return dpp_get_local_bootstrap(dut, conn, cmd, 1, link_id, NULL);
+ 	if (strcasecmp(type, "SetPeerBootstrap") == 0)
+ 		return dpp_set_peer_bootstrap(dut, conn, cmd);
+ 	if (strcasecmp(type, "ManualDPP") == 0)
+-		return dpp_manual_dpp(dut, conn, cmd);
++		return dpp_manual_dpp(dut, conn, cmd, link_id);
+ 	if (strcasecmp(type, "AutomaticDPP") == 0)
+-		return dpp_automatic_dpp(dut, conn, cmd);
++		return dpp_automatic_dpp(dut, conn, cmd, link_id);
+ 
+ 	send_resp(dut, conn, SIGMA_ERROR,
+ 		  "errorCode,Unsupported DPPActionType");
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -1657,9 +1657,10 @@ int loc_r2_cmd_sta_exec_action(struct si
+ /* dpp.c */
+ enum sigma_cmd_result dpp_dev_exec_action(struct sigma_dut *dut,
+ 					  struct sigma_conn *conn,
+-					  struct sigma_cmd *cmd);
++					  struct sigma_cmd *cmd,
++					  int link_id);
+ int dpp_mdns_discover_relay_params(struct sigma_dut *dut);
+-int dpp_mdns_start(struct sigma_dut *dut, enum dpp_mdns_role role);
++int dpp_mdns_start(struct sigma_dut *dut, enum dpp_mdns_role role, int link_id);
+ void dpp_mdns_stop(struct sigma_dut *dut);
+ 
+ /* dhcp.c */
+--- a/dev.c
++++ b/dev.c
+@@ -346,6 +346,7 @@ static enum sigma_cmd_result cmd_dev_exe
+ {
+ 	const char *program = get_param(cmd, "Program");
+ 	const char *val;
++	int link_id = 0; /* 0 since only single vap is supported now */
+ 
+ #ifdef MIRACAST
+ 	if (program && (strcasecmp(program, "WFD") == 0 ||
+@@ -357,7 +358,7 @@ static enum sigma_cmd_result cmd_dev_exe
+ #endif /* MIRACAST */
+ 
+ 	if (program && strcasecmp(program, "DPP") == 0)
+-		return dpp_dev_exec_action(dut, conn, cmd);
++		return dpp_dev_exec_action(dut, conn, cmd, link_id);
+ 
+ 	val = get_param(cmd, "ServerCertTrust");
+ 	if (val)

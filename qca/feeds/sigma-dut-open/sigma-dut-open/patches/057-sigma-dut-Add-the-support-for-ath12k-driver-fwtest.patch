@@ -1,0 +1,29 @@
+From c30a10ca0b2e161f6be3ea1134239a4ce89d2e82 Mon Sep 17 00:00:00 2001
+From: Sivashankari Madhavan <quic_sivamadh@quicinc.com>
+Date: Wed, 22 Jun 2022 10:39:04 +0530
+Subject: [PATCH] sigma-dut: Add the support for ath12k driver fwtest
+
+Adds the ath12k driver fwtest support for execute the test suites
+
+Signed-off-by: Sivashankari Madhavan <quic_sivamadh@quicinc.com>
+---
+ ap.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/ap.c b/ap.c
+index 189d643..2eced17 100644
+--- a/ap.c
++++ b/ap.c
+@@ -131,7 +131,8 @@ static int fwtest_cmd_wrapper(struct sigma_dut *dut, const char *arg,
+ {
+ 	int ret = -1;
+ 
+-	if (strncmp(dut->device_driver, "ath11k", 6) == 0)
++	if (strncmp(dut->device_driver, "ath11k", 6) == 0 ||
++	    strncmp(dut->device_driver, "ath12k", 6) == 0)
+ 		ret = run_system_wrapper(dut, "ath11k-fwtest -i %s %s",
+ 					 ifname, arg);
+ 
+-- 
+2.17.1
+

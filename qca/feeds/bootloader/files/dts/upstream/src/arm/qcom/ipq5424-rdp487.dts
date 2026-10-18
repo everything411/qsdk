@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#include <arm64/qcom/ipq5424-rdp487.dts>
+
+/ {
+	chosen {
+		stdout-path = "serial0";
+	};
+};

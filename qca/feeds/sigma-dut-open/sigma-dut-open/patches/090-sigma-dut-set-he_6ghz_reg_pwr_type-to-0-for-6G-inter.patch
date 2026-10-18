@@ -1,0 +1,31 @@
+From 3d553b9cb8da58321ab04c97ddcbb6073c6ab8f7 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Tue, 3 Sep 2024 22:00:51 +0530
+Subject: [PATCH] sigma-dut: set he_6ghz_reg_pwr_type to 0 for 6G interfaces
+
+In the latest version of hostapd, to enable the ap in 6G band,
+the hostapd config he_6ghz_reg_pwr_type is needed to be set to 0.
+Hence adding the config for 6G band during ap_config_commit.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+---
+ ap.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 312ab24..8d2fa7b 100644
+--- a/ap.c
++++ b/ap.c
+@@ -11421,6 +11421,9 @@ skip_vht_parameters_set:
+ 		fprintf(f, "ap_max_inactivity=%d\n", (AP_DEFAULT_MAX_INACTIVITY * 2));
+ 	}
+ 
++	if (check_band(dut, BAND_6G, conf_counter))
++		fprintf (f, "he_6ghz_reg_pwr_type=0\n");
++
+ 	fclose(f);
+ 
+ 	if (dut->ap_is_dual && conf_counter == 0) {
+-- 
+2.34.1
+

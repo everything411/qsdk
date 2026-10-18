@@ -1,0 +1,34 @@
+From 0b78e87690b1dce871ee8c2c80919cdfe7c1b770 Mon Sep 17 00:00:00 2001
+From: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+Date: Mon, 3 Aug 2026 12:25:28 +0530
+Subject: [PATCH] arm: dts: ipq52xx: Enable build for DB RDPs
+
+Enable build support for the following IPQ52xx platforms:
+
+- DB-HM01-C1
+- DB-HM02-C1
+
+Change-Id: I3182e18d3c67c356ee3e697fb172dec8816235e5
+Signed-off-by: Thahir Ahamed T <tahamedt@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 5667478306e..683ace00d8c 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -24,7 +24,9 @@ dtb-$(CONFIG_TARGET_IPQ5210) += ipq5210-emulation.dtb \
+ 				ipq5210-rdp511.dtb \
+ 				ipq5210-rdp512.dtb \
+ 				ipq5210-db-hm01.1.dtb \
+-				ipq5210-db-hm02.1.dtb
++				ipq5210-db-hm01-c1.dtb \
++				ipq5210-db-hm02.1.dtb \
++				ipq5210-db-hm02-c1.dtb
+ 
+ endif
+ dtb-$(CONFIG_TARGET_IPQ9650) += ipq9650-emulation.dtb \
+-- 
+2.34.1
+

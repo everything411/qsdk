@@ -1,0 +1,56 @@
+config ETH_IPQ5332
+	depends on DM && QCOM_NSS_SWITCH && TARGET_IPQ5332
+	default y
+	bool "Ethernet driver for QCOM IPQ5332"
+	help
+	  Enable this to support the ethernet in IPQ5332 SoCs.
+
+config ETH_IPQ9574
+	depends on DM && QCOM_NSS_SWITCH && TARGET_IPQ9574
+	default y
+	bool "Ethernet driver for QCOM IPQ9574"
+	help
+	  Enable this to support the ethernet in QCOM IPQ9574 Soc.
+
+config ETH_IPQ5424
+	depends on DM && QCOM_NSS_SWITCH && TARGET_IPQ5424
+	default y
+	bool "Ethernet driver for QCOM IPQ5424"
+	help
+	  Enable this to support the ethernet in QCOM IPQ5424 Soc.
+
+config ETH_LOW_MEM
+	depends on DM && QCOM_NSS_SWITCH
+	default n
+	bool "Enable low memory configuration on IPQ ethernet driver"
+	help
+	  Enable low memory configuration on IPQ SoC ethernet driver
+
+config QCOM_NSS_SWITCH_V2
+	depends on DM
+	default n
+	bool "Enable NSS version 2 driver"
+	help
+	  Enable the NSS version 2 driver for IPQ SoC Ethernet support.
+
+
+config NSS_PPE_V4
+	depends on DM && QCOM_NSS_SWITCH_V2
+	default n
+	bool "Enable PPE V4 support in NSS driver"
+	help
+	  Enable PPE V4 support in NSS driver
+
+config ETH_IPQ5210
+	depends on DM && QCOM_NSS_SWITCH_V2 && TARGET_IPQ5210 && NSS_PPE_V4
+	default y
+	bool "Ethernet driver for QCOM IPQ5210"
+	help
+	  Enable this to support the ethernet in QCOM IPQ5210 Soc.
+
+config ETH_IPQ9650
+	depends on DM && QCOM_NSS_SWITCH_V2 && TARGET_IPQ9650 && NSS_PPE_V4
+	default y
+	bool "Ethernet driver for QCOM IPQ9650"
+	help
+	  Enable this to support the ethernet in QCOM IPQ9650 Soc.

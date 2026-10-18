@@ -1,0 +1,22 @@
+# some hacks for when we use backports to generate a package
+# to build modules out of tree.
+config WIRELESS
+	def_bool y
+config NET_CORE
+	def_bool y
+config EXPERT
+	def_bool y
+
+# Platform dependency stubs for out-of-tree backports builds.
+# These allow ath/ath12k modules to be selected via kconfig even when
+# the host kernel does not have these subsystems built as modules.
+config PCI
+	def_bool y
+config QCOM_QMI_HELPERS
+	def_bool y
+config MHI_BUS
+	def_bool y
+config QRTR
+	def_bool y
+config QRTR_MHI
+	def_bool y

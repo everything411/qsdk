@@ -1,0 +1,328 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
+ */
+{
+	"include": "/etc/ppecfg/policer_default_cfg.json",
+	"rules":
+	[
+		{
+			"acl": {
+				"rule_id": "1",
+				"src_dev": "eth0",
+				"skip_gem_port_acl": "1",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "1",
+					"dip_val": "ff00:0:0:0:0:0:0:0",
+					"dip_mask": "ff00:0:0:0:0:0:0:0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "2",
+				"src_dev": "eth1",
+				"skip_gem_port_acl": "1",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "1",
+					"dip_val": "ff00:0:0:0:0:0:0:0",
+					"dip_mask": "ff00:0:0:0:0:0:0:0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "3",
+				"src_dev": "eth2",
+				"skip_gem_port_acl": "1",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "1",
+					"dip_val": "ff00:0:0:0:0:0:0:0",
+					"dip_mask": "ff00:0:0:0:0:0:0:0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "4",
+				"src_dev": "eth3",
+				"skip_gem_port_acl": "1",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "1",
+					"dip_val": "ff00:0:0:0:0:0:0:0",
+					"dip_mask": "ff00:0:0:0:0:0:0:0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "5",
+				"src_dev": "eth4",
+				"skip_gem_port_acl": "1",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "1",
+					"dip_val": "ff00:0:0:0:0:0:0:0",
+					"dip_mask": "ff00:0:0:0:0:0:0:0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "6",
+				"src_dev": "eth5",
+				"skip_gem_port_acl": "1",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "1",
+					"dip_val": "ff00:0:0:0:0:0:0:0",
+					"dip_mask": "ff00:0:0:0:0:0:0:0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "7",
+				"src_dev": "eth0",
+				"skip_gem_port_acl": "1",
+				"priority": "7",
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "239.255.255.0"
+				},
+				"action": {
+					"fwd_cmd": "FWD"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "8",
+				"src_dev": "eth1",
+				"skip_gem_port_acl": "1",
+				"priority": "7",
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "239.255.255.0"
+				},
+				"action": {
+					"fwd_cmd": "FWD"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "9",
+				"src_dev": "eth2",
+				"skip_gem_port_acl": "1",
+				"priority": "7",
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "239.255.255.0"
+				},
+				"action": {
+					"fwd_cmd": "FWD"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "10",
+				"src_dev": "eth3",
+				"skip_gem_port_acl": "1",
+				"priority": "7",
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "239.255.255.0"
+				},
+				"action": {
+					"fwd_cmd": "FWD"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "11",
+				"src_dev": "eth4",
+				"skip_gem_port_acl": "1",
+				"priority": "7",
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "239.255.255.0"
+				},
+				"action": {
+					"fwd_cmd": "FWD"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "12",
+				"src_dev": "eth5",
+				"skip_gem_port_acl": "1",
+				"priority": "7",
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "239.255.255.0"
+				},
+				"action": {
+					"fwd_cmd": "FWD"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "13",
+				"src_dev": "eth0",
+				"skip_gem_port_acl": "1",
+				"priority": "6",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "224.0.0.0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "14",
+				"src_dev": "eth1",
+				"skip_gem_port_acl": "1",
+				"priority": "6",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "224.0.0.0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "15",
+				"src_dev": "eth2",
+				"skip_gem_port_acl": "1",
+				"priority": "6",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "224.0.0.0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "16",
+				"src_dev": "eth3",
+				"skip_gem_port_acl": "1",
+				"priority": "6",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "224.0.0.0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "17",
+				"src_dev": "eth4",
+				"skip_gem_port_acl": "1",
+				"priority": "6",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "224.0.0.0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		},
+		{
+			"acl": {
+				"rule_id": "18",
+				"src_dev": "eth5",
+				"skip_gem_port_acl": "1",
+				"priority": "6",
+				"l4_proto": {
+					"l3_v4proto_v6nexthdr": "17"
+				},
+				"dip": {
+					"dip_is_v6": "0",
+					"dip_val": "224.0.0.0",
+					"dip_mask": "224.0.0.0"
+				},
+				"action": {
+					"policer_id": "1"
+				}
+			}
+		}
+	]
+}

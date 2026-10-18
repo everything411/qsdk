@@ -1,0 +1,88 @@
+From 745963a11adb10e5d392103e1a3d11fe9f008ded Mon Sep 17 00:00:00 2001
+From: Naveen Sivasamy <naves@qti.qualcomm.com>
+Date: Thu, 29 Jan 2026 14:00:40 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL: Fix WiFi 7 R2 sounding feature
+
+For WiFi 7 R2 sounding feature testcases, run few additional fwtest
+commands for all the testcases to pass the validation. Hence move the
+sort RU allocation and setting static RU fwtest commands to a generic
+mac80211_enable_tbsu_sounding(), which otherwise execute only during
+ap_set_rfeature commands with specific params, and ensure they now run
+for all sounding testcases.
+
+Also add a new fwtest command "0x68 -v 0 2 100 0" that disables
+sounding optimisations, since sounding optimisations lead to low
+sounding frame count.
+
+Signed-off-by: Naveen Sivasamy <naves@qti.qualcomm.com>
+---
+ ap.c | 41 ++++++++++++++++++++++-------------------
+ 1 file changed, 22 insertions(+), 19 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -9548,6 +9548,11 @@ static void mac80211_enable_tbsu_soundin
+ 	fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 292 0", ifname, link_id);
+ 	/* disable ofdma sounding requests mu feedback. SU will be preffered */
+ 	fwtest_linkid_cmd_wrapper(dut, "-m 0x48 -v 0 279 0", ifname, link_id);
++	/* Enable to sort RU allocation */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 2 1", ifname, link_id);
++	/* disable sounding optimisations */
++	fwtest_linkid_cmd_wrapper(dut, "-m 0x68 -v 0 2 100 0", ifname, link_id);
++
+ 	if (dut->device_type == AP_testbed) {
+ 		/* Force codebook in NDPA frame to '1'*/
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 684 3", ifname, link_id);
+@@ -9555,6 +9560,24 @@ static void mac80211_enable_tbsu_soundin
+ 		/* enable STA capability based choice of codebook in NDPA frame */
+ 		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 684 1", ifname, link_id);
+ 	}
++
++	/* Configure based on number of users in each OFDMA transmission */
++	if (dut->num_users_ofdma == 2) {
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 640 1 2 1 31", ifname, link_id);
++
++		if (dut->ap_interface_6g)
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 996 1 996", ifname,
++						  link_id);
++		if (dut->ap_interface_5g)
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 484 1 484", ifname,
++						  link_id);
++	} else if (dut->num_users_ofdma == 4) {
++		fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 640 1 4 1 31", ifname, link_id);
++
++		if (dut->ap_interface_5g)
++			fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 242 1 242 2 242 3 242",
++						  ifname, link_id);
++	}
+ }
+ 
+ static void fwtest_set_he_params(struct sigma_dut *dut, const char *ifname, int link_id)
+@@ -20951,26 +20974,8 @@ static enum sigma_cmd_result mac80211_ap
+ 		mac80211_enable_tbsu_sounding(dut, ifname, link_id);
+ 
+ 	val = get_param(cmd, "PartialBW_TBSUSounding");
+-	if (val && strcasecmp(val, "Enable") == 0) {
++	if (val && strcasecmp(val, "Enable") == 0)
+ 		mac80211_enable_tbsu_sounding(dut, ifname, link_id);
+-		/* Enable to sort RU allocation */
+-		fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 2 1", ifname, link_id);
+-		/* Configure based on number of users in each OFDMA transmission */
+-		if (dut->num_users_ofdma == 2) {
+-			fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 640 1 2 1 31", ifname, link_id);
+-			if (dut->ap_interface_6g)
+-				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 996 1 996", ifname,
+-							  link_id);
+-			if (dut->ap_interface_5g)
+-				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 484 1 484", ifname,
+-							  link_id);
+-		} else if (dut->num_users_ofdma == 4) {
+-			fwtest_linkid_cmd_wrapper(dut, "-m 0x47 -v 0 640 1 4 1 31", ifname, link_id);
+-			if (dut->ap_interface_5g)
+-				fwtest_linkid_cmd_wrapper(dut, "-m 0x4b -v 0 40 0 242 1 242 2 242 3 242",
+-							  ifname, link_id);
+-		}
+-	}
+ 
+ 	val = get_param(cmd, "MSCS");
+ 	if (val) {

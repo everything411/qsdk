@@ -1,0 +1,64 @@
+From 472e80297a0fffceaa455f31fe0043e43af08be7 Mon Sep 17 00:00:00 2001
+From: Manish Dharanenthiran <quic_mdharane@quicinc.com>
+Date: Thu, 8 Feb 2024 18:59:16 +0530
+Subject: [PATCH] sigma_dut: Increase ap_max_inactivity for MU DL cases
+
+During MU DLOFDMA testing, there are few scenarios where the station
+might be inactive for a certain duration greater than the MAX
+INACVTIVITY(300 seconds) timer in hostapd. During this time, station
+might send NULL data frame but those frames will not be accounted in the
+driver as RX packet as the firmware will not forward that to the driver.
+Since, the inactive time for any station is calculated on last_rx or
+last_acked frame, there is a chance that station might be kicked out due
+to inactivity which leads WFA certification test failures.
+
+Fix this by increasing max inactivity timer twice the default timer of
+300 seconds.
+
+Signed-off-by: Manish Dharanenthiran <quic_mdharane@quicinc.com>
+---
+ ap.c        | 11 +++++++++++
+ sigma_dut.h |  5 +++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 57e876c..36fd5e1 100644
+--- a/ap.c
++++ b/ap.c
+@@ -10825,6 +10825,17 @@ skip_vht_parameters_set:
+ 	if (dut->ap_punct_bitmap)
+ 		fprintf (f, "punct_bitmap=%d", dut->ap_punct_bitmap);
+ 
++	if (dut->ap_he_ppdu == PPDU_MU &&
++	    dut->ap_he_dlofdma == VALUE_ENABLED) {
++		/* WAR: To increase the max inactivity timer in AP to avoid
++		 * sending disassociation to station during certain test cases
++		 * as the station might send only NULL data frame which will
++		 * not be forwarded to kernel to account for RX activity of the
++		 * station
++		 */
++		fprintf(f, "ap_max_inactivity=%d\n", (AP_DEFAULT_MAX_INACTIVITY * 2));
++	}
++
+ 	fclose(f);
+ 
+ 	if (dut->ap_is_dual && conf_counter == 0) {
+diff --git a/sigma_dut.h b/sigma_dut.h
+index 54eda3d..9d8c7e1 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -103,6 +103,11 @@ struct sigma_dut;
+ 
+ #define IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE 0x00001000
+ 
++/* Default value for maximum station inactivity. After AP_DEFAULT_MAX_INACTIVITY has
++ * passed since last received frame from the station
++ */
++#define AP_DEFAULT_MAX_INACTIVITY (5 * 60)
++
+ typedef unsigned int u32;
+ typedef uint16_t u16;
+ typedef unsigned char u8;
+-- 
+2.34.1
+

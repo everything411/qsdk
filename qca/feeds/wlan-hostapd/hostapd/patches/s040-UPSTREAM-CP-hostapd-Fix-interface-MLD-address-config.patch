@@ -1,0 +1,75 @@
+From a68dfbd1ccd96c4c21b7e2e93c6748a9391b8507 Mon Sep 17 00:00:00 2001
+From: Balaganapathy Palanisamy <bpalanis@qti.qualcomm.com>
+Date: Sat, 15 Nov 2025 18:58:12 +0530
+Subject: [PATCH] UPSTREAM:CP:hostapd: Fix interface MLD address configuration
+
+When "use_driver_iface_addr" is enabled and "mld_addr" is
+not configured then use the existing interface address from driver.
+
+Use the configured MLD address when MLD interface is created
+as part of non first BSS creation on an interface through setup_bss.
+
+patch-dependency: r37-hostapd-WAR-patch-for-mld-addr.patch
+
+Signed-off-by: Balaganapathy Palanisamy <bpalanis@qti.qualcomm.com>
+---
+ hostapd/main.c   |  4 +++-
+ src/ap/hostapd.c | 13 ++++++++++++-
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/main.c b/hostapd/main.c
+index 89647dc..1350745 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -239,6 +239,8 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
+ 	 */
+ 	if (!is_zero_ether_addr(hapd->conf->mld_addr) && hapd->conf->mld_ap)
+ 		params.bssid = hapd->conf->mld_addr;
++	else if (hapd->iconf->use_driver_iface_addr)
++		params.bssid = NULL;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	params.ifname = hapd->conf->iface;
+@@ -316,7 +318,7 @@ pre_setup_mld:
+ 	 * configured, and otherwise it would be the configured BSSID.
+ 	 */
+ 	if (hapd->conf->mld_ap) {
+-		os_memcpy(hapd->mld->mld_addr, hapd->own_addr, ETH_ALEN);
++		os_memcpy(hapd->mld->mld_addr, params.own_addr, ETH_ALEN);
+ 
+ 		if (!b)
+ 			random_mac_addr_keep_oui(hapd->own_addr);
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index c789786..d51e405 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1861,6 +1861,17 @@ int hostapd_setup_bss(struct hostapd_data *hapd, int first, bool start_beacon)
+ 					   hapd->mld_link_id, hapd->conf->iface);
+ 				goto setup_mld;
+ 			}
++			/*
++			 * Use the configured MLD MAC address
++			 * as the interface hardware address
++			 * if this AP is a part of an AP MLD.
++			 */
++			if (!is_zero_ether_addr(hapd->conf->mld_addr))
++				addr = hapd->conf->mld_addr;
++			else if (hapd->iconf->use_driver_iface_addr)
++				addr = NULL;
++			else
++				addr = hapd->own_addr;
+ 		}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -1884,7 +1895,7 @@ int hostapd_setup_bss(struct hostapd_data *hapd, int first, bool start_beacon)
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Setup of first link (%d) BSS of MLD %s",
+ 				   hapd->mld_link_id, hapd->conf->iface);
+-			os_memcpy(hapd->mld->mld_addr, hapd->own_addr,
++			os_memcpy(hapd->mld->mld_addr, addr ? addr : if_addr,
+ 				  ETH_ALEN);
+ 		}
+ #endif /* CONFIG_IEEE80211BE */
+-- 
+2.34.1
+

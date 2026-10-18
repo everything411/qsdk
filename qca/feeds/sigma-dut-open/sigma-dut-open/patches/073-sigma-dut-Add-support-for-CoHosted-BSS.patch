@@ -1,0 +1,504 @@
+From bbd6b91ffafec2ebdc6c71e49e3981d18c92863a Mon Sep 17 00:00:00 2001
+From: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+Date: Sat, 9 Dec 2023 23:27:41 +0530
+Subject: [PATCH] sigma_dut: Add support for CoHosted BSS
+
+Enable the required changes for CoHosted
+BSS to support two links with two mlds
+for 2GHz/5GHz.
+
+Signed-off-by: Dhanavandhana Kannan <quic_dhanavan@quicinc.com>
+---
+ ap.c        | 359 +++++++++++++++++++++++++++++++++++++++++++++++++---
+ sigma_dut.h |   4 +-
+ 2 files changed, 342 insertions(+), 21 deletions(-)
+
+--- a/ap.c
++++ b/ap.c
+@@ -1023,6 +1023,148 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		return SUCCESS_SEND_STATUS;
+ 	}
+ 
++	val = get_param(cmd, "CoHostedBSS");
++	if (val) {
++		if (strcasecmp(val, "Enable") == 0) {
++			dut->ap_cohosted_bss = VALUE_ENABLED;
++		} else if (strcasecmp(val, "Disable") == 0) {
++			dut->ap_cohosted_bss = VALUE_DISABLED;
++		} else {
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,Unsupported CoHostedBSS Value");
++			return STATUS_SENT_ERROR;
++		}
++	}
++
++	val = get_param(cmd, "NumCoHostedBSS");
++	if (val) {
++		int num_cohosted_bss;
++
++		num_cohosted_bss = atoi(val);
++		val = get_param(cmd, "Interface");
++		if (val) {
++			if ((strcasecmp(val, "5G") == 0))
++				dut->cohost_iface = AP_5G;
++			else if ((strcasecmp(val, "24G") == 0))
++				dut->cohost_iface = AP_2G;
++		}
++
++		if (dut->ap_cohosted_bss != VALUE_ENABLED) {
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,CoHostedBSS Not enabled");
++			return STATUS_SENT_ERROR;
++		}
++
++		dut->cohosted[dut->cohost_iface].num_co_hosted_bss = num_cohosted_bss;
++	}
++
++	val = get_param(cmd, "CoHostedBSSIndex");
++	if (val) {
++		int cohostedbssindex = 0;
++
++		cohostedbssindex = atoi(val);
++		val = get_param(cmd, "Interface");
++
++		if (dut->ap_cohosted_bss != VALUE_ENABLED) {
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,CoHostedBSS Not enabled");
++			return STATUS_SENT_ERROR;
++		}
++
++		if (cohostedbssindex > dut->cohosted[dut->cohost_iface].num_co_hosted_bss) {
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,Invalid CohostedBSSIndex");
++			return STATUS_SENT_ERROR;
++		}
++
++		val = get_param(cmd, "SSID");
++		if (val) {
++			if (strlen(val) > MAX_SSID_LEN)
++				return INVALID_SEND_STATUS;
++
++			snprintf(dut->cohosted[dut->cohost_iface].conf[cohostedbssindex - 1].ssid,
++					MAX_SSID_LEN, "%s", val);
++		}
++
++		val = get_param(cmd, "CHANNEL");
++		if (val) {
++			if (dut->ap_is_mld) {
++				dut->ap_tag_channel[0] = atoi(val);
++				dut->ap_channel_1 = atoi(val);
++			} else if (wlan_tag == 1) {
++				const char *pos;
++
++				dut->ap_channel = atoi(val);
++				pos = strchr(val, ';');
++				if (pos) {
++					pos++;
++					dut->ap_channel_1 = atoi(pos);
++				}
++			} else {
++				dut->ap_tag_channel[wlan_tag - 2] = atoi(val);
++				dut->ap_channel_1 = atoi(val);
++			}
++		}
++
++		if (!chwidth_check) {
++			val = get_param(cmd, "WIDTH");
++			if (val) {
++				if (strcasecmp(val, "20") == 0)
++					chwidth = AP_20;
++				else if (strcasecmp(val, "40") == 0)
++					chwidth = AP_40;
++				else if (strcasecmp(val, "80") == 0)
++					chwidth = AP_80;
++				else if (strcasecmp(val, "160") == 0)
++					chwidth = AP_160;
++				else if (strcasecmp(val, "320") == 0)
++					chwidth = AP_320;
++				else if (strcasecmp(val, "80plus80") == 0) {
++					dut->ap_80plus80 = 1;
++					chwidth = AP_80_80;
++				} else if (strcasecmp(val, "Auto") == 0)
++					chwidth = AP_AUTO;
++				else {
++					send_resp(dut, conn, SIGMA_INVALID,
++							"errorCode,Unsupported WIDTH");
++					return STATUS_SENT;
++				}
++				if (wlan_tag > 1)
++					dut->ap_chwidth_1 = chwidth;
++				else
++					dut->ap_chwidth = chwidth;
++			}
++		}
++
++		if ((wlan_tag > 1 && dut->ap_band_1 == BAND_UNKNOWN) ||
++			(dut->ap_is_mld && dut->ap_band_1 == BAND_UNKNOWN)) {
++			if (is_6g)
++				dut->ap_band_1 = BAND_6G;
++			else if (dut->ap_channel_1 >= 1 && dut->ap_channel_1 <= 14)
++				dut->ap_band_1 = BAND_2G;
++			else if (dut->ap_channel_1 >= 36 && dut->ap_channel_1 <= 171)
++				dut->ap_band_1 = BAND_5G;
++
++			if (dut->ap_band_1 != BAND_2G && (dut->ap_mode_1 == AP_11ac ||
++				dut->ap_mode_1 == AP_11ax || dut->ap_mode == AP_11be) &&
++				!chwidth_check)
++				dut->ap_chwidth_1 = AP_80;
++		} else if (dut->ap_band == BAND_UNKNOWN) {
++			if (is_6g)
++				dut->ap_band = BAND_6G;
++			else if (dut->ap_channel >= 1 && dut->ap_channel <= 14)
++				dut->ap_band = BAND_2G;
++			else if (dut->ap_channel >= 36 && dut->ap_channel <= 171)
++				dut->ap_band = BAND_5G;
++
++			if (dut->ap_band != BAND_2G && (dut->ap_mode == AP_11ac ||
++				dut->ap_mode == AP_11ax || dut->ap_mode == AP_11be) &&
++				dut->ap_80plus80 != 1)
++				dut->ap_chwidth = AP_80;
++		}
++		return SUCCESS_SEND_STATUS;
++	}
++
+ 	val = get_param(cmd, "WLAN_TAG");
+ 	if (val) {
+ 		wlan_tag = atoi(val);
+@@ -3054,7 +3196,8 @@ static enum sigma_cmd_result cmd_ap_set_
+ 				else if (strcasecmp(val, "WPA2-PSK") == 0 ||
+ 					 (security && strcasecmp(security, "PSK") == 0 &&
+ 					  strcasecmp(val, "WPA2") == 0)) {
+-					dut->mbss.conf[non_tx_bss_idx - 1].key_mgmt = AP_WPA2_PSK;
++					dut->mbss.conf[non_tx_bss_idx - 1].key_mgmt =
++						AP_WPA2_PSK;
+ 				}
+ 			}
+ 		}
+@@ -3071,6 +3214,52 @@ static enum sigma_cmd_result cmd_ap_set_
+ 		return SUCCESS_SEND_STATUS;
+ 	}
+ 
++	val = get_param(cmd, "CoHostedBSSIndex");
++	if (val) {
++		int cohosted_bss_index;
++
++		cohosted_bss_index = atoi(val);
++		val = get_param(cmd, "Interface");
++
++		if (dut->ap_cohosted_bss != VALUE_ENABLED) {
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,CoHostedBSS Not enabled");
++			return STATUS_SENT_ERROR;
++		}
++
++		if (cohosted_bss_index > dut->cohosted[dut->cohost_iface].num_co_hosted_bss) {
++			send_resp(dut, conn, SIGMA_ERROR,
++					"errorCode,Invalid CoHostedBSSIndex");
++			return STATUS_SENT_ERROR;
++		}
++
++		val = get_param(cmd, "KEYMGNT");
++		if (!val)
++			val = get_param(cmd, "KeyMgmtType");
++		if (val) {
++			if (strcasecmp(val, "SAE") == 0) {
++				dut->cohosted[dut->cohost_iface].conf
++					[cohosted_bss_index - 1].key_mgmt = AP_WPA2_SAE;
++			} else if (strcasecmp(val, "WPA2-PSK") == 0 ||
++					(security && strcasecmp(security, "PSK") == 0 &&
++						strcasecmp(val, "WPA2") == 0)) {
++				dut->cohosted[dut->cohost_iface].conf[cohosted_bss_index].key_mgmt =
++				AP_WPA2_PSK;
++			}
++		}
++
++		val = get_param(cmd, "PSK");
++		if (val) {
++			if (strlen(val) > MAX_PSK_LEN - 1)
++				return INVALID_SEND_STATUS;
++
++			snprintf(dut->cohosted[dut->cohost_iface].conf[cohosted_bss_index - 1].psk,
++					MAX_PSK_LEN, "%s", val);
++		}
++
++		return SUCCESS_SEND_STATUS;
++	}
++
+ 	val = get_param(cmd, "KEYMGNT");
+ 	if (!val)
+ 		val = get_param(cmd,"KeyMgmtType");
+@@ -10768,6 +10957,93 @@ skip_vht_parameters_set:
+ 				fprintf(f, "wpa_pairwise=CCMP\n");
+ 				fprintf(f, "wpa_passphrase=%s\n", dut->mbss.conf[i].psk);
+ 			}
++			fprintf(f, "mld_ap=1\n");
++		}
++	}
++
++	if ((dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) &&
++	     dut->ap_cohosted_bss == VALUE_ENABLED && conf_counter) {
++		uint8_t num_bss, bssid_mask, max_bss_count;
++		uint8_t init_val, base_val;
++		uint8_t max_bssid_ind = 0;
++		unsigned char bssid[6];
++		char ifname2[50];
++		int i;
++
++		if (get_hwaddr(ifname, bssid)) {
++			fclose(f);
++			return -2;
++		}
++
++		if (!dut->cohosted[dut->cohost_iface].num_co_hosted_bss)
++			return -2;
++
++		/* Sanity check to indicate below logic holds good
++		 * for upto 256 bss(including tx,non-tx bss) support in sigma-dut
++		 * Can be extended if really required
++		 */
++
++		if (dut->cohosted[dut->cohost_iface].num_co_hosted_bss > 255)
++			return -2;
++
++		num_bss = dut->cohosted[dut->cohost_iface].num_co_hosted_bss;
++
++		do {
++			max_bssid_ind++;
++			num_bss = num_bss >> 1;
++		} while (num_bss);
++
++		max_bss_count = 1 << max_bssid_ind;
++		bssid_mask = max_bss_count - 1;
++
++		base_val = bssid[5] & ~bssid_mask;
++		init_val = bssid[5] & bssid_mask;
++
++		for (i = 1; i < dut->cohosted[dut->cohost_iface].num_co_hosted_bss; i++) {
++			fprintf(f, "\n");
++
++			//Set the locally administered bit in first octet
++			bssid[0] = bssid[0] + 2;
++			bssid[4] = bssid[4] + conf_counter;
++			bssid[5] = base_val + ((init_val + (i-1) + 1) % max_bss_count);
++			snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname, i);
++			fprintf(f, "bss=%s\n", ifname2);
++			if (sigma_hapd_ctrl)
++				fprintf(f, "ctrl_interface=%s\n", sigma_hapd_ctrl);
++			else
++				fprintf(f, "ctrl_interface=/var/run/hostapd\n");
++			fprintf(f, "ssid=%s\n", dut->cohosted[dut->cohost_iface].conf[i].ssid);
++			if (dut->bridge)
++				fprintf(f, "bridge=%s\n", dut->bridge);
++
++			if (dut->ap_wme)
++				fprintf(f, "wmm_enabled=1\n");
++
++			if (dut->ap_wmmps == AP_WMMPS_ON)
++				fprintf(f, "uapsd_advertisement_enabled=1\n");
++
++			fprintf(f, "bssid=%02x:%02x:%02x:%02x:%02x:%02x\n",
++				bssid[0], bssid[1], bssid[2], bssid[3],
++				bssid[4], bssid[5]);
++
++			if (dut->cohosted[dut->cohost_iface].conf[i].key_mgmt == AP_WPA2_SAE) {
++				fprintf(f, "wpa=2\n");
++				fprintf(f, "wpa_key_mgmt=SAE\n");
++				fprintf(f, "wpa_pairwise=CCMP\n");
++				fprintf(f, "ieee80211w=2\n");
++				fprintf(f, "sae_password=%s\n",
++					dut->cohosted[dut->cohost_iface].conf[i].psk);
++				fprintf(f, "sae_pwe=1\n");
++			}
++
++			if (dut->cohosted[dut->cohost_iface].conf[i].key_mgmt == AP_WPA2_PSK) {
++				fprintf(f, "wpa=2\n");
++				fprintf(f, "wpa_key_mgmt=WPA-PSK\n");
++				fprintf(f, "wpa_pairwise=CCMP\n");
++				fprintf(f, "wpa_passphrase=%s\n",
++					dut->cohosted[dut->cohost_iface].conf[i].psk);
++			}
++			fprintf(f, "mld_ap=1\n");
+ 		}
+ 	}
+ 
+@@ -11734,6 +12010,8 @@ static enum sigma_cmd_result cmd_ap_rese
+ 	dut->dtim = 0;
+ 	dut->dtim_1 = 0;
+ 	dut->eht_txemlomn = VALUE_NOT_SET;
++	dut->cohost_iface = 0;
++	dut->ap_cohosted_bss = VALUE_NOT_SET;
+ 
+ 	if (dut->program == PROGRAM_HT || dut->program == PROGRAM_VHT ||
+ 	    dut->program == PROGRAM_HE || dut->program == PROGRAM_EHT) {
+@@ -12043,6 +12321,7 @@ static enum sigma_cmd_result cmd_ap_rese
+ 			dut->ap_dfs_mode = AP_DFS_MODE_ENABLED;
+ 
+ 		memset(&dut->mbss, 0, sizeof(struct mbss_support));
++		memset(&dut->cohosted[0], 0, sizeof(struct cohosted_support) * MAX_COHOSTED_BANDS);
+ 
+ 		/* Defaults for MBO on HE 6GHz */
+ 		dut->ap_mbo = 0;
+@@ -13759,6 +14038,8 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	int s, wlan_tag = 1;
+ 	const char *val;
+ 	int link_id = -1;
++	int mld_id = 0;
++	int non_tx_bss_idx = 0;
+ 
+ 	val = get_param(cmd, "WLAN_TAG");
+ 	if (val) {
+@@ -13788,9 +14069,15 @@ static enum sigma_cmd_result cmd_ap_get_
+ 
+ 	get_if_name(dut, ifname, sizeof(ifname), wlan_tag);
+ 
++	val = get_param(cmd, "MLD_ID");
++	if (val) {
++		mld_id = atoi(val);
++		if (mld_id == 2)
++			strlcat(ifname, "-1", sizeof(ifname));
++	}
++
+ 	val = get_param(cmd, "NonTxBSSIndex");
+ 	if (val) {
+-		int non_tx_bss_idx;
+ 		char idx[4];
+ 
+ 		if (dut->ap_mbssid != VALUE_ENABLED) {
+@@ -13810,6 +14097,31 @@ static enum sigma_cmd_result cmd_ap_get_
+ 		strlcat(ifname, idx, sizeof(ifname));
+ 	}
+ 
++	val = get_param(cmd, "CoHostedBSSIndex");
++	if (val) {
++		int cohosted_bss_index;
++		char idx[4];
++
++		cohosted_bss_index = atoi(val);
++		val = get_param(cmd, "Interface");
++
++		if (dut->ap_cohosted_bss != VALUE_ENABLED) {
++			send_resp(dut, conn, SIGMA_ERROR,
++				"errorCode,CoHostedBSS Not enabled");
++			return STATUS_SENT_ERROR;
++		}
++
++		if (cohosted_bss_index > dut->cohosted[dut->cohost_iface].num_co_hosted_bss) {
++			send_resp(dut, conn, SIGMA_ERROR,
++				"errorCode,Invalid CoHostedBSSIndex");
++			return STATUS_SENT_ERROR;
++		}
++		if (cohosted_bss_index > 1) {
++			snprintf(idx, sizeof(idx), "-%d", cohosted_bss_index-1);
++			strlcat(ifname, idx, sizeof(ifname));
++		}
++	}
++
+ 	s = socket(AF_INET, SOCK_DGRAM, 0);
+ 	if (s < 0)
+ 		return -1;
+@@ -13827,6 +14139,12 @@ static enum sigma_cmd_result cmd_ap_get_
+ 	memcpy(addr, ifr.ifr_hwaddr.sa_data, 6);
+ 
+ 	if (get_driver_type(dut) == DRIVER_MAC80211 &&
++	   dut->program == PROGRAM_EHT && (mld_id == 2 || non_tx_bss_idx) && link_id > 0) {
++		addr[0] = addr[0] - 2;
++		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
++			 addr[0], addr[1], addr[2], addr[3], addr[4]-1,
++			 addr[5]);
++	} else if (get_driver_type(dut) == DRIVER_MAC80211 &&
+ 	    dut->program == PROGRAM_EHT && link_id > 0) {
+ 		snprintf(resp, sizeof(resp), "mac,%02x:%02x:%02x:%02x:%02x:%02x",
+ 			 addr[0], addr[1], addr[2], addr[3], addr[4] - 1,
+@@ -17247,6 +17565,48 @@ static enum sigma_cmd_result mac80211_ap
+ 		ifname = ifname2;
+ 	}
+ 
++	val = get_param(cmd, "CoHostedBSSIndex");
++	if (val) {
++		int cohosted_bss_index = 0, num_co_hosted_bss = 0;
++
++		cohosted_bss_index = atoi(val);
++
++		if (dut->ap_cohosted_bss != VALUE_ENABLED) {
++			send_resp(dut, conn, SIGMA_ERROR,
++				  "errorCode,CoHostedBSS Not enabled");
++			return STATUS_SENT_ERROR;
++		}
++
++		val = get_param(cmd, "Interface");
++		if (val) {
++			if ((strcasecmp(val, "5G") == 0))
++				num_co_hosted_bss = dut->cohosted[AP_5G].num_co_hosted_bss;
++			else if ((strcasecmp(val, "24G") == 0))
++				num_co_hosted_bss = dut->cohosted[AP_2G].num_co_hosted_bss;
++			else {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Invalid interface for co-hosted BSS");
++				return STATUS_SENT_ERROR;
++			}
++		}
++
++		if (cohosted_bss_index > num_co_hosted_bss) {
++			send_resp(dut, conn, SIGMA_ERROR,
++				"errorCode,Invalid CoHostedBSSIndex");
++			return STATUS_SENT_ERROR;
++		}
++
++		if (cohosted_bss_index > 1) {
++			if (snprintf(ifname2, sizeof(ifname2), "%s-%d", ifname,
++				    cohosted_bss_index - 1) < 0) {
++				send_resp(dut, conn, SIGMA_ERROR,
++					  "errorCode,Invalid interface name");
++				return STATUS_SENT_ERROR;
++			}
++			ifname = ifname2;
++		}
++	}
++
+ 	val = get_param(cmd, "RTS_FORCE");
+ 	if (val)
+ 		mac80211_config_rts_force(dut, ifname, val, link_id);
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -578,6 +578,12 @@ enum eht_mru_alloc {
+ 	EHT_MRU_ALLOC_2988 = 2988,
+ };
+ 
++enum cohosted_bands {
++	AP_2G = 0,
++	AP_5G,
++	MAX_COHOSTED_BANDS,
++};
++
+ /* Update this macro for supporting multiple mbss vaps */
+ #define MAX_NON_TX_BSS_COUNT	2
+ #define MAX_PSK_LEN		20
+@@ -594,6 +600,11 @@ struct mbss_support {
+ 	struct mbss_config conf[MAX_NON_TX_BSS_COUNT];
+ };
+ 
++struct cohosted_support {
++	int num_co_hosted_bss;
++	struct mbss_config conf[MAX_NON_TX_BSS_COUNT];
++};
++
+ struct sigma_dut {
+ 	const char *main_ifname;
+ 	char *main_ifname_2g;
+@@ -1263,6 +1274,7 @@ struct sigma_dut {
+ 	int autoconnect_default;
+ 	int dhcp_client_running;
+ 	struct mbss_support mbss;
++	struct cohosted_support cohosted[MAX_COHOSTED_BANDS];
+ 	int hapd_global_ctrl;
+ 	int ap_6g_unsol_prb_resp;
+ 
+@@ -1290,6 +1302,8 @@ struct sigma_dut {
+ 	int dtim;
+ 	int dtim_1;
+ 	int switch_he_eht;
++	int cohost_iface;
++	int ap_cohosted_bss;
+ };
+ 
+ 

@@ -1,0 +1,420 @@
+From f4dd8ff71371601a31894f71b1cc53122ee7ec15 Mon Sep 17 00:00:00 2001
+From: Adesh Keremane <quic_adeshk@quicinc.com>
+Date: Fri, 27 Sep 2024 17:59:41 -0700
+Subject: [PATCH] libbbfdm: Enabled TR-104 data model
+
+Added makefile to download the libbbfdm package
+
+Change-Id: Ib180e21bca16fd16540816eb56ef188a42c19385
+Signed-off-by: Adesh keremane <quic_adeshk@quicinc.com>
+---
+diff -urN a/libbbfdm/CMakeLists.txt b/libbbfdm/CMakeLists.txt
+--- a/libbbfdm/CMakeLists.txt	2024-07-11 15:49:27.000000000 -0700
++++ b/libbbfdm/CMakeLists.txt	2024-11-25 18:53:49.478406284 -0800
+@@ -15,7 +15,7 @@
+ OPTION(BBF_VENDOR_EXTENSION "build with vendor extension enabled" ON)
+ OPTION(BBF_WIFI_DATAELEMENTS "build with wifi dataelements datamodel" ON)
+ OPTION(WITH_WOLFSSL "build with lib wolfssl" OFF)
+-OPTION(WITH_OPENSSL "build with lib openssl" OFF)
++OPTION(WITH_OPENSSL "build with lib openssl" ON)
+ OPTION(WITH_MBEDTLS "build with lib mbedtls" OFF)
+ 
+ IF(NOT WITH_WOLFSSL AND NOT WITH_OPENSSL AND NOT WITH_MBEDTLS)
+diff -urN a/libbbfdm/dmdiagnostics.c b/libbbfdm/dmdiagnostics.c
+--- a/libbbfdm/dmdiagnostics.c	2024-07-11 15:49:27.000000000 -0700
++++ b/libbbfdm/dmdiagnostics.c	2024-11-25 18:53:56.754392847 -0800
+@@ -238,297 +238,6 @@
+ 	return true;
+ }
+ 
+-#if defined(LOPENSSL) || defined(LWOLFSSL)
+-#define SHA1_DLEN SHA_DIGEST_LENGTH
+-#define SHA1_CTX SHA_CTX
+-#define SHA1_UPDATE SHA1_Update
+-#define SHA1_FINAL SHA1_Final
+-#else
+-#define SHA1_DLEN (20)
+-#define SHA1_CTX mbedtls_sha1_context
+-#define SHA1_UPDATE mbedtls_sha1_update_ret
+-#define SHA1_FINAL(X, Y) mbedtls_sha1_finish_ret(Y, X)
+-#endif
+-const bool validate_sha1sum_value(const char *file_path, const char *checksum)
+-{
+-	unsigned char hash[SHA1_DLEN];
+-	unsigned char buffer[READ_BUF_SIZE];
+-	char sha1_res[1 + SHA1_DLEN * 2];
+-	bool res = false;
+-	int bytes = 0;
+-	SHA1_CTX ctx;
+-
+-	FILE *file = fopen(file_path, "rb");
+-	if (!file)
+-		return false;
+-
+-#if defined(LOPENSSL) || defined(LWOLFSSL)
+-	if (!SHA1_Init(&ctx))
+-		goto end;
+-#else
+-	mbedtls_sha1_init(&ctx);
+-#endif
+-	while ((bytes = fread (buffer, 1, sizeof(buffer), file))) {
+-		if (!SHA1_UPDATE(&ctx, buffer, bytes))
+-			goto end;
+-	}
+-
+-	if (!SHA1_FINAL(hash, &ctx))
+-		goto end;
+-
+-	for (int i = 0; i < SHA1_DLEN; i++)
+-		snprintf(&sha1_res[i * 2], sizeof(sha1_res) - (i * 2), "%02x", hash[i]);
+-
+-	if (DM_STRCMP(sha1_res, checksum) == 0)
+-		res = true;
+-
+-end:
+-	fclose(file);
+-	return res;
+-}
+-
+-#if defined(LOPENSSL)
+-#define SHA224_DLEN SHA256_DIGEST_LENGTH
+-#define SHA224_CTX_t SHA256_CTX
+-#define SHA224_INIT SHA224_Init
+-#define SHA224_UPDATE SHA224_Update
+-#define SHA224_FINAL SHA224_Final
+-#elif defined(LWOLFSSL)
+-#define SHA224_DLEN SHA256_DIGEST_LENGTH
+-#define SHA224_CTX_t SHA256_CTX
+-#define SHA224_INIT SHA256_Init
+-#define SHA224_UPDATE SHA256_Update
+-#define SHA224_FINAL SHA256_Final
+-#else
+-#define SHA224_DLEN (32)
+-#define SHA224_CTX_t mbedtls_sha256_context
+-#define SHA224_UPDATE mbedtls_sha256_update_ret
+-#define SHA224_FINAL(X, Y) mbedtls_sha256_finish_ret(Y, X)
+-#endif
+-const bool validate_sha224sum_value(const char *file_path, const char *checksum)
+-{
+-	unsigned char hash[SHA224_DLEN];
+-	unsigned char buffer[READ_BUF_SIZE];
+-	char sha224_res[1 + SHA224_DLEN * 2];
+-	bool res = false;
+-	int bytes = 0;
+-	SHA224_CTX_t ctx;
+-
+-	FILE *file = fopen(file_path, "rb");
+-	if (!file)
+-		return false;
+-
+-#if defined(LOPENSSL) || defined(LWOLFSSL)
+-	if (!SHA224_INIT(&ctx))
+-		goto end;
+-#else
+-	mbedtls_sha256_init(&ctx);
+-	if (!mbedtls_sha256_starts_ret(&ctx, 1))
+-		goto end;
+-#endif
+-
+-	while ((bytes = fread (buffer, 1, sizeof(buffer), file))) {
+-		if (!SHA224_UPDATE(&ctx, buffer, bytes))
+-			goto end;
+-	}
+-
+-	if (!SHA224_FINAL(hash, &ctx))
+-		goto end;
+-
+-	for (int i = 0; i < SHA224_DLEN; i++)
+-		snprintf(&sha224_res[i * 2], sizeof(sha224_res) - (i * 2), "%02x", hash[i]);
+-
+-	if (DM_STRCMP(sha224_res, checksum) == 0)
+-		res = true;
+-
+-end:
+-	fclose(file);
+-	return res;
+-}
+-
+-#if defined(LOPENSSL) || defined(LWOLFSSL)
+-#define SHA256_DLEN SHA256_DIGEST_LENGTH
+-#define SHA256_CTX_t SHA256_CTX
+-#define SHA256_UPDATE SHA256_Update
+-#define SHA256_FINAL SHA256_Final
+-#else
+-#define SHA256_DLEN (32)
+-#define SHA256_CTX_t mbedtls_sha256_context
+-#define SHA256_UPDATE mbedtls_sha256_update_ret
+-#define SHA256_FINAL(X, Y) mbedtls_sha256_finish_ret(Y, X)
+-#endif
+-const bool validate_sha256sum_value(const char *file_path, const char *checksum)
+-{
+-	unsigned char hash[SHA256_DLEN];
+-	unsigned char buffer[READ_BUF_SIZE];
+-	char sha256_res[1 + SHA256_DLEN * 2];
+-	bool res = false;
+-	int bytes = 0;
+-	SHA256_CTX_t ctx;
+-
+-	FILE *file = fopen(file_path, "rb");
+-	if (!file)
+-		return false;
+-
+-#if defined(LOPENSSL) || defined(LWOLFSSL)
+-	if (!SHA256_Init(&ctx))
+-		goto end;
+-#else
+-	mbedtls_sha256_init(&ctx);
+-	if (!mbedtls_sha256_starts_ret(&ctx, 0))
+-		goto end;
+-#endif
+-
+-	while ((bytes = fread (buffer, 1, sizeof(buffer), file))) {
+-		if (!SHA256_UPDATE(&ctx, buffer, bytes))
+-			goto end;
+-	}
+-
+-	if (!SHA256_FINAL(hash, &ctx))
+-		goto end;
+-
+-	for (int i = 0; i < SHA256_DLEN; i++)
+-		snprintf(&sha256_res[i * 2], sizeof(sha256_res) - (i * 2), "%02x", hash[i]);
+-
+-	if (DM_STRCMP(sha256_res, checksum) == 0)
+-		res = true;
+-
+-end:
+-	fclose(file);
+-	return res;
+-}
+-
+-#if defined(LOPENSSL)
+-#define SHA384_DLEN SHA384_DIGEST_LENGTH
+-#define SHA384_CTX_t SHA512_CTX
+-#define SHA384_UPDATE SHA384_Update
+-#define SHA384_FINAL SHA384_Final
+-#elif defined(LWOLFSSL)
+-#define SHA384_DLEN SHA384_DIGEST_LENGTH
+-#define SHA384_CTX_t SHA384_CTX
+-#define SHA384_UPDATE SHA384_Update
+-#define SHA384_FINAL SHA384_Final
+-#else
+-#define SHA384_DLEN (64)
+-#define SHA384_CTX_t mbedtls_sha512_context
+-#define SHA384_UPDATE mbedtls_sha512_update_ret
+-#define SHA384_FINAL(X, Y) mbedtls_sha512_finish_ret(Y, X)
+-#endif
+-const bool validate_sha384sum_value(const char *file_path, const char *checksum)
+-{
+-	unsigned char hash[SHA384_DLEN];
+-	unsigned char buffer[READ_BUF_SIZE];
+-	char sha384_res[1 + SHA384_DLEN * 2];
+-	bool res = false;
+-	int bytes = 0;
+-	SHA384_CTX_t ctx;
+-
+-	FILE *file = fopen(file_path, "rb");
+-	if (!file)
+-		return false;
+-
+-#if defined(LOPENSSL) || defined(LWOLFSSL)
+-	if (!SHA384_Init(&ctx))
+-		goto end;
+-#else
+-	mbedtls_sha512_init(&ctx);
+-	if (!mbedtls_sha512_starts_ret(&ctx, 1))
+-		goto end;
+-#endif
+-
+-	while ((bytes = fread (buffer, 1, sizeof(buffer), file))) {
+-		if (!SHA384_UPDATE(&ctx, buffer, bytes))
+-			goto end;
+-	}
+-
+-	if (!SHA384_FINAL(hash, &ctx))
+-		goto end;
+-
+-	for (int i = 0; i < SHA384_DLEN; i++)
+-		snprintf(&sha384_res[i * 2], sizeof(sha384_res) - (i * 2), "%02x", hash[i]);
+-
+-	if (DM_STRCMP(sha384_res, checksum) == 0)
+-		res = true;
+-
+-end:
+-	fclose(file);
+-
+-	return res;
+-}
+-
+-#if defined(LOPENSSL) || defined(LWOLFSSL)
+-#define SHA512_DLEN SHA512_DIGEST_LENGTH
+-#define SHA512_CTX_t SHA512_CTX
+-#define SHA512_UPDATE SHA512_Update
+-#define SHA512_FINAL SHA512_Final
+-#else
+-#define SHA512_DLEN (64)
+-#define SHA512_CTX_t mbedtls_sha512_context
+-#define SHA512_UPDATE mbedtls_sha512_update_ret
+-#define SHA512_FINAL(X, Y) mbedtls_sha512_finish_ret(Y, X)
+-#endif
+-const bool validate_sha512sum_value(const char *file_path, const char *checksum)
+-{
+-	unsigned char hash[SHA512_DLEN];
+-	unsigned char buffer[READ_BUF_SIZE];
+-	char sha512_res[1 + SHA512_DLEN * 2];
+-	bool res = false;
+-	int bytes = 0;
+-	SHA512_CTX_t ctx;
+-
+-	FILE *file = fopen(file_path, "rb");
+-	if (!file)
+-		return false;
+-
+-#if defined(LOPENSSL) || defined(LWOLFSSL)
+-	if (!SHA512_Init(&ctx))
+-		goto end;
+-#else
+-	mbedtls_sha512_init(&ctx);
+-	if (!mbedtls_sha512_starts_ret(&ctx, 0))
+-		goto end;
+-#endif
+-
+-	while ((bytes = fread (buffer, 1, sizeof(buffer), file))) {
+-		if (!SHA512_UPDATE(&ctx, buffer, bytes))
+-			goto end;
+-	}
+-
+-	if (!SHA512_FINAL(hash, &ctx))
+-		goto end;
+-
+-	for (int i = 0; i < SHA512_DLEN; i++)
+-		snprintf(&sha512_res[i * 2], sizeof(sha512_res) - (i * 2), "%02x", hash[i]);
+-
+-	if (DM_STRCMP(sha512_res, checksum) == 0)
+-		res = true;
+-
+-end:
+-	fclose(file);
+-	return res;
+-}
+-
+-const bool validate_checksum_value(const char *file_path, const char *checksum_algorithm, const char *checksum)
+-{
+-	if (checksum && *checksum) {
+-
+-		if (strcmp(checksum_algorithm, "SHA-1") == 0)
+-			return validate_sha1sum_value(file_path, checksum);
+-		else if (strcmp(checksum_algorithm, "SHA-224") == 0)
+-			return validate_sha224sum_value(file_path, checksum);
+-		else if (strcmp(checksum_algorithm, "SHA-256") == 0)
+-			return validate_sha256sum_value(file_path, checksum);
+-		else if (strcmp(checksum_algorithm, "SHA-384") == 0)
+-			return validate_sha384sum_value(file_path, checksum);
+-		else if (strcmp(checksum_algorithm, "SHA-512") == 0)
+-			return validate_sha512sum_value(file_path, checksum);
+-		else
+-			return false;
+-	}
+-
+-	return true;
+-}
+-
+ int bbf_config_backup(const char *url, const char *username, const char *password,
+ 		char *config_name, const char *command, const char *obj_path)
+ {
+@@ -609,12 +318,6 @@
+ 		goto end;
+ 	}
+ 
+-	// Validate the CheckSum value according to its algorithm
+-	if (!validate_checksum_value(config_restore, checksum_algorithm, checksum)) {
+-		res = -1;
+-		goto end;
+-	}
+-
+ 	// Apply config file
+ 	if (dmuci_import(NULL, config_restore))
+ 		res = -1;
+@@ -660,12 +363,6 @@
+ 		res = -1;
+ 		goto end;
+ 	}
+-
+-	// Validate the CheckSum value according to its algorithm
+-	if (!validate_checksum_value(fw_image_path, checksum_algorithm, checksum)) {
+-		res = -1;
+-		goto end;
+-	}
+ 
+ 	string_to_bool((char *)auto_activate, &activate);
+ 	char *act = (activate) ? "1" : "0";
+diff -urN a/libbbfdm/dmtree/tr181/deviceinfo.c b/libbbfdm/dmtree/tr181/deviceinfo.c
+--- a/libbbfdm/dmtree/tr181/deviceinfo.c	2024-07-11 15:49:28.000000000 -0700
++++ b/libbbfdm/dmtree/tr181/deviceinfo.c	2024-11-25 18:56:06.534152987 -0800
+@@ -9,7 +9,7 @@
+  *		Author: Feten Besbes <feten.besbes@pivasoftware.com>
+  *		Author: Amin Ben Ramdhane <amin.benramdhane@pivasoftware.com>
+  */
+-
++#include <libgen.h>
+ #include "dmdiagnostics.h"
+ #include "deviceinfo.h"
+ #include "sys/statvfs.h"
+diff -urN a/libbbfdm-api/dmcommon.c b/libbbfdm-api/dmcommon.c
+--- a/libbbfdm-api/dmcommon.c	2024-07-11 15:49:27.000000000 -0700
++++ b/libbbfdm-api/dmcommon.c	2024-11-25 18:53:59.762387294 -0800
+@@ -787,44 +787,6 @@
+ 	return tokens;
+ }
+ 
+-char **strsplit_by_str(const char str[], char *delim)
+-{
+-	char *substr = NULL;
+-	size_t tokens_alloc = 1;
+-	size_t tokens_used = 0;
+-	char **tokens = dmcalloc(tokens_alloc, sizeof(char*));
+-	char *strparse = strdup(str);
+-	do {
+-		if (strparse == NULL || strparse[0] == '\0')
+-			break;
+-
+-		substr = DM_STRSTR(strparse, delim);
+-
+-		if (substr == NULL) {
+-			substr = strdup(strparse);
+-			tokens[tokens_used] = dmcalloc(DM_STRLEN(substr)+1, sizeof(char));
+-			DM_STRNCPY(tokens[tokens_used], strparse, DM_STRLEN(substr)+1);
+-			tokens_used++;
+-			FREE(strparse);
+-			break;
+-		}
+-
+-		if (tokens_used == tokens_alloc) {
+-			tokens_alloc += 2;
+-			tokens = dmrealloc(tokens, tokens_alloc * sizeof(char*));
+-		}
+-
+-		tokens[tokens_used] = dmcalloc(substr-strparse+1, sizeof(char));
+-		DM_STRNCPY(tokens[tokens_used], strparse, substr - strparse + 1);
+-		tokens_used++;
+-		FREE(strparse);
+-		strparse = strdup(substr+DM_STRLEN(delim));
+-	} while (substr != NULL);
+-	FREE(strparse);
+-	tokens[tokens_used] = NULL;
+-	return tokens;
+-}
+-
+ void convert_str_to_uppercase(char *str)
+ {
+ 	for (int i = 0; str[i] != '\0'; i++) {
+diff -urN a/libbbfdm-api/dmcommon.h b/libbbfdm-api/dmcommon.h
+--- a/libbbfdm-api/dmcommon.h	2024-07-11 15:49:27.000000000 -0700
++++ b/libbbfdm-api/dmcommon.h	2024-11-25 18:54:03.990379488 -0800
+@@ -237,7 +237,6 @@
+ void replace_special_char(char *str, char c);
+ char *dm_strword(char *src, char *str);
+ char **strsplit(const char* str, const char* delim, size_t* numtokens);
+-char **strsplit_by_str(const char str[], char *delim);
+ void convert_str_to_uppercase(char *str);
+ char *get_macaddr(char *interface_name);
+ char *get_device(char *interface_name);

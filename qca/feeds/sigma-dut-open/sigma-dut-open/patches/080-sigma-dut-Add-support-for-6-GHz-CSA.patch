@@ -1,0 +1,44 @@
+commit c2b050307c3fd925c0a2af402aab69aeb2105ca3
+Author: Pavithra Ganesan <quic_pavigane@quicinc.com>
+Date:   Wed Apr 3 18:28:22 2024 +0530
+
+    sigma_dut: Add support for 6G CSA
+    
+    Currently 6G CSA is not handled in mac80211_chnum_band function.
+    
+    Add support for 6G Channel switch and apply it using hostapd_cli
+    channel switch command.
+    
+    5G seg_ch_offset calculation also added.
+    Signed-off-by: Pavithra Ganesan <quic_pavigane@quicinc.com>
+
+diff --git a/ap.c b/ap.c
+index 5378005..5585185 100644
+--- a/ap.c
++++ b/ap.c
+@@ -16357,7 +16357,25 @@ static int mac80211_chnum_band(struct sigma_dut *dut, const char *ifname,
+ 		}
+ 		center_freq = get_2g_channel_freq(center_freq_idx);
+ 		channel_freq = get_2g_channel_freq(channel);
++	} else if (check_band(dut, BAND_6G, link)) {
++		if (chwidth != 20) {
++			if (((channel - 1) / 4) % 2)
++				sec_ch_offset = -1;
++			else
++				sec_ch_offset = 1;
++		}
++		channel_freq = channel_to_freq(dut, channel);
++		center_freq = channel_to_freq(dut, center_freq_idx);
+ 	} else {
++		if (chwidth != 20) {
++			if (((channel - 1) / 4) % 2)
++				sec_ch_offset = -1;
++			else
++				sec_ch_offset = 1;
++
++			if (channel >= 149)
++				sec_ch_offset = -(sec_ch_offset);
++		}
+ 		center_freq = get_5g_channel_freq(center_freq_idx);
+ 		channel_freq = get_5g_channel_freq(channel);
+ 	}

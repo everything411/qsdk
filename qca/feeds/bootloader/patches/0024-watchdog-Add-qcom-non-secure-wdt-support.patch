@@ -1,0 +1,41 @@
+From da401dd224502a30dbd6848c69c2bdbb764c21f3 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Wed, 21 May 2025 20:33:07 +0530
+Subject: [PATCH] watchdog: Add qcom non-secure wdt support
+
+Change-Id: I6a066aa06958d015dab57f2edc719058780d937e
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/watchdog/Kconfig  | 8 ++++++++
+ drivers/watchdog/Makefile | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/drivers/watchdog/Kconfig b/drivers/watchdog/Kconfig
+index b39b2546e5c..d5fb5f095b7 100644
+--- a/drivers/watchdog/Kconfig
++++ b/drivers/watchdog/Kconfig
+@@ -450,4 +450,12 @@ config WDT_FTWDT010
+ 	help
+ 	  Faraday Technology ftwdt010 watchdog is an architecture independent
+ 	  watchdog. It is usually used in SoC chip design.
++
++config WDT_QCOM
++	bool "Qualcomm non-secure watchdog driver support"
++	depends on WDT
++	help
++	  Enable support for the watchdog timer on Qualcomm SoCs.
++	  The watchdog will perform a full SoC reset resulting in a
++	  reboot of the entire system.
+ endmenu
+diff --git a/drivers/watchdog/Makefile b/drivers/watchdog/Makefile
+index 9b6b1a8e8ad..c6a2378502e 100644
+--- a/drivers/watchdog/Makefile
++++ b/drivers/watchdog/Makefile
+@@ -53,3 +53,4 @@ obj-$(CONFIG_WDT_STM32MP) += stm32mp_wdt.o
+ obj-$(CONFIG_WDT_SUNXI) += sunxi_wdt.o
+ obj-$(CONFIG_WDT_TANGIER) += tangier_wdt.o
+ obj-$(CONFIG_WDT_XILINX) += xilinx_wwdt.o
++obj-$(CONFIG_WDT_QCOM) += qcom_wdt.o
+-- 
+2.34.1
+

@@ -1,0 +1,28 @@
+From 4838dcc5dee245c79177b0fff942c831c263a291 Mon Sep 17 00:00:00 2001
+From: Timple Raj M <timple@qti.qualcomm.com>
+Date: Thu, 23 Oct 2025 16:23:52 +0530
+Subject: [PATCH] arm: dts: Add ipq5210-emulation DTS support
+
+This patch adds ipq5210-emulation DTS build support
+
+Change-Id: Icf87616b94d6d277ac2bc21d0b51e9b637f8e672
+Signed-off-by: Timple Raj M <timple@qti.qualcomm.com>
+---
+ arch/arm/dts/Makefile | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 267b0179a5f..78c13266875 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -1,5 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0+
+ 
++dtb-$(CONFIG_TARGET_IPQ5210) += ipq5210-emulation.dtb
++
+ dtb-$(CONFIG_TARGET_SMARTWEB) += at91sam9260-smartweb.dtb
+ dtb-$(CONFIG_TARGET_TAURUS) += at91sam9g20-taurus.dtb
+ dtb-$(CONFIG_TARGET_CORVUS) += at91sam9g45-corvus.dtb
+-- 
+2.34.1
+

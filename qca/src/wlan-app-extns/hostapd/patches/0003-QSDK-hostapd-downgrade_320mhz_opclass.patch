@@ -1,0 +1,107 @@
+From 56fc0fbd1ecf10ec600e4d63d1f1bf9a5fa21490 Mon Sep 17 00:00:00 2001
+From: prasathr <prasathr@qti.qualcomm.com>
+Date: Wed, 26 Nov 2025 10:38:20 +0530
+Subject: [PATCH] hostapd-extn: Add configuration option to downgrade operating class for 320MHz bandwidth
+
+Wi-Fi 6/6E stations may not support decoding the 320MHz operating class advertised in
+the Reduced Neighbor Report (RNR) element. Hostapd already includes logic to advertise
+the 160MHz operating class when the AP operates in 320MHz mode. This patch introduces
+a new configuration parameter 'downgrade_320mhz_opclass' in hostapd.conf to allow users
+to control this behavior. The option is enabled by default.
+
+Patch-dependency: none
+
+Signed-off-by: Prasath Rao Loganathan <prasathr@qti.qualcomm.com>
+
+---
+ hostapd/config_file.c | 12 ++++++++++++
+ hostapd/hostapd.conf  |  8 ++++++++
+ src/ap/ap_config.c    |  3 +++
+ src/ap/ap_config.h    |  3 +++
+ src/ap/ieee802_11.c   |  3 ++-
+ 5 files changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index e3afa9f..0d5c947 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -5215,6 +5215,18 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 	} else if (os_strcmp(buf, "enable_mscs") == 0) {
+ 		bss->mscs = atoi(pos);
+ #endif /* CONFIG_IEEE80211AX */
++
++#ifdef CONFIG_QCN_EXTN
++       } else if (os_strcmp(buf, "downgrade_320mhz_opclass") == 0) {
++               int val = atoi(pos);
++               if (val != 0 && val != 1) {
++                       wpa_printf(MSG_ERROR, "Line %d: invalid downgrade_320mhz_opclass %d (expected 0 or 1)",
++                                  line, val);
++                       return 1;
++               }
++               conf->downgrade_320mhz_opclass = val;
++
++#endif
+ 	} else {
+ 		wpa_printf(MSG_ERROR,
+ 			   "Line %d: unknown configuration item '%s'",
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 6cff89c..c45ade7 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -3730,3 +3730,11 @@ own_ip_addr=127.0.0.1
+ # 0 = disabled
+ # 1 = enabled (default)
+ #enable_scs=1
++
++##### Downgrade 320 Mhz opclass in RNR ##########################################
++# When enabled, hostapd will advertise the 160 MHz operating class instead of
++# 320 MHz in the Reduced Neighbor Report (RNR) element for compatibility with
++# legacy Wi-Fi 6/6E stations that cannot decode 320 MHz operating class.
++# 0 = disabled
++# 1 = enabled (default)
++# downgrade_320mhz_opclass=1
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index f3a60de..925326b 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -385,6 +385,9 @@ struct hostapd_config * hostapd_config_defaults(void)
+ 
+ 	bss->rate_type = BEACON_RATE_LEGACY;
+ 	bss->beacon_rate = 0;
++#ifdef CONFIG_QCN_EXTN
++       conf->downgrade_320mhz_opclass = true;
++#endif
+ 
+ 	return conf;
+ }
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index c336221..0eba825 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1365,6 +1365,9 @@ struct hostapd_config {
+ 	int afc_chan_sel_config;
+ 	int cur_chan_eirp;
+	int original_chan_width; /* Original channel width for AFC */
++#ifdef CONFIG_QCN_EXTN
++	bool downgrade_320mhz_opclass;
++#endif
+ 
+ };
+ 
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index b347a37..15dd8df 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -10947,7 +10947,8 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
+ 		return eid;
+ 
+ #ifdef CONFIG_QCN_EXTN
+-	if (hostapd_get_oper_chwidth(hapd->iconf) == CONF_OPER_CHWIDTH_320MHZ)
++	if ((hostapd_get_oper_chwidth(hapd->iconf) == CONF_OPER_CHWIDTH_320MHZ) &&
++	     hapd->iconf->downgrade_320mhz_opclass)
+ 		hostapd_modify_supported_op_class_for_320mhz_extn(
+ 			iface->freq,
+ 			&op_class);
+-- 
+2.34.1
+

@@ -1,0 +1,115 @@
+From fa3bdb2ee7b4450c6bc10bfcdbea839f5a79d758 Mon Sep 17 00:00:00 2001
+From: Sai Pratyusha Magam <smagam@qti.qualcomm.com>
+Date: Thu, 10 Sep 2026 15:32:40 +0530
+Subject: [PATCH] UPSTREAM:PROTOCOL:sigma-dut - Support for EPPKE-SAE CAPI
+ command
+
+Add support for EPPKE-SAE CAPI command parsing that was explicitly
+introduced for 6GHz band
+
+Patch-dependency: None
+
+Signed-off-by: Sai Pratyusha Magam <smagam@qti.qualcomm.com>
+---
+ ap.c        | 15 +++++++++++++++
+ sigma_dut.h |  2 ++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/ap.c b/ap.c
+index 85aaacb..d55535d 100644
+--- a/ap.c
++++ b/ap.c
+@@ -3987,6 +3987,10 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 				   wlan_tag == 2) {
+ 				dut->ap_tag_key_mgmt[wlan_tag - 2] =
+ 					AP2_EPPKE_PSK_SAE;
++			} else if (strcasecmp(val, "EPPKE-SAE") == 0 &&
++				   wlan_tag == 2) {
++				dut->ap_tag_key_mgmt[wlan_tag - 2] =
++					AP2_EPPKE_SAE;
+ 			} else if (strcasecmp(val, "EPPKE") == 0 &&
+ 				   wlan_tag == 2) {
+ 				dut->ap_tag_key_mgmt[wlan_tag - 2] =
+@@ -4232,6 +4236,9 @@ static enum sigma_cmd_result cmd_ap_set_security(struct sigma_dut *dut,
+ 		} else if (strcasecmp(val, "EPPKE-PSK-SAE") == 0) {
+ 			dut->ap_key_mgmt = AP_EPPKE_PSK_SAE;
+ 			dut->ap_cipher = AP_CCMP;
++		} else if (strcasecmp(val, "EPPKE-SAE") == 0) {
++			dut->ap_key_mgmt = AP_EPPKE_SAE;
++			dut->ap_cipher = AP_CCMP;
+ 		} else if (strcasecmp(val, "EPPKE") == 0) {
+ 			dut->ap_key_mgmt = AP_EPPKE;
+ 			dut->ap_cipher = AP_CCMP;
+@@ -6239,6 +6246,9 @@ static int owrt_ap_config_vap(struct sigma_dut *dut)
+ 		case AP_EPPKE_PSK_SAE:
+ 			/* TODO */
+ 			break;
++		case AP_EPPKE_SAE:
++			/* TODO */
++			break;
+ 		case AP_EPPKE:
+ 			/* TODO */
+ 			break;
+@@ -7211,6 +7221,7 @@ static int cmd_wcn_ap_config_commit(struct sigma_dut *dut,
+ 	case AP_WPA3_SAE_EXT:
+ 	case AP_WPA3_COMPAT:
+ 	case AP_EPPKE_PSK_SAE:
++	case AP_EPPKE_SAE:
+ 	case AP_EPPKE:
+ 	case AP_WPA3_COMPAT_COEX:
+ 		/* Not supported */
+@@ -9446,6 +9457,7 @@ static int cmd_ath_ap_config_commit(struct sigma_dut *dut,
+ 	case AP_WPA3_SAE_EXT:
+ 	case AP_WPA3_COMPAT:
+ 	case AP_EPPKE_PSK_SAE:
++	case AP_EPPKE_SAE:
+ 	case AP_EPPKE:
+ 	case AP_WPA3_COMPAT_COEX:
+ 		/* TODO */
+@@ -9565,6 +9577,7 @@ static int cmd_ath_ap_config_commit(struct sigma_dut *dut,
+ 		case AP_WPA3_SAE_EXT:
+ 		case AP_WPA3_COMPAT:
+ 		case AP_EPPKE_PSK_SAE:
++		case AP_EPPKE_SAE:
+ 		case AP_EPPKE:
+ 		case AP_WPA3_COMPAT_COEX:
+ 			/* TODO */
+@@ -10776,6 +10789,7 @@ static int set_second_ap_security_conf(FILE *file, struct sigma_dut *dut, int li
+ 		fprintf(file, "wpa_passphrase=%s\n", dut->ap_tag_passphrase[0]);
+ 		break;
+ 	case AP2_EPPKE_PSK_SAE:
++	case AP2_EPPKE_SAE:
+ 		if (dut->ap_band_6g && (dut->mld[link_id].ap_band == BAND_6G))
+ 				fprintf(file, "sae_pwe=1\n");
+ 
+@@ -12116,6 +12130,7 @@ enum sigma_cmd_result cmd_ap_config_commit(struct sigma_dut *dut,
+ 			fprintf(f, "rsn_override_mfp_2=2\n");
+ 			break;
+ 		case AP_EPPKE_PSK_SAE:
++		case AP_EPPKE_SAE:
+ 			fprintf(f, "wpa=2\n");
+ 			fprintf(f, "wpa_pairwise=CCMP GCMP-256\n");
+ 			if (dut->ap_sae_passwords) {
+diff --git a/sigma_dut.h b/sigma_dut.h
+index 61ad7d7..d0aea83 100644
+--- a/sigma_dut.h
++++ b/sigma_dut.h
+@@ -660,6 +660,7 @@ enum ap_key_mgmt {
+ 	AP_EPPKE_PSK_SAE,
+ 	AP_EPPKE,
+ 	AP_WPA3_COMPAT_COEX,
++	AP_EPPKE_SAE,
+ };
+ 
+ enum eht_ru_alloc {
+@@ -967,6 +968,7 @@ struct sigma_dut {
+ 		AP2_EPPKE_PSK_SAE,
+ 		AP2_EPPKE,
+ 		AP2_WPA3_COMPAT_COEX,
++		AP2_EPPKE_SAE,
+ 	} ap_tag_key_mgmt[MAX_WLAN_TAGS - 1];
+ 	int ap_add_sha256;
+ 	int ap_add_sha384;
+-- 
+2.34.1
+

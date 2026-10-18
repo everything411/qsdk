@@ -1,0 +1,35 @@
+From aaf050719a32f2e4da050931cdac5210705cf936 Mon Sep 17 00:00:00 2001
+From: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+Date: Tue, 24 Feb 2026 23:26:09 +0530
+Subject: [PATCH] clk: qcom: ipq: add CMN PLL Kconfig support
+
+Change-Id: Id0d2bc824279f204e4bea0201b78a2cf18b3fb84
+Signed-off-by: Vandhiadevan Karunamoorthy <vkarunam@qti.qualcomm.com>
+---
+ drivers/clk/qcom/Kconfig | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/clk/qcom/Kconfig b/drivers/clk/qcom/Kconfig
+index 69eef58a8d2..38b91ebe7e8 100644
+--- a/drivers/clk/qcom/Kconfig
++++ b/drivers/clk/qcom/Kconfig
+@@ -55,6 +55,16 @@ config CLK_QCOM_NSSCC_QCE2204
+ 	  on the QCE2204. This driver supports the clocks
+ 	  and resets exposed by the NSSCC hardware block.
+ 
++config CLK_QCOM_CMN_PLL
++	bool "Qualcomm CMN PLL"
++	select CLK_QCOM
++	help
++	  Say Y here to enable support for the CMN PLL derives
++	  its reference clock from the on-board Wi-Fi
++	  block and supplies fixed-rate clocks to networking hardware
++	  and the GCC, including PPE, external PHY or switch devices,
++	  and the PCS.
++
+ config CLK_QCOM_IPQ5210
+ 	bool "Qualcomm IPQ5210 GCC"
+ 	select CLK_QCOM
+-- 
+2.34.1
+

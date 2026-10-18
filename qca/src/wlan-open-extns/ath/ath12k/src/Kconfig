@@ -1,0 +1,24 @@
+config QCN_EXTN
+	bool "Enable QCN extensions support"
+	depends on ATH12K
+	default y
+	help
+	  Select this option to enable QCN 802.11 extensions in ath12k
+	  drivers that support it..
+
+config QCA_LAB_TEST_FEATURES
+	bool "Enable QCA lab test features"
+	depends on QCN_EXTN
+	default y
+	help
+	  Select this option to enable ath12k lab-only debug. This is
+	  intended only for QCN lab test purpose and not for production
+	  builds as it may overrides regulatory requirements.
+
+config QCN_EXTN_MESH_SUPPORT
+	bool "Enable QCN extensions mesh feature support"
+	depends on QCN_EXTN
+	default n
+	help
+	  Select this option to enable QCN extension mesh feature in ath12k
+	  drivers that support it..
