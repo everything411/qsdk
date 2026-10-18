@@ -109,8 +109,11 @@ typedef struct flow_keys __qdf_flow_keys_t;
 
 #define IEEE80211_RADIOTAP_HE_MU_OTHER 25
 
-#define IEEE80211_RADIOTAP_EXT1_USIG	1
-#define IEEE80211_RADIOTAP_EXT1_EHT	2
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0))
+#define IEEE80211_RADIOTAP_TLV          28
+#define IEEE80211_RADIOTAP_EHT_USIG     33
+#define IEEE80211_RADIOTAP_EHT          34
+#endif
 
 /* mark the first packet after wow wakeup */
 #define QDF_MARK_FIRST_WAKEUP_PACKET   0x80000000
@@ -121,6 +124,51 @@ typedef struct flow_keys __qdf_flow_keys_t;
 #define QDF_NBUF_PKT_TCPOP_RST			0x04
 
 #define QDF_NBUF_TRAC_IPV4_OFFSET		14
+/* Structures to support USIG and EHT in TLV format */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0))
+/* TLV format:
+ * @type: TLV type
+ * @len: TLV length
+ * @data: TLV data
+ */
+struct qdf_radiotap_tlv {
+	uint16_t type;
+	uint16_t len;
+	uint8_t data[];
+};
+
+/* radiotap_eht_usig - content of U-SIG tlv (type 33)
+ * U-SIG property of received frame
+ * @common: USIG common
+ * @value: USIG value
+ * @mask: USIG mask
+ */
+struct qdf_radiotap_eht_usig {
+	uint32_t common;
+	uint32_t value;
+	uint32_t mask;
+};
+
+/* radiotap_eht - content of EHT tlv (type 34)
+ * EHT property of received frame
+ * @known: EHT known
+ * @data: EHT data
+ * @user_info: EHT user info
+ */
+struct qdf_radiotap_eht {
+	uint32_t known;
+	uint32_t data[9];
+	uint32_t user_info[];
+};
+
+typedef struct qdf_radiotap_tlv qdf_radiotap_tlv_t;
+typedef struct qdf_radiotap_eht_usig qdf_radiotap_eht_usig_t;
+typedef struct qdf_radiotap_eht qdf_radiotap_eht_t;
+#else
+typedef struct ieee80211_radiotap_tlv qdf_radiotap_tlv_t;
+typedef struct ieee80211_radiotap_eht_usig qdf_radiotap_eht_usig_t;
+typedef struct ieee80211_radiotap_eht qdf_radiotap_eht_t;
+#endif
 /*
  * Make sure that qdf_dma_addr_t in the cb block is always 64 bit aligned
  */

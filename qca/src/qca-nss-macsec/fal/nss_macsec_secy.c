@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,6 +22,7 @@
 #include "nss_macsec.h"
 #include "nss_macsec_utility.h"
 #include "nss_macsec_secy.h"
+#include "dal_utility.h"
 
 
 
@@ -61,37 +62,28 @@ u32 nss_macsec_secy_genl_reg_set(u32 secy_id, u32 addr, u32 value)
 
 u32 nss_macsec_secy_ext_reg_get(u32 secy_id, u32 addr, u32 *pvalue)
 {
-	int ret = 0;
 	struct macsec_port *port = NULL;
+	u16 val = 0;
 
 	SHR_PARAM_CHECK((secy_id < FAL_SECY_ID_NUM) && (pvalue != NULL));
 
 	port = FAL_SECY_ID_TO_PORT(secy_id);
 	SHR_PARAM_CHECK(port != NULL);
-	port->phydev->is_c45 = TRUE;
-	ret = phy_read_mmd(port->phydev, MDIO_MMD_PCS, addr);
-	if (unlikely(ret < 0))
-		return ERROR;
-
-	*pvalue = ret;
+	SHR_RET_ON_ERR(reg_access_read(port, PHY_MMD3, addr, &val));
+	*pvalue = val;
 
 	return ERROR_OK;
 }
 
 u32 nss_macsec_secy_ext_reg_set(u32 secy_id, u32 addr, u32 value)
 {
-	int ret = 0;
 	struct macsec_port *port = NULL;
 
 	SHR_PARAM_CHECK(secy_id < FAL_SECY_ID_NUM);
 
 	port = FAL_SECY_ID_TO_PORT(secy_id);
 	SHR_PARAM_CHECK(port != NULL);
-	port->phydev->is_c45 = TRUE;
-
-	ret = phy_write_mmd(port->phydev, MDIO_MMD_PCS, addr, (u16)value);
-	if (unlikely(ret))
-		return ERROR;
+	SHR_RET_ON_ERR(reg_access_write(port, PHY_MMD3, addr, (u16)value));
 
 	return ERROR_OK;
 }
@@ -386,6 +378,38 @@ u32 nss_macsec_secy_udf_ethtype_set(u32 secy_id, bool enable, u16 type)
 
 	rv = qca_macsec_udf_ethtype_set(FAL_SECY_ID_TO_PORT(secy_id),
 					enable, type);
+	return rv;
+}
+
+u32 nss_macsec_secy_mib_saturate_en_get(u32 secy_id, bool *penable)
+{
+	g_error_t rv;
+
+	SHR_PARAM_CHECK((secy_id < FAL_SECY_ID_NUM) && (penable != NULL));
+
+	rv = qca_macsec_mib_saturate_en_get(FAL_SECY_ID_TO_PORT(secy_id),
+						penable);
+	return rv;
+}
+
+u32 nss_macsec_secy_mib_saturate_en_set(u32 secy_id, bool enable)
+{
+	g_error_t rv;
+
+	SHR_PARAM_CHECK(secy_id < FAL_SECY_ID_NUM);
+
+	rv = qca_macsec_mib_saturate_en_set(FAL_SECY_ID_TO_PORT(secy_id),
+						enable);
+	return rv;
+}
+
+u32 nss_macsec_secy_xor_key_set(u32 secy_id,  bool enable, u16 key)
+{
+	g_error_t rv;
+
+	SHR_PARAM_CHECK(secy_id < FAL_SECY_ID_NUM);
+
+	rv = qca_macsec_xor_key_set(FAL_SECY_ID_TO_PORT(secy_id), enable, key);
 	return rv;
 }
 

@@ -2568,6 +2568,19 @@ QDF_STATUS wmi_extract_pdev_sscan_fft_bin_index(
 			struct spectral_fft_bin_markers_160_165mhz *param);
 
 /**
+ *  wmi_extract_pdev_sscan_fft_bin_index() - Extract spur chan impacted
+ *  bin indexes from start scan response event
+ *  @wmi_handle: handle to WMI.
+ *  @evt_buf: Event buffer
+ *  @param: pointer to hold spur chan impacted bin indexes from fw params event
+ *
+ *  Return: QDF_STATUS_SUCCESS on success and QDF_STATUS_E_FAILURE for failure
+ */
+QDF_STATUS wmi_extract_pdev_sscan_spur_chan_impacted_bin_info(
+			wmi_unified_t wmi_handle, uint8_t *evt_buf,
+			struct spectral_spur_info *param);
+
+/**
  * wmi_extract_pdev_spectral_session_chan_info() - Extract channel information
  * for a spectral scan session
  * @wmi_handle: handle to WMI.

@@ -113,6 +113,7 @@
 				pinctrl-names = "default";
 				switch_mac_mode = <0x15>; /* mac mode for uniphy instance0*/
 				switch_mac_mode1 = <0xe>; /* mac mode for uniphy instance1*/
+				tm_tick_mode = <2>; /* tm tick mode */
 				qcom,port_phyinfo {
 					port@0 {
 						phy_address = <1>;

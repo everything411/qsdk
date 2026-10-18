@@ -108,7 +108,9 @@ static bool nss_ppe_tunipip6_src_exception(struct ppe_vp_cb_info *info, ppe_tun_
 
 	skb_reset_network_header(skb);
 	skb->protocol = htons(ETH_P_IP);
+	skb->pkt_type = PACKET_HOST;
 	netif_receive_skb(skb);
+
 	return true;
 }
 

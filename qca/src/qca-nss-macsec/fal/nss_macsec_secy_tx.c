@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -462,7 +462,6 @@ u32 nss_macsec_secy_tx_sa_next_pn_get(u32 secy_id, u32 channel,
 				      u32 an, u32 *p_next_pn)
 {
 	g_error_t rv;
-	u64 next_pn = 0;
 
 	SHR_PARAM_CHECK((secy_id < FAL_SECY_ID_NUM) &&
 			(channel < FAL_SECY_CHANNEL_NUM(secy_id)) &&
@@ -470,8 +469,7 @@ u32 nss_macsec_secy_tx_sa_next_pn_get(u32 secy_id, u32 channel,
 			(p_next_pn != NULL));
 
 	rv = qca_macsec_tx_sa_npn_get(FAL_SECY_ID_TO_PORT(secy_id),
-				      channel, an, &next_pn);
-	*p_next_pn = next_pn & 0xFFFFFFFF;
+				      channel, an, p_next_pn);
 	return rv;
 }
 
@@ -543,13 +541,30 @@ u32 nss_macsec_secy_tx_sak_set(u32 secy_id, u32 channel,
 u32 nss_macsec_secy_tx_sa_next_xpn_get(u32 secy_id, u32 channel,
 					u32 an, u32 *p_next_xpn)
 {
-	return ERROR_NOT_SUPPORT;
+	g_error_t rv;
+
+	SHR_PARAM_CHECK((secy_id < FAL_SECY_ID_NUM) &&
+			(channel < FAL_SECY_CHANNEL_NUM(secy_id)) &&
+			(an < FAL_SECY_SA_NUM_PER_SC(secy_id)) &&
+			(p_next_xpn != NULL));
+
+	rv = qca_macsec_tx_sa_xpn_get(FAL_SECY_ID_TO_PORT(secy_id),
+				      channel, an, p_next_xpn);
+	return rv;
 }
 
 u32 nss_macsec_secy_tx_sa_next_xpn_set(u32 secy_id, u32 channel,
 					u32 an, u32 next_xpn)
 {
-	return ERROR_NOT_SUPPORT;
+	g_error_t rv;
+
+	SHR_PARAM_CHECK((secy_id < FAL_SECY_ID_NUM) &&
+			(channel < FAL_SECY_CHANNEL_NUM(secy_id)) &&
+			(an < FAL_SECY_SA_NUM_PER_SC(secy_id)));
+
+	rv = qca_macsec_tx_sa_xpn_set(FAL_SECY_ID_TO_PORT(secy_id),
+				      channel, an, next_xpn);
+	return rv;
 }
 
 u32 nss_macsec_secy_tx_sc_ssci_get(u32 secy_id, u32 channel, u32 *pssci)

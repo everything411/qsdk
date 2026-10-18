@@ -1013,8 +1013,6 @@ void cfg80211_connect_done(struct net_device *dev,
 	for_each_valid_link(params, link) {
 
 		if (params->links[link].bss)
-			cfg80211_hold_bss(
-				bss_from_pub(params->links[link].bss));
 		ev->cr.links[link].bss = params->links[link].bss;
 
 		if (params->links[link].addr) {
@@ -1035,6 +1033,8 @@ void cfg80211_connect_done(struct net_device *dev,
 	ev->cr.fils.update_erp_next_seq_num = params->fils.update_erp_next_seq_num;
 	if (params->fils.update_erp_next_seq_num)
 		ev->cr.fils.erp_next_seq_num = params->fils.erp_next_seq_num;
+	if (params->bss)
+		cfg80211_hold_bss(bss_from_pub(params->bss));
 	ev->cr.bss = params->bss;
 	ev->cr.status = params->status;
 	ev->cr.timeout_reason = params->timeout_reason;

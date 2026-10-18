@@ -1507,6 +1507,20 @@ static inline bool sfe_ipv6_xmit_eth_type_check(struct net_device *dev, u32 cm_f
 }
 
 /*
+ * sfe_ipv6_is_same_dest()
+ *     Check if both multicast destination are same
+ */
+static inline bool sfe_ipv6_is_same_dest(struct sfe_ipv6_mc_dest *md1, struct sfe_ipv6_mc_dest *md2)
+{
+	return md1->xmit_dev == md2->xmit_dev  &&
+		md1->egress_vlan_hdr_cnt == md2->egress_vlan_hdr_cnt &&
+		(md1->egress_vlan_hdr_cnt == 0 ||
+		 memcmp(md1->egress_vlan_hdr, md2->egress_vlan_hdr,
+			 sizeof(struct sfe_vlan_hdr) * md1->egress_vlan_hdr_cnt) == 0);
+
+}
+
+/*
  * sfe_ipv6_add_mc_dest_tail()
  *	Add mc dest to the tail.
  * return 0 successful, return 1 failed.
@@ -1515,8 +1529,9 @@ int sfe_ipv6_add_mc_dest_tail(struct sfe_ipv6_connection_match *cm, struct sfe_i
 	struct sfe_ipv6_mc_dest *cur;
 
 	list_for_each_entry_rcu(cur, &(cm->mc_list), list) {
-		if (cur->xmit_dev == mc_dest->xmit_dev) {
-			DEBUG_WARN("%px: The tail new destination[%s] already exists in the list\n", cm, mc_dest->xmit_dev->name);
+		if (sfe_ipv6_is_same_dest(cur, mc_dest)) {
+			DEBUG_WARN("%px: The tail new destination[%s] already exists in the list\n",
+					cm, mc_dest->xmit_dev->name);
 			return 1;
 		}
 	}
@@ -1524,6 +1539,7 @@ int sfe_ipv6_add_mc_dest_tail(struct sfe_ipv6_connection_match *cm, struct sfe_i
 
 	return 0;
 }
+
 
 /*
  * sfe_ipv6_add_mc_dest_head()
@@ -1534,11 +1550,13 @@ int sfe_ipv6_add_mc_dest_head(struct sfe_ipv6_connection_match *cm, struct sfe_i
 
 	struct sfe_ipv6_mc_dest *cur;
 	list_for_each_entry_rcu(cur, &(cm->mc_list), list) {
-		if (cur->xmit_dev == mc_dest->xmit_dev) {
-			DEBUG_WARN("%px: The head new destination[%s] already exists in the list\n", cm, mc_dest->xmit_dev->name);
+		if (sfe_ipv6_is_same_dest(cur, mc_dest)) {
+			DEBUG_WARN("%px: The head new destination[%s] already exists in the list\n",
+					cm, mc_dest->xmit_dev->name);
 			return 1;
 		}
 	}
+
 	list_add_rcu(&mc_dest->list, &cm->mc_list);
 
 	return 0;
@@ -1549,17 +1567,30 @@ int sfe_ipv6_add_mc_dest_head(struct sfe_ipv6_connection_match *cm, struct sfe_i
  *	Delete the mc dest entry in the list.
  * return 0 successful, return 1 failed.
  */
-int sfe_ipv6_find_and_delete_mc_dest(struct sfe_ipv6_connection_match *cm, struct net_device *dest_dev)
+int sfe_ipv6_find_and_delete_mc_dest(struct sfe_ipv6_connection_match *cm,
+		struct sfe_ipv6_mc_device_entry *if_rule, struct net_device *dest_dev)
 {
 	struct sfe_ipv6_mc_dest *cur, *tmp;
+	struct sfe_ipv6_mc_dest dest = {/*zero*/};
+
+	dest.xmit_dev = dest_dev;
+	if (if_rule->valid_flags & SFE_MC_RULE_CREATE_IF_FLAG_VLAN_VALID) {
+		/*
+		 * Initialize egress VLAN information.
+		 */
+		sfe_ipv6_match_entry_set_vlan_hdr(&dest.egress_vlan_hdr_cnt, dest.egress_vlan_hdr,
+				if_rule->egress_vlan_tag[0],if_rule->egress_vlan_tag[1]);
+		DEBUG_TRACE("%d Vlan was set to %s\n", (u32)dest.egress_vlan_hdr_cnt, dest_dev->name);
+	}
 
 	list_for_each_entry_safe(cur, tmp, &(cm->mc_list), list) {
-		if(cur->xmit_dev == dest_dev) {
+		if (sfe_ipv6_is_same_dest(cur, &dest)) {
 			list_del_rcu(&cur->list);
 			call_rcu(&cur->rcu, sfe_ipv6_free_mc_dest_rcu);
 			return 0;
 		}
 	}
+
 	return 1;
 }
 
@@ -1699,7 +1730,7 @@ int sfe_ipv6_update_mc_dest(struct sfe_ipv6_connection_match *cm, struct sfe_ipv
 		}
 
 		if (if_rule->rule_flags & SFE_MC_RULE_CREATE_IF_FLAG_LEAVE) {
-			sfe_ipv6_find_and_delete_mc_dest(cm, dest_dev);
+			sfe_ipv6_find_and_delete_mc_dest(cm, if_rule, dest_dev);
 			dev_put(dest_dev);
 			continue;
 		}

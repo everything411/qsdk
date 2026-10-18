@@ -645,6 +645,7 @@ struct wlan_cfg_dp_soc_ctxt {
 #ifdef DP_TX_SW_DROP_STATS_INC
 	bool dp_eapol_stats;
 #endif
+	int spec_spur_method;
 };
 
 /**

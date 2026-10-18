@@ -193,7 +193,7 @@ do_flash_failsafe_partition() {
 		[ -f /proc/boot_info/$bcname/$default_mtd/upgradepartition ] && {
 			primary_bcname=$(get_current_bootconfig $bcname)
 			primaryboot=$(cat /proc/boot_info/$primary_bcname/$default_mtd/primaryboot)
-			mtdname=$(cat /proc/boot_info/$bcname/$default_mtd/upgradepartition)
+			mtdname=$(cat /proc/boot_info/$primary_bcname/$default_mtd/upgradepartition)
 			echo $((primaryboot ^= 1)) > /proc/boot_info/$bcname/$default_mtd/primaryboot
 		}
 	done

@@ -277,6 +277,7 @@ static void mhi_ch_close(struct qdss_bridge_drvdata *drvdata)
 		qdss_destroy_buf_tbl(drvdata);
 		qdss_destroy_read_done_list(drvdata);
 	} else if (drvdata->mode == MHI_TRANSFER_TYPE_UCI) {
+		qdss_destroy_buf_tbl(drvdata);
 		qdss_destroy_mhi_buf_tbl(drvdata);
 		drvdata->cur_buf = NULL;
 		qdss_destroy_read_done_list(drvdata);

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -186,5 +186,8 @@ u32 nss_macsec_secy_udf_ethtype_get(u32 secy_id, bool *penable, u16 *type);
 u32 nss_macsec_secy_udf_ethtype_set(u32 secy_id, bool enable, u16 type);
 
 u32 nss_macsec_dt_secy_id_get(u8 *dev_name, u32 *secy_id);
+u32 nss_macsec_secy_mib_saturate_en_get(u32 secy_id, bool *penable);
+u32 nss_macsec_secy_mib_saturate_en_set(u32 secy_id, bool enable);
+u32 nss_macsec_secy_xor_key_set(u32 secy_id,  bool enable, u16 key);
 
 #endif /* _NSS_MACSEC_SECY_H_ */

@@ -619,6 +619,10 @@
 #define WLAN_CFG_DP_AVG_RATE_FILTER_MAX 11000
 #define WLAN_CFG_DP_AVG_RATE_FILTER_DEFAULT 0
 
+#define WLAN_CFG_DP_SPECTRAL_SPUR_METHOD_REPORT_MIN 1
+#define WLAN_CFG_DP_SPECTRAL_SPUR_METHOD_REPORT_MAX 2
+#define WLAN_CFG_DP_SPECTRAL_SPUR_METHOD_REPORT_DEFAULT 1
+
 /*
  * <ini>
  * "dp_tx_capt_max_mem_mb"- maximum memory used by Tx capture
@@ -1757,6 +1761,14 @@
 		CFG_VALUE_OR_DEFAULT, \
 		"Average Rate filter for stats")
 
+#define CFG_DP_SPECTRAL_SPUR_METHOD_REPORT \
+		CFG_INI_UINT("spectral_spur_method_report", \
+		WLAN_CFG_DP_SPECTRAL_SPUR_METHOD_REPORT_MIN,\
+		WLAN_CFG_DP_SPECTRAL_SPUR_METHOD_REPORT_MAX, \
+		WLAN_CFG_DP_SPECTRAL_SPUR_METHOD_REPORT_DEFAULT, \
+		CFG_VALUE_OR_DEFAULT, \
+		"Method report for Spectral Spur Handling event")
+
 /*
  * <ini>
  * legacy_mode_csum_disable - Disable csum offload for legacy 802.11abg modes
@@ -2435,6 +2447,7 @@
 		CFG_DP_UMAC_RESET_BUFFER_WINDOW_CFG \
 		CFG(CFG_DP_RX_BUFFER_SIZE) \
 		CFG(CFG_DP_STATS_AVG_RATE_FILTER) \
+		CFG(CFG_DP_SPECTRAL_SPUR_METHOD_REPORT) \
 		CFG_DP_RESV_AST_IDX_CFG \
 		CFG_DP_SAWF_MCAST \
 		CFG_DP_SAWF_MSDUQ_RECLAIM \

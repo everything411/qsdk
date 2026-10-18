@@ -64,6 +64,7 @@
 				pinctrl-0 = <&sfp_pins>;
 				pinctrl-names = "default";
 				switch_mac_mode2 = <0xe>; /* mac mode for uniphy instance2*/
+				tm_tick_mode = <2>; /* tm tick mode */
 				qcom,port_phyinfo {
 					port@5 {
 						port_id = <6>;

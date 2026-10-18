@@ -3712,7 +3712,8 @@ static int cnss_qca8074_notifier_nb(struct notifier_block *nb,
 			 * SSR recovery.
 			 */
 			if (plat_priv->device_id == QCA5332_DEVICE_ID ||
-				plat_priv->device_id == QCA5424_DEVICE_ID)
+				plat_priv->device_id == QCA5424_DEVICE_ID ||
+				plat_priv->device_id == QCN6432_DEVICE_ID)
 				clear_bit(CNSS_QDSS_STARTED,
 					  &plat_priv->driver_state);
 			cnss_bus_free_fw_mem(plat_priv);
@@ -6589,12 +6590,22 @@ static void cnss_driver_cal_work(struct work_struct *work)
 	atomic_dec(&cal_in_progress_count);
 }
 
+static void cnss_cal_work_deinit(struct cnss_plat_data *plat_priv)
+{
+	cancel_work_sync(&plat_priv->cal_work);
+}
+
 static void cnss_cal_work_init(struct cnss_plat_data *plat_priv)
 {
 	INIT_WORK(&plat_priv->cal_work, cnss_driver_cal_work);
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+static void cnss_crash_work_deinit(struct cnss_plat_data *plat_priv)
+{
+	cancel_work_sync(&plat_priv->crash_work);
+}
+
 static void cnss_crash_work_init(struct cnss_plat_data *plat_priv)
 {
 	INIT_WORK(&plat_priv->crash_work, cnss_report_crash_work);
@@ -7090,6 +7101,12 @@ static void cnss_panic_notifier_register(void)
 	else
 		cnss_pr_dbg("%s: atomic_notifier_chain_register success.\n", __func__);
 
+	return;
+}
+
+static void cnss_panic_notifier_unregister(void)
+{
+	atomic_notifier_chain_unregister(&panic_notifier_list, &panic_nb);
 	return;
 }
 #endif
@@ -7691,6 +7708,9 @@ static int cnss_remove(struct platform_device *plat_dev)
 	unsigned long flags = 0;
 	struct cnss_plat_data *plat_priv = platform_get_drvdata(plat_dev);
 
+	if (!plat_priv)
+		return 0;
+
 	/* For platforms that support dma_alloc, FW memory is allocated during
 	 * first wifi load and not freed during wifi down, so we are freeing
 	 * here during rmmod of cnss2
@@ -7723,6 +7743,10 @@ static int cnss_remove(struct platform_device *plat_dev)
 #endif
 	cnss_qmi_deinit(plat_priv);
 	cnss_event_work_deinit(plat_priv);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+	cnss_crash_work_deinit(plat_priv);
+#endif
+	cnss_cal_work_deinit(plat_priv);
 	cnss_recovery_work_deinit(plat_priv);
 	cnss_remove_sysfs(plat_priv);
 #ifdef CONFIG_CNSS2_PM
@@ -7804,8 +7828,12 @@ static int __init cnss_initialize(void)
 
 static void __exit cnss_exit(void)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+	cnss_panic_notifier_unregister();
+#endif
 	cnss_plat_ipc_unregister(CNSS_PLAT_IPC_DAEMON_QMI_CLIENT_V01, NULL);
 	cnss_plat_ipc_qmi_svc_exit();
+	cnss_pci_deinit(NULL);
 #ifdef CONFIG_CNSS2_LEGACY_IRQ
 	cnss_legacy_irq_deinit();
 #endif

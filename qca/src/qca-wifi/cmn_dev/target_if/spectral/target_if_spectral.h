@@ -208,6 +208,12 @@ enum spectral_detector_id {
 	SPECTRAL_DETECTOR_ID_INVALID = 0xff,
 };
 
+enum spectral_method_id {
+	SPECTRAL_METHOD_ID_AVERAGE = 1,
+	SPECTRAL_METHOD_ID_NULL = 2,
+	SPECTRAL_METHOD_INVALID = 3,
+};
+
 /**
  * struct spectral_search_fft_info_gen2 - spectral search fft report for gen2
  * @relpwr_db:       Total bin power in db
@@ -1022,6 +1028,9 @@ struct spectral_wmi_ops {
 	QDF_STATUS (*extract_spectral_fft_size_caps)(
 		wmi_unified_t wmi_handle, void *event,
 		struct spectral_fft_size_capabilities *fft_size_caps);
+	QDF_STATUS (*wmi_extract_pdev_sscan_spur_chan_impacted_bin_info)(
+			wmi_unified_t wmi_handle, uint8_t *evt_buf,
+			struct spectral_spur_info *param);
 };
 
 /**
@@ -1458,6 +1467,10 @@ struct target_if_spectral {
 	struct spectral_data_stats data_stats;
 	struct target_if_spectral_scan_timer
 				spectral_timer[SPECTRAL_SCAN_MODE_MAX];
+	struct spectral_spur_info spur_bin_info;
+	bool spectral_spur_support;
+	uint8_t spectral_support_method;
+	uint16_t bin_buf_count;
 };
 
 /**
@@ -3101,6 +3114,18 @@ target_if_spectral_copy_fft_bins(struct target_if_spectral *spectral,
 				 uint32_t fft_bin_count,
 				 uint32_t *bytes_copied,
 				 uint16_t pwr_format);
+
+/**
+ * target_if_spectral_spur_handle_bin_pwr() - handle spur with a specified
+ * method and replace spur bin with correct value.
+ * @spectral: Pointer to Spectral LMAC object
+ * @dest_fft_buf: Pointer to destination FFT buffer
+ *
+ * Return: QDF_STATUS_SUCCESS in case of success, else QDF_STATUS_E_FAILURE
+ */
+QDF_STATUS
+target_if_spectral_spur_handle_bin_pwr(struct target_if_spectral *spectral,
+				       void *dest_fft_buf);
 #endif /* WLAN_CONV_SPECTRAL_ENABLE */
 
 struct spectral_capabilities_event_params;

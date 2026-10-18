@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -269,6 +269,14 @@
 #define SYS_I_PAUSE_FWD_OFFSET       0
 #define SYS_I_PAUSE_FWD_LEN          1
 
+#define MACSEC_SYS_XOR_CTRL         (MACSEC_SYS_BASE + 0x29)
+
+#define SYS_CFG_XOR_EN               BIT_15
+#define SYS_CFG_XOR_EN_OFFSET        15
+#define SYS_CFG_XOR_EN_LEN           1
+
+#define MACSEC_SYS_XOR_KEY         (MACSEC_SYS_BASE + 0x2A)
+
 /* macsec sofware control register */
 #define MACSEC_SOFTWARE_EN_CTRL      0xA200
 
@@ -325,6 +333,10 @@
 
 /* ingress epr configure register */
 #define MACSEC_I_EPR_CONFIG           (MACSEC_SYS_BASE + 0x02)
+
+#define MIB_SATURATE_MODE              BIT_15
+#define MIB_SATURATE_MODE_OFFSET         15
+#define MIB_SATURATE_MODE_LEN            1
 
 #define I_EPR_PRIORITY                   BIT_12
 #define I_EPR_PRIORITY_OFFSET             12
@@ -650,37 +662,53 @@
 
 
 /* Tx MIB register */
-#define TX_SA_PROTECTED_PKTS_BASE       MACSEC_TX_MIB_BASE
-#define TX_SA_ENCRYPTED_PKTS_BASE       (MACSEC_TX_MIB_BASE + 64)
-#define TX_SC_PROTECTED_OCTETS_BASE     (MACSEC_TX_MIB_BASE + 128)
-#define TX_SC_ENCRYPTED_OCTETS_BASE     (MACSEC_TX_MIB_BASE + 160)
-#define TX_UNTAGGED_PKTS                (MACSEC_TX_MIB_BASE + 192)
-#define TX_TOO_LONG_PKTS                (MACSEC_TX_MIB_BASE + 194)
-#define TX_SA_PROTECTED_PKTS_HIGH_BASE      (MACSEC_TX_MIB_BASE + 0x100)
-#define TX_SA_ENCRYPTED_PKTS_HIGH_BASE      (MACSEC_TX_MIB_BASE + 0x140)
+#define TX_SA_PROTECTED_PKTS_BASE        (MACSEC_TX_MIB_BASE + 0)
+#define TX_SA_ENCRYPTED_PKTS_BASE        (MACSEC_TX_MIB_BASE + 0x40)
+#define TX_SC_PROTECTED_OCTETS_BASE      (MACSEC_TX_MIB_BASE + 0x80)
+#define TX_SC_ENCRYPTED_OCTETS_BASE      (MACSEC_TX_MIB_BASE + 0xa0)
+#define TX_UNTAGGED_PKTS                 (MACSEC_TX_MIB_BASE + 0xc0)
+#define TX_TOO_LONG_PKTS                 (MACSEC_TX_MIB_BASE + 0xc2)
+#define TX_SA_PROTECTED_PKTS_HIGH_BASE   (MACSEC_TX_MIB_BASE + 0x100)
+#define TX_SA_ENCRYPTED_PKTS_HIGH_BASE   (MACSEC_TX_MIB_BASE + 0x140)
+#define TX_SC_PROTECTED_OCTETS_HIGH_BASE (MACSEC_TX_MIB_BASE + 0x180)
+#define TX_SC_ENCRYPTED_OCTETS_HIGH_BASE (MACSEC_TX_MIB_BASE + 0x1a0)
+#define TX_UNTAGGED_PKTS_HIGH            (MACSEC_TX_MIB_BASE + 0x1c0)
+#define TX_TOO_LONG_PKTS_HIGH            (MACSEC_TX_MIB_BASE + 0x1c2)
+
 
 /* Rx MIB register */
-#define RX_SA_UNUSED_PKTS_BASE          (MACSEC_RX_MIB_BASE + 0)
-#define RX_SA_NOUSING_PKTS_BASE         (MACSEC_RX_MIB_BASE + 64)
-#define RX_SA_NOTVALID_PKTS_BASE        (MACSEC_RX_MIB_BASE + 128)
-#define RX_SA_INVALID_PKTS_BASE         (MACSEC_RX_MIB_BASE + 192)
-#define RX_SA_OK_PKTS_BASE              (MACSEC_RX_MIB_BASE + 256)
-#define RX_SC_LATE_PKTS_BASE            (MACSEC_RX_MIB_BASE + 320)
-#define RX_SC_DELAYED_PKTS_BASE         (MACSEC_RX_MIB_BASE + 352)
-#define RX_SC_UNCHECKED_PKTS_BASE       (MACSEC_RX_MIB_BASE + 384)
-#define RX_SC_VALIDATED_PKTS_BASE       (MACSEC_RX_MIB_BASE + 416)
-#define RX_SC_DECRYPTED_PKTS_BASE       (MACSEC_RX_MIB_BASE + 448)
-#define RX_UNTAGGED_PKTS                (MACSEC_RX_MIB_BASE + 480)
-#define RX_NO_TAG_PKTS                  (MACSEC_RX_MIB_BASE + 482)
-#define RX_BAD_TAG_PKTS                 (MACSEC_RX_MIB_BASE + 484)
-#define RX_UNKNOWN_SCI_PKTS             (MACSEC_RX_MIB_BASE + 486)
-#define RX_NO_SCI_PKTS                  (MACSEC_RX_MIB_BASE + 488)
-#define RX_OVERRUN_PKTS                 (MACSEC_RX_MIB_BASE + 490)
-#define RX_SA_UNUSED_PKTS_HIGH_BASE        (MACSEC_RX_MIB_BASE + 0x400)
-#define RX_SA_NOUSING_PKTS_HIGH_BASE         (MACSEC_RX_MIB_BASE + 0x440)
-#define RX_SA_NOTVALID_PKTS_HIGH_BASE        (MACSEC_RX_MIB_BASE + 0x480)
-#define RX_SA_INVALID_PKTS_HIGH_BASE         (MACSEC_RX_MIB_BASE + 0x4c0)
-#define RX_SA_OK_PKTS_HIGH_BASE              (MACSEC_RX_MIB_BASE + 0x500)
+#define RX_SA_UNUSED_PKTS_BASE           (MACSEC_RX_MIB_BASE + 0)
+#define RX_SA_NOUSING_PKTS_BASE          (MACSEC_RX_MIB_BASE + 0x40)
+#define RX_SA_NOTVALID_PKTS_BASE         (MACSEC_RX_MIB_BASE + 0x80)
+#define RX_SA_INVALID_PKTS_BASE          (MACSEC_RX_MIB_BASE + 0xc0)
+#define RX_SA_OK_PKTS_BASE               (MACSEC_RX_MIB_BASE + 0x100)
+#define RX_SC_LATE_PKTS_BASE             (MACSEC_RX_MIB_BASE + 0x140)
+#define RX_SC_DELAYED_PKTS_BASE          (MACSEC_RX_MIB_BASE + 0x160)
+#define RX_SC_UNCHECKED_PKTS_BASE        (MACSEC_RX_MIB_BASE + 0x180)
+#define RX_SC_VALIDATED_PKTS_BASE        (MACSEC_RX_MIB_BASE + 0x1a0)
+#define RX_SC_DECRYPTED_PKTS_BASE        (MACSEC_RX_MIB_BASE + 0x1c0)
+#define RX_UNTAGGED_PKTS                 (MACSEC_RX_MIB_BASE + 0x1e0)
+#define RX_NO_TAG_PKTS                   (MACSEC_RX_MIB_BASE + 0x1e2)
+#define RX_BAD_TAG_PKTS                  (MACSEC_RX_MIB_BASE + 0x1e4)
+#define RX_UNKNOWN_SCI_PKTS              (MACSEC_RX_MIB_BASE + 0x1e6)
+#define RX_NO_SCI_PKTS                   (MACSEC_RX_MIB_BASE + 0x1e8)
+#define RX_OVERRUN_PKTS                  (MACSEC_RX_MIB_BASE + 0x1ea)
+#define RX_SA_UNUSED_PKTS_HIGH_BASE      (MACSEC_RX_MIB_BASE + 0x400)
+#define RX_SA_NOUSING_PKTS_HIGH_BASE     (MACSEC_RX_MIB_BASE + 0x440)
+#define RX_SA_NOTVALID_PKTS_HIGH_BASE    (MACSEC_RX_MIB_BASE + 0x480)
+#define RX_SA_INVALID_PKTS_HIGH_BASE     (MACSEC_RX_MIB_BASE + 0x4c0)
+#define RX_SA_OK_PKTS_HIGH_BASE          (MACSEC_RX_MIB_BASE + 0x500)
+#define RX_SC_LATE_PKTS_HIGH_BASE        (MACSEC_RX_MIB_BASE + 0x540)
+#define RX_SC_DELAYED_PKTS_HIGH_BASE     (MACSEC_RX_MIB_BASE + 0x560)
+#define RX_SC_UNCHECKED_PKTS_HIGH_BASE   (MACSEC_RX_MIB_BASE + 0x580)
+#define RX_SC_VALIDATED_PKTS_HIGH_BASE   (MACSEC_RX_MIB_BASE + 0x5a0)
+#define RX_SC_DECRYPTED_PKTS_HIGH_BASE   (MACSEC_RX_MIB_BASE + 0x5c0)
+#define RX_UNTAGGED_PKTS_HIGH            (MACSEC_RX_MIB_BASE + 0x5e0)
+#define RX_NO_TAG_PKTS_HIGH              (MACSEC_RX_MIB_BASE + 0x5e2)
+#define RX_BAD_TAG_PKTS_HIGH             (MACSEC_RX_MIB_BASE + 0x5e4)
+#define RX_UNKNOWN_SCI_PKTS_HIGH         (MACSEC_RX_MIB_BASE + 0x5e6)
+#define RX_NO_SCI_PKTS_HIGH              (MACSEC_RX_MIB_BASE + 0x5e8)
+#define RX_OVERRUN_PKTS_HIGH             (MACSEC_RX_MIB_BASE + 0x5ea)
 
 
 #endif  /* __QCA808X_MACSEC_REGS_H */

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1404,6 +1404,13 @@ static u32 qca808x_mib_addr(u32 sc_index, u32 sa_index, u32 addr)
 	case RX_SC_DECRYPTED_PKTS_BASE:
 	case TX_SC_PROTECTED_OCTETS_BASE:
 	case TX_SC_ENCRYPTED_OCTETS_BASE:
+	case TX_SC_PROTECTED_OCTETS_HIGH_BASE:
+	case TX_SC_ENCRYPTED_OCTETS_HIGH_BASE:
+	case RX_SC_LATE_PKTS_HIGH_BASE:
+	case RX_SC_DELAYED_PKTS_HIGH_BASE:
+	case RX_SC_UNCHECKED_PKTS_HIGH_BASE:
+	case RX_SC_VALIDATED_PKTS_HIGH_BASE:
+	case RX_SC_DECRYPTED_PKTS_HIGH_BASE:
 		reg = addr + sc_index * 2;
 		break;
 	default:
@@ -1465,48 +1472,76 @@ g_error_t qca808x_secy_tx_sa_mib_get(struct macsec_port *port, u32 sc_index,
 g_error_t qca808x_secy_tx_sc_mib_get(struct macsec_port *port, u32 sc_index,
 				     struct secy_tx_sc_mib_t *mib)
 {
-	u32 val = 0;
+	u32 mib_low = 0, mib_high = 0;
 	u32 sa_index = 0;
+	bool supporthigh = FALSE;
 
 	if ((sc_index > SECY_SC_IDX_MAX) || (mib == NULL))
 		return ERROR_PARAM;
 
 	memset(mib, 0, sizeof(*mib));
 
-	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
-		       qca808x_mib_addr(sc_index, sa_index,
-		       TX_SC_PROTECTED_OCTETS_BASE), &val));
-	mib->protected_octets = (u64)val;
+	supporthigh =
+		(macsec_get_phyid(port->phydev) == QCA8111_PHY) ? TRUE : FALSE;
 
-	val = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				TX_SC_PROTECTED_OCTETS_HIGH_BASE), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       TX_SC_ENCRYPTED_OCTETS_BASE), &val));
-	mib->encrypted_octets = (u64)val;
+		       TX_SC_PROTECTED_OCTETS_BASE), &mib_low));
+	mib->protected_octets = ((u64)mib_high << 32) | (u64)mib_low;
+
+	mib_low = 0; mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				TX_SC_ENCRYPTED_OCTETS_HIGH_BASE), &mib_high));
+	}
+	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+		       qca808x_mib_addr(sc_index, sa_index,
+		       TX_SC_ENCRYPTED_OCTETS_BASE), &mib_low));
+	mib->encrypted_octets = ((u64)mib_high << 32) | (u64)mib_low;
 
 	return ERROR_OK;
 }
 
 g_error_t qca808x_secy_tx_mib_get(struct macsec_port *port, struct secy_tx_mib_t *mib)
 {
-	u32 val = 0;
+	u32 mib_low = 0, mib_high = 0;
 	u32 sc_index = 0, sa_index = 0;
+	bool supporthigh = FALSE;
 
 	if (mib == NULL)
 		return ERROR_PARAM;
 
 	memset(mib, 0, sizeof(*mib));
 
-	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
-		       qca808x_mib_addr(sc_index, sa_index,
-		       TX_UNTAGGED_PKTS), &val));
-	mib->untagged_pkts = (u64)val;
-	val = 0;
+	supporthigh =
+		(macsec_get_phyid(port->phydev) == QCA8111_PHY) ? TRUE : FALSE;
 
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				TX_UNTAGGED_PKTS_HIGH), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       TX_TOO_LONG_PKTS), &val));
-	mib->too_long = (u64)val;
+		       TX_UNTAGGED_PKTS), &mib_low));
+	mib->untagged_pkts = ((u64)mib_high << 32) | (u64)mib_low;
+
+	mib_low = 0; mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				TX_TOO_LONG_PKTS_HIGH), &mib_high));
+	}
+	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+		       qca808x_mib_addr(sc_index, sa_index,
+		       TX_TOO_LONG_PKTS), &mib_low));
+	mib->too_long = ((u64)mib_high << 32) | (u64)mib_low;
 
 	return ERROR_OK;
 }
@@ -1581,42 +1616,75 @@ g_error_t qca808x_secy_rx_sa_mib_get(struct macsec_port *port, u32 sc_index,
 g_error_t qca808x_secy_rx_sc_mib_get(struct macsec_port *port, u32 sc_index,
 				     struct secy_rx_sc_mib_t *mib)
 {
-	u32 val = 0;
+	u32 mib_low = 0, mib_high = 0;
 	u32 sa_index = 0;
+	bool supporthigh = FALSE;
 
 	if ((sc_index > SECY_SC_IDX_MAX) || (mib == NULL))
 		return ERROR_PARAM;
 
 	memset(mib, 0, sizeof(*mib));
 
-	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
-		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_SC_LATE_PKTS_BASE), &val));
-	mib->late_pkts = (u64)val;
+	supporthigh =
+		(macsec_get_phyid(port->phydev) == QCA8111_PHY) ? TRUE : FALSE;
 
-	val = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_SC_LATE_PKTS_HIGH_BASE), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_SC_DELAYED_PKTS_BASE), &val));
-	mib->delayed_pkts = (u64)val;
+		       RX_SC_LATE_PKTS_BASE), &mib_low));
+	mib->late_pkts = ((u64)mib_high << 32) | (u64)mib_low;
 
-	val = 0;
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_SC_DELAYED_PKTS_HIGH_BASE), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_SC_UNCHECKED_PKTS_BASE), &val));
-	mib->unchecked_pkts = (u64)val;
+		       RX_SC_DELAYED_PKTS_BASE), &mib_low));
+	mib->delayed_pkts = ((u64)mib_high << 32) | (u64)mib_low;
 
-	val = 0;
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_SC_UNCHECKED_PKTS_HIGH_BASE), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_SC_VALIDATED_PKTS_BASE), &val));
-	mib->validated_octets = (u64)val;
+		       RX_SC_UNCHECKED_PKTS_BASE), &mib_low));
+	mib->unchecked_pkts = ((u64)mib_high << 32) | (u64)mib_low;
 
-	val = 0;
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_SC_VALIDATED_PKTS_HIGH_BASE), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_SC_DECRYPTED_PKTS_BASE), &val));
-	mib->decrypted_octets = (u64)val;
+		       RX_SC_VALIDATED_PKTS_BASE), &mib_low));
+	mib->validated_octets = ((u64)mib_high << 32) | (u64)mib_low;
+
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_SC_DECRYPTED_PKTS_HIGH_BASE), &mib_high));
+	}
+	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+		       qca808x_mib_addr(sc_index, sa_index,
+		       RX_SC_DECRYPTED_PKTS_BASE), &mib_low));
+	mib->decrypted_octets = ((u64)mib_high << 32) | (u64)mib_low;
 
 	return ERROR_OK;
 }
@@ -1624,47 +1692,86 @@ g_error_t qca808x_secy_rx_sc_mib_get(struct macsec_port *port, u32 sc_index,
 g_error_t qca808x_secy_rx_mib_get(struct macsec_port *port, struct secy_rx_mib_t *mib)
 {
 	u32 sc_index = 0, sa_index = 0;
-	u32 val = 0;
+	u32 mib_low = 0, mib_high = 0;
+	bool supporthigh = FALSE;
 
 	if (mib == NULL)
 		return ERROR_PARAM;
 
 	memset(mib, 0, sizeof(*mib));
 
-	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
-		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_UNTAGGED_PKTS), &val));
-	mib->untagged_pkts = (u64)val;
+	supporthigh =
+		(macsec_get_phyid(port->phydev) == QCA8111_PHY) ? TRUE : FALSE;
 
-	val = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_UNTAGGED_PKTS_HIGH), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_NO_TAG_PKTS), &val));
-	mib->notag_pkts = (u64)val;
+		       RX_UNTAGGED_PKTS), &mib_low));
+	mib->untagged_pkts = ((u64)mib_high << 32) | (u64)mib_low;
 
-	val = 0;
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_NO_TAG_PKTS_HIGH), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_BAD_TAG_PKTS), &val));
-	mib->bad_tag_pkts = (u64)val;
+		       RX_NO_TAG_PKTS), &mib_low));
+	mib->notag_pkts = ((u64)mib_high << 32) | (u64)mib_low;
 
-	val = 0;
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_BAD_TAG_PKTS_HIGH), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_UNKNOWN_SCI_PKTS), &val));
-	mib->unknown_sci_pkts = (u64)val;
+		       RX_BAD_TAG_PKTS), &mib_low));
+	mib->bad_tag_pkts = ((u64)mib_high << 32) | (u64)mib_low;
 
-	val = 0;
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_UNKNOWN_SCI_PKTS_HIGH), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_NO_SCI_PKTS), &val));
-	mib->no_sci_pkts = (u64)val;
+		       RX_UNKNOWN_SCI_PKTS), &mib_low));
+	mib->unknown_sci_pkts = ((u64)mib_high << 32) | (u64)mib_low;
 
-	val = 0;
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_NO_SCI_PKTS_HIGH), &mib_high));
+	}
 	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
 		       qca808x_mib_addr(sc_index, sa_index,
-		       RX_OVERRUN_PKTS), &val));
-	mib->too_long_packets = (u64)val;
+		       RX_NO_SCI_PKTS), &mib_low));
+	mib->no_sci_pkts = ((u64)mib_high << 32) | (u64)mib_low;
+
+	mib_low = 0;
+	mib_high = 0;
+	if (supporthigh) {
+		SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+				qca808x_mib_addr(sc_index, sa_index,
+				RX_OVERRUN_PKTS_HIGH), &mib_high));
+	}
+	SHR_RET_ON_ERR(qca808x_secy_mib_read(port,
+		       qca808x_mib_addr(sc_index, sa_index,
+		       RX_OVERRUN_PKTS), &mib_low));
+	mib->too_long_packets = ((u64)mib_high << 32) | (u64)mib_low;
 
 	return ERROR_OK;
 }
@@ -2586,4 +2693,56 @@ g_error_t qca808x_secy_rx_ctl_filt_en_set(struct macsec_port *port, bool enable)
 	return ERROR_OK;
 }
 
+g_error_t qca81xx_secy_mib_saturate_en_set(struct macsec_port *port,
+						bool enable)
+{
+	SHR_RET_ON_ERR(REG_FIELD_WRITE(port, PHY_MMD3,
+		       MACSEC_I_EPR_CONFIG, MIB_SATURATE_MODE, enable));
+	return ERROR_OK;
+}
+
+g_error_t qca81xx_secy_mib_saturate_en_get(struct macsec_port *port,
+						bool *enable)
+{
+	u16 val = 0;
+
+	SHR_RET_ON_ERR(REG_FIELD_READ(port, PHY_MMD3,
+		       MACSEC_I_EPR_CONFIG, MIB_SATURATE_MODE, &val));
+
+	if (val)
+		*enable = TRUE;
+	else
+		*enable = FALSE;
+
+	return ERROR_OK;
+}
+
+g_error_t qca81xx_secy_xor_key_set(struct macsec_port *port,
+					bool enable, u16 key)
+{
+	SHR_RET_ON_ERR(REG_FIELD_WRITE(port, PHY_MMD3,
+			MACSEC_SYS_XOR_CTRL, SYS_CFG_XOR_EN, enable));
+	SHR_RET_ON_ERR(reg_access_write(port,
+			PHY_MMD3, MACSEC_SYS_XOR_KEY, key));
+
+	return ERROR_OK;
+}
+
+g_error_t qca81xx_secy_xor_key_get(struct macsec_port *port,
+					bool *enable, u16 *key)
+{
+	u16 val = 0;
+
+	SHR_RET_ON_ERR(REG_FIELD_READ(port, PHY_MMD3,
+			MACSEC_SYS_XOR_CTRL, SYS_CFG_XOR_EN, &val));
+	if (val)
+		*enable = TRUE;
+	else
+		*enable = FALSE;
+
+	SHR_RET_ON_ERR(reg_access_read(port,
+			PHY_MMD3, MACSEC_SYS_XOR_KEY, &val));
+	*key = val;
+	return ERROR_OK;
+}
 

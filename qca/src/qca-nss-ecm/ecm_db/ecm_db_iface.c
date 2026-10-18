@@ -1662,7 +1662,8 @@ EXPORT_SYMBOL(ecm_db_iface_vlan_info_get);
  * ecm_db_iface_find_and_ref_vlan()
  *	Lookup and return a iface reference if any
  */
-struct ecm_db_iface_instance *ecm_db_iface_find_and_ref_vlan(uint8_t *address, uint16_t vlan_tag, uint16_t vlan_tpid)
+struct ecm_db_iface_instance *ecm_db_iface_find_and_ref_vlan(int32_t interface_identifier,
+		uint8_t *address, uint16_t vlan_tag, uint16_t vlan_tpid)
 {
 	ecm_db_iface_hash_t hash_index;
 	struct ecm_db_iface_instance *ii;
@@ -1680,7 +1681,9 @@ struct ecm_db_iface_instance *ecm_db_iface_find_and_ref_vlan(uint8_t *address, u
 	spin_lock_bh(&ecm_db_lock);
 	ii = ecm_db_iface_table[hash_index];
 	while (ii) {
-		if ((ii->type != ECM_DB_IFACE_TYPE_VLAN) || (ii->type_info.vlan.vlan_tag != vlan_tag)
+		if ((ii->type != ECM_DB_IFACE_TYPE_VLAN)
+				|| (ii->interface_identifier != interface_identifier)
+				|| (ii->type_info.vlan.vlan_tag != vlan_tag)
 				|| (ii->type_info.vlan.vlan_tpid != vlan_tpid)
 				|| memcmp(ii->type_info.vlan.address, address, ETH_ALEN)) {
 			ii = ii->hash_next;

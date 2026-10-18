@@ -530,6 +530,9 @@ void dp_tx_mon_free_ppdu_info(struct dp_tx_ppdu_info *tx_ppdu_info,
 
 		mpdu_q = &TXMON_PPDU_USR(tx_ppdu_info, user, mpdu_q);
 
+		if (!mpdu_q)
+			continue;
+
 		while ((buf = qdf_nbuf_queue_remove(mpdu_q)) != NULL) {
 			num_frag += dp_tx_mon_nbuf_get_num_frag(buf);
 			qdf_nbuf_free(buf);

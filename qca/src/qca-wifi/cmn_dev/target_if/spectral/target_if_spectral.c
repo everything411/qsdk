@@ -6646,6 +6646,7 @@ target_if_stop_spectral_scan(struct wlan_objmgr_pdev *pdev,
 	spectral->report_info[smode].valid = false;
 	qdf_spin_unlock_bh(&spectral->session_report_info_lock);
 
+	qdf_mem_free(spectral->spur_bin_info.bin_info);
 	qdf_spin_unlock_bh(&spectral->spectral_lock);
 
 	return QDF_STATUS_SUCCESS;
@@ -7398,6 +7399,48 @@ target_if_spectral_wmi_extract_pdev_sscan_fw_cmd_fixed_param(
 			wmi_handle, evt_buf, param);
 }
 
+static QDF_STATUS
+target_if_spectral_wmi_extract_pdev_sscan_spur_chan_impacted_bin_info(
+			struct wlan_objmgr_psoc *psoc,
+			uint8_t *evt_buf,
+			struct spectral_spur_info *param)
+{
+	wmi_unified_t wmi_handle;
+	struct target_if_psoc_spectral *psoc_spectral;
+
+	if (!psoc) {
+		spectral_err("psoc is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	if (!evt_buf) {
+		spectral_err("WMI event buffer is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	if (!param) {
+		spectral_err("Spectral spur chan impacted is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	wmi_handle = GET_WMI_HDL_FROM_PSOC(psoc);
+	if (!wmi_handle) {
+		spectral_err("WMI handle is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	psoc_spectral = get_target_if_spectral_handle_from_psoc(psoc);
+	if (!psoc_spectral) {
+		spectral_err("spectral object is null");
+		return QDF_STATUS_E_FAILURE;
+	}
+
+	return psoc_spectral->wmi_ops.
+	       wmi_extract_pdev_sscan_spur_chan_impacted_bin_info(wmi_handle,
+								  evt_buf,
+								  param);
+}
+
 /**
  * target_if_spectral_wmi_extract_pdev_sscan_fft_bin_index() - Wrapper
  * function to extract start and end indices of primary 80 MHz, 5 MHz and
@@ -7778,6 +7821,40 @@ target_if_spectral_wmi_extract_pdev_sscan_fw_cmd_fixed_param(
 							 param);
 }
 
+static QDF_STATUS
+target_if_spectral_wmi_extract_pdev_sscan_spur_chan_impacted_bin_info(
+			struct wlan_objmgr_psoc *psoc,
+			uint8_t *evt_buf,
+			struct spectral_spur_info *param)
+{
+	wmi_unified_t wmi_handle;
+
+	if (!psoc) {
+		spectral_err("psoc is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	if (!evt_buf) {
+		spectral_err("WMI event buffer is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	if (!param) {
+		spectral_err("Spectral spur chan impacted is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	wmi_handle = GET_WMI_HDL_FROM_PSOC(psoc);
+	if (!wmi_handle) {
+		spectral_err("WMI handle is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	return wmi_extract_pdev_sscan_spur_chan_impacted_bin_info(wmi_handle,
+								  evt_buf,
+								  param);
+}
+
 /**
  * target_if_spectral_wmi_extract_pdev_sscan_fft_bin_index() - Wrapper
  * function to extract start and end indices of primary 80 MHz, 5 MHz and
@@ -8150,6 +8227,21 @@ target_if_spectral_fw_param_event_handler(ol_scn_t scn, uint8_t *data_buf,
 	if (QDF_IS_STATUS_ERROR(status)) {
 		spectral_err("Failed to check if session info is expected");
 		goto release_pdev_ref;
+	}
+
+	spectral->spectral_spur_support =
+		target_if_spectral_wmi_service_enabled(psoc, wmi_handle,
+				    wmi_service_spectral_spur_bin_info_support);
+
+	if (spectral->spectral_spur_support) {
+		status = target_if_spectral_wmi_extract_pdev_sscan_spur_chan_impacted_bin_info(
+						psoc, data_buf,
+						&spectral->spur_bin_info);
+		if (!QDF_IS_STATUS_ERROR(status))
+			spectral->spectral_support_method =
+			      cfg_get(psoc, CFG_DP_SPECTRAL_SPUR_METHOD_REPORT);
+		else
+			spectral->spectral_spur_support = 0;
 	}
 
 	if (is_session_info_expected) {

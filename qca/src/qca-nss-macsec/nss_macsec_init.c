@@ -139,14 +139,18 @@ static int nss_macsec_dev_event(struct notifier_block  *nb, unsigned long event,
 {
 	struct net_device *event_dev = netdev_notifier_info_to_dev(info);
 	int ret = 0;
+	u32 phyid = 0;
 
 	if (NULL == event_dev->phydev)
 		return NOTIFY_DONE;
 
-	switch (event_dev->phydev->phy_id) {
+	phyid = macsec_get_phyid(event_dev->phydev);
+
+	switch (phyid) {
 	case QCA8081_PHY:
 	case QCA8081_PHY_V1_1:
 	case QCA8084_PHY:
+	case QCA8111_PHY:
 		break;
 	default:
 		return NOTIFY_DONE;

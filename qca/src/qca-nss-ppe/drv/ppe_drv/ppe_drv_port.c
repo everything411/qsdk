@@ -895,6 +895,28 @@ bool ppe_drv_is_wlan_vp_port_type(uint8_t user_type)
 }
 
 /*
+ * ppe_drv_port_ucast_queue_profile_get()
+ *	Return profile of port number.
+ */
+int32_t ppe_drv_port_ucast_queue_profile_get(int port)
+{
+	fal_ucast_queue_dest_t q_dst = {0};
+	uint32_t queue_id = 0;
+	uint8_t profile = 0;
+	sw_error_t err;
+
+	q_dst.dst_port = port;
+
+	err = fal_ucast_queue_base_profile_get(PPE_DRV_SWITCH_ID, &q_dst, &queue_id, &profile);
+	if (err != SW_OK) {
+		ppe_drv_warn("error %d getting queue base for port %d\n", err, port);
+		return -1;
+	}
+
+	return profile;
+}
+
+/*
  * ppe_drv_port_ucast_queue_get_by_port()
  *	Return queue id of port number.
  */
@@ -1362,6 +1384,39 @@ void ppe_drv_port_ucast_queue_update(struct ppe_drv_port *pp, uint8_t queue_id)
 	 */
 	pp->ucast_queue = queue_id;
 	ppe_drv_info("%p: set port ucast queue base id: %u", pp, queue_id);
+}
+
+/*
+ * ppe_drv_port_ucast_queue_profile_set()
+ *	Set queue ID of a given port in PPE.
+ */
+bool ppe_drv_port_ucast_queue_profile_set(struct ppe_drv_port *pp, uint8_t src_profile, uint8_t queue_id, uint8_t profile)
+{
+	sw_error_t err;
+	fal_ucast_queue_dest_t q_dst = {0};
+
+	/*
+	 * Set unicast queue base for port
+	 */
+	ppe_drv_assert(kref_read(&pp->ref_cnt), "%p: setting queue ID for an unused port:%u", pp, pp->port);
+
+	/*
+	 * TODO confirm with SSDK team if using profile-ID 0 for CPU port
+	 */
+	q_dst.src_profile = src_profile;
+	q_dst.dst_port = pp->port;
+	err = fal_ucast_queue_base_profile_set(PPE_DRV_SWITCH_ID, &q_dst, queue_id, profile);
+	if (err != SW_OK) {
+		ppe_drv_warn("%p unable to change port queue base ID: %u", pp, queue_id);
+		return false;
+	}
+
+	/*
+	 * Update shadow copy.
+	 */
+	pp->ucast_queue = queue_id;
+	ppe_drv_info("%p: set port ucast queue base id: %u", pp, queue_id);
+	return true;
 }
 
 /*

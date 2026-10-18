@@ -1169,6 +1169,7 @@ dp_tx_mon_generate_prot_frm(struct dp_pdev *pdev,
 	case TXMON_MEDIUM_NO_PROTECTION:
 	{
 		/* no protection frame - do nothing */
+		TXMON_PPDU_HAL(tx_ppdu_info, is_used) = 0;
 		break;
 	}
 	case TXMON_MEDIUM_RTS_LEGACY:
@@ -1287,8 +1288,14 @@ void dp_tx_mon_free_last_mpdu_q(struct dp_pdev_tx_monitor_be *tx_mon_be,
 	qdf_nbuf_queue_t *usr_mpdu_q = NULL;
 	uint32_t num_frag = 0;
 
+	if (!tx_data_ppdu_info)
+		return;
+
 	usr_mpdu_q = &TXMON_PPDU_USR(tx_data_ppdu_info, usr_idx, mpdu_q);
 	mpdu_nbuf = qdf_nbuf_queue_remove_last(usr_mpdu_q);
+	if (!mpdu_nbuf)
+		return;
+
 
 	num_frag = qdf_nbuf_get_nr_frags_in_fraglist(mpdu_nbuf);
 	tx_mon_be->stats.pkt_buf_drop += num_frag;

@@ -1497,6 +1497,18 @@ static void ecm_classifier_emesh_sawf_process(struct ecm_classifier_instance *ac
 	ecm_db_netdevs_get_and_hold(ci, sender, &src_dev, &dest_dev);
 
 	/*
+	 * Mark classifier as no relevance if
+	 *	1. For unicast flow, src or dest dev is null.
+	 *	2. For multicast flow, src dev is null.
+	 */
+	if (!src_dev || (!is_mc_flow && !dest_dev)) {
+		ecm_db_connection_deref(ci);
+		spin_lock_bh(&ecm_classifier_emesh_sawf_lock);
+		cemi->process_response.relevance = ECM_CLASSIFIER_RELEVANCE_NO;
+		goto sawf_emesh_classifier_out;
+	}
+
+	/*
 	 * SAWF does support ported protocols.
 	 */
 	protocol = ecm_db_connection_protocol_get(ci);

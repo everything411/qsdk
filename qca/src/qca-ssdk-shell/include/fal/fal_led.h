@@ -71,6 +71,8 @@ extern "C" {
 #define     TX_TRAFFIC_BLINK_EN    8
 #define     LINKUP_OVERRIDE_EN     9
 #define     LINK_2500M_LIGHT_EN    10
+#define     LINK_5000M_LIGHT_EN    11
+#define     LINK_10000M_LIGHT_EN   12
 
 #define     LED_ACTIVE_HIGH        1
 #define     LED_ACTIVE_LOW         0

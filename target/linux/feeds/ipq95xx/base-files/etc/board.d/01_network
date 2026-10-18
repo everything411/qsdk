@@ -49,6 +49,8 @@ ipq95xx_setup_interfaces()
 	qcom,ipq9574-ap-al02-c19 |\
 	qcom,ipq9574-ap-al02-c20 |\
 	qcom,ipq9574-ap-al05 |\
+	qcom,ipq9574-ap-al05-qca81xx |\
+	qcom,ipq9574-ap-al05-qca81xx-i2c |\
 	qcom,ipq9574-ap-al06 |\
 	qcom,ipq9574-db-al01-c1 |\
 	qcom,ipq9574-db-al01-c2 |\

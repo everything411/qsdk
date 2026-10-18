@@ -1648,7 +1648,7 @@ static struct ecm_db_iface_instance *ecm_interface_vlan_interface_establish(stru
 	/*
 	 * Locate the iface
 	 */
-	ii = ecm_db_iface_find_and_ref_vlan(type_info->address, type_info->vlan_tag, type_info->vlan_tpid);
+	ii = ecm_db_iface_find_and_ref_vlan(dev_interface_num, type_info->address, type_info->vlan_tag, type_info->vlan_tpid);
 	if (ii) {
 		DEBUG_TRACE("%px: iface established\n", ii);
 		return ii;
@@ -1667,7 +1667,7 @@ static struct ecm_db_iface_instance *ecm_interface_vlan_interface_establish(stru
 	 * Add iface into the database, atomically to avoid races creating the same thing
 	 */
 	spin_lock_bh(&ecm_interface_lock);
-	ii = ecm_db_iface_find_and_ref_vlan(type_info->address, type_info->vlan_tag, type_info->vlan_tpid);
+	ii = ecm_db_iface_find_and_ref_vlan(dev_interface_num, type_info->address, type_info->vlan_tag, type_info->vlan_tpid);
 	if (ii) {
 		spin_unlock_bh(&ecm_interface_lock);
 		ecm_db_iface_deref(nii);

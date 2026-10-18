@@ -55,7 +55,8 @@ enable_smp_affinity_wifi() {
 
 	# Enable smp_affinity for ath10k driver
 	if [ -n "$irq_wifi0" ]; then
-		board=ap$(echo $(board_name) | awk -F 'ap' '{print$2}')
+		board=$(grep -o 'ap.*' /tmp/sysinfo/board_name | sed 's/^//')
+		[ -z "$board" ] && board=$(grep -o 'ipq.*' /tmp/sysinfo/board_name | sed 's/^//')
 
 		case "$board" in
 			ap-dk0*)
@@ -70,7 +71,8 @@ enable_smp_affinity_wifi() {
 		esac
 	else
 	# Enable smp_affinity for qca-wifi driver
-		board=ap$(echo $(board_name) | awk -F 'ap' '{print$2}')
+		board=$(grep -o 'ap.*' /tmp/sysinfo/board_name | sed 's/^//')
+		[ -z "$board" ] && board=$(grep -o 'ipq.*' /tmp/sysinfo/board_name | sed 's/^//')
 		device="$1"
 		hwcaps=$(cat /sys/class/net/$device/hwcaps)
 
@@ -121,7 +123,8 @@ enable_smp_affinity_wifi() {
 
 	#Flipping arrangement for HK14 boards as reo2host-destination-ring1 5G data needs to go to core 1 for better throughput
 	[ -f /tmp/sysinfo/board_name ] && {
-		board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+		board=$(grep -o 'ap.*' /tmp/sysinfo/board_name | sed 's/^//')
+		[ -z "$board" ] && board=$(grep -o 'ipq.*' /tmp/sysinfo/board_name | sed 's/^//')
 	}
 
 	case "$board" in
@@ -402,7 +405,8 @@ enable_smp_affinity_wifi() {
 		;;
 	esac
 	[ -f /tmp/sysinfo/board_name ] && {
-		board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+		board=$(grep -o 'ap.*' /tmp/sysinfo/board_name | sed 's/^//')
+		[ -z "$board" ] && board=$(grep -o 'ipq.*' /tmp/sysinfo/board_name | sed 's/^//')
 	}
 	case "$board" in
 	ap-al02-c1 | ap-al01-c1)
@@ -446,7 +450,8 @@ enable_smp_affinity_wifi() {
 	[ -n "$irq_affinity_num" ] && echo 8 > /proc/irq/$irq_affinity_num/smp_affinity
 
 	[ -f /tmp/sysinfo/board_name ] && {
-		board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+		board=$(grep -o 'ap.*' /tmp/sysinfo/board_name | sed 's/^//')
+		[ -z "$board" ] && board=$(grep -o 'ipq.*' /tmp/sysinfo/board_name | sed 's/^//')
 	}
 	case "$board" in
 	ap-al02-c4 | ap-al02-c9 | ap-al02-c16 | ap-al05 | ap-al06 | ap-al02-c20 | ap-al02-c13)
@@ -491,7 +496,8 @@ enable_smp_affinity_wifi() {
 	[ -n "$irq_affinity_num" ] && echo 8 > /proc/irq/$irq_affinity_num/smp_affinity
 
 	[ -f /tmp/sysinfo/board_name ] && {
-		board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+		board=$(grep -o 'ap.*' /tmp/sysinfo/board_name | sed 's/^//')
+		[ -z "$board" ] && board=$(grep -o 'ipq.*' /tmp/sysinfo/board_name | sed 's/^//')
 	}
 	case "$board" in
 	ap-al02-c4 | ap-al02-c9 | ap-al02-c16 | ap-al05 | ap-al06 | ap-al02-c20 | ap-al02-c13)
@@ -519,7 +525,8 @@ enable_smp_affinity_wifi() {
 
 	# Enable smp_affinity for Monitor mode
 	[ -f /tmp/sysinfo/board_name ] && {
-                board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+		board=$(grep -o 'ap.*' /tmp/sysinfo/board_name | sed 's/^//')
+		[ -z "$board" ] && board=$(grep -o 'ipq.*' /tmp/sysinfo/board_name | sed 's/^//')
         }
 	case "$board" in
 	ap-al02-c4 | ap-al02-c9 | ap-al05 | ap-al06)
@@ -558,7 +565,8 @@ enable_smp_affinity_wifi() {
 
 	# Map RX error interrupts to CPU2
 	[ -f /tmp/sysinfo/board_name ] && {
-                board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+		board=$(grep -o 'ap.*' /tmp/sysinfo/board_name | sed 's/^//')
+		[ -z "$board" ] && board=$(grep -o 'ipq.*' /tmp/sysinfo/board_name | sed 's/^//')
         }
 	case "$board" in
 	ap-al02-c4 | ap-al02-c9 | ap-al02-c16 | ap-al05 | ap-al06)

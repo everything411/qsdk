@@ -2204,7 +2204,7 @@ void wlan_mlo_peer_get_str_capability(struct wlan_objmgr_peer *peer,
 	if (!str_capability)
 		return;
 
-	*str_capability = 1;
+	*str_capability = 0;
 	if (!peer)
 		return;
 	ml_peer = peer->mlo_peer_ctx;
@@ -2216,6 +2216,10 @@ void wlan_mlo_peer_get_str_capability(struct wlan_objmgr_peer *peer,
 	    (ml_peer->mlpeer_state != ML_PEER_ASSOC_DONE)) {
 		mlo_peer_lock_release(ml_peer);
 		return;
+	}
+
+	if (ml_peer->mlpeer_mldcap.max_simult_link > 0) {
+		*str_capability = 1;
 	}
 
 	for (i = 0; i < WLAN_UMAC_MLO_MAX_VDEVS; i++) {

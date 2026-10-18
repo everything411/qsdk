@@ -99,8 +99,10 @@ struct ppe_drv_port {
 void ppe_drv_port_ucast_queue_update(struct ppe_drv_port *pp, uint8_t queue_id);
 uint8_t ppe_drv_port_ucast_queue_get(struct ppe_drv_port *pp);
 bool ppe_drv_port_ucast_queue_set(struct ppe_drv_port *pp, uint8_t queue_id);
+bool ppe_drv_port_ucast_queue_profile_set(struct ppe_drv_port *pp, uint8_t src_profile, uint8_t queue_id, uint8_t profile);
 uint8_t ppe_drv_port_is_tunnel_vp(struct ppe_drv_port *pp);
 
+int32_t ppe_drv_port_ucast_queue_profile_get(int port);
 struct net_device *ppe_drv_port_to_dev(struct ppe_drv_port *pp);
 struct ppe_drv_port *ppe_drv_port_from_dev(struct net_device *dev);
 struct ppe_drv_port *ppe_drv_port_from_tl_l3_if(struct ppe_drv_tun_l3_if *tl_l3_if);

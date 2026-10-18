@@ -1143,6 +1143,8 @@
 				<&gcc GCC_BLSP1_AHB_CLK>;
 			clock-names = "core", "iface";
 			clock-frequency  = <400000>;
+			assigned-clocks = <&gcc GCC_BLSP1_QUP1_I2C_APPS_CLK>;
+			assigned-clock-rates = <50000000>;
 			dmas = <&blsp_dma 4>, <&blsp_dma 5>;
 			dma-names = "tx", "rx";
 			status = "disabled";
@@ -1158,6 +1160,8 @@
 				<&gcc GCC_BLSP1_QUP2_I2C_APPS_CLK>;
 			clock-names = "iface", "core";
 			clock-frequency  = <400000>;
+			assigned-clocks = <&gcc GCC_BLSP1_QUP2_I2C_APPS_CLK>;
+			assigned-clock-rates = <50000000>;
 			dmas = <&blsp_dma 7>, <&blsp_dma 6>;
 			dma-names = "rx", "tx";
 			status = "disabled";

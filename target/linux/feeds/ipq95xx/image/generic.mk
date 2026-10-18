@@ -7,7 +7,7 @@ define Device/qcom_alxx
 	BOARD_NAME := ap-alxx
 	SOC := ipq9574
 	KERNEL_INSTALL := 1
-	KERNEL_SIZE := $(if $(CONFIG_DEBUG),8680k,6500k)
+	KERNEL_SIZE := $(if $(CONFIG_DEBUG),8680k,13668k)
 	IMAGE_SIZE := 25344k
 	IMAGE/sysupgrade.bin := append-kernel | pad-to $$$$(KERNEL_SIZE) | append-rootfs | pad-rootfs | append-metadata
 endef

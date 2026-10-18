@@ -3422,25 +3422,6 @@ static inline QDF_STATUS dp_monitor_config_enh_tx_capture(struct dp_pdev *pdev,
 }
 
 /**
- * dp_mon_enh_tx_capt_wrapper() - configure tx capture wrapper
- * @pdev: Datapath PDEV handle
- * @val: mode
- *
- * Return: status
- */
-static inline QDF_STATUS
-dp_mon_enh_tx_capt_wrapper(struct dp_pdev *pdev, cdp_config_param_type val)
-{
-	struct dp_mon_pdev *mon_pdev = pdev->monitor_pdev;
-
-	mon_pdev->mon_version = val.cdp_monitor_version;
-
-	return dp_monitor_config_enh_tx_capture(pdev,
-						val.cdp_pdev_param_en_tx_cap,
-						0);
-}
-
-/**
  * dp_monitor_tx_peer_filter() -  add tx monitor peer filter
  * @pdev: Datapath PDEV handle
  * @peer: Datapath PEER handle
@@ -5224,6 +5205,21 @@ dp_mon_rx_ppdu_status_reset(struct dp_mon_mac *mon_mac)
 	mon_mac->ppdu_info.com_info.num_users = 0;
 	qdf_mem_zero(&mon_mac->ppdu_info.rx_status,
 		     sizeof(mon_mac->ppdu_info.rx_status));
+}
+
+/**
+ * dp_set_monitor_version() - Set monitor version
+ * @pdev: pointer to dp pdev
+ * @version: monitor version
+ *
+ * Return: none
+ */
+static inline void
+dp_set_monitor_version(struct dp_pdev *pdev, uint8_t version) {
+	if (!pdev || !pdev->monitor_pdev)
+		return;
+
+	pdev->monitor_pdev->mon_version = version;
 }
 
 #else

@@ -177,9 +177,13 @@ static bool ppe_drv_v4_vxlan_tunnel(struct ppe_drv_v4_rule_create *create, struc
  * ppe_drv_v4_l2tp_tunnel()
  *	Check if create request for l2tp tunnel.
  */
-bool ppe_drv_v4_l2tp_tunnel(uint8_t protocol, uint32_t flow_ident, uint32_t return_ident)
+bool ppe_drv_v4_l2tp_tunnel(struct ppe_drv_tun *ptun, int8_t protocol, uint32_t flow_ident, uint32_t return_ident)
 {
 	struct ppe_drv *p = &ppe_drv_gbl;
+
+	if (ptun->th.type != PPE_DRV_TUN_CMN_CTX_TYPE_L2TP_V2) {
+		return false;
+	}
 
 	if ((protocol == IPPROTO_UDP) &&
 		(((flow_ident == p->tun_gbl.tun_l2tp.l2tp_sport) && (return_ident == p->tun_gbl.tun_l2tp.l2tp_dport)) ||
@@ -191,30 +195,15 @@ bool ppe_drv_v4_l2tp_tunnel(uint8_t protocol, uint32_t flow_ident, uint32_t retu
 }
 
 /*
- * ppe_drv_v4_tun_allow_tunnel_destroy()
- *	Check if the destroy rule is received for tunnel
- *
- * Requires caller to hold lock on ppe_drv_gbl.
+ * ppe_drv_v4_gre_tunnel()
+ *	Check if create request for gretap tunnel.
  */
-bool ppe_drv_v4_tun_allow_tunnel_destroy(struct ppe_drv_v4_rule_destroy *destroy)
+bool ppe_drv_v4_gre_tunnel(struct ppe_drv_tun *ptun, uint8_t protocol)
 {
-	int vxlan_dport = ppe_drv_get_vxlan_dport();
-
-	/*
-	 * PPE accelearation is only supported for default port currently.
-	 */
-	if (ppe_drv_tun_check_support(destroy->tuple.protocol)) {
+	if ((ptun->th.type == PPE_DRV_TUN_CMN_CTX_TYPE_GRETAP) &&
+		(protocol == IPPROTO_GRE)) {
 		return true;
 	}
-
-       if ((destroy->tuple.flow_ident == vxlan_dport && destroy->tuple.return_ident == vxlan_dport)) {
-		return true;
-       }
-
-       if (ppe_drv_v4_l2tp_tunnel(destroy->tuple.protocol,
-			       destroy->tuple.flow_ident, destroy->tuple.return_ident)) {
-		return true;
-       }
 
 	return false;
 }
@@ -231,21 +220,6 @@ bool ppe_drv_v4_tun_allow_tunnel_create(struct ppe_drv_v4_rule_create *create)
 	struct ppe_drv_tun *port_tun;
 	struct net_device *dev;
 
-	/*
-	 * Check if the rule is for GRE or IPIP6
-	 */
-	if (ppe_drv_tun_check_support(create->tuple.protocol)) {
-		return true;
-	}
-
-	/*
-	 * Check if rule is for a L2TP tunnel.
-	 */
-	if (ppe_drv_v4_l2tp_tunnel(create->tuple.protocol, create->tuple.flow_ident,
-					create->tuple.return_ident)) {
-		return true;
-	}
-
 	spin_lock_bh(&p->lock);
 	port_tun = ppe_drv_v4_tun_get_tun_from_create_rule(&create->conn_rule);
 	if (!port_tun) {
@@ -253,7 +227,28 @@ bool ppe_drv_v4_tun_allow_tunnel_create(struct ppe_drv_v4_rule_create *create)
 		return false;
 	}
 
+	/*
+	 * Check if the rule is for GRE
+	 */
+	if (ppe_drv_v4_gre_tunnel(port_tun, create->tuple.protocol)) {
+		spin_unlock_bh(&p->lock);
+		return true;
+	}
+
+	/*
+	 * Check if rule is for a L2TP tunnel.
+	 */
+	if (ppe_drv_v4_l2tp_tunnel(port_tun, create->tuple.protocol, create->tuple.flow_ident,
+				create->tuple.return_ident)) {
+		spin_unlock_bh(&p->lock);
+		return true;
+	}
+
 	dev = ppe_drv_port_to_dev(port_tun->pp);
+
+	/*
+	 * Check if rule is for a VxLAN or VxLAN-GPE tunnel.
+	 */
 	if (ppe_drv_v4_vxlan_tunnel(create, dev)) {
 		spin_unlock_bh(&p->lock);
 		return true;

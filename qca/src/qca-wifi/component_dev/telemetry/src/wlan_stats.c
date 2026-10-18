@@ -1298,7 +1298,7 @@ static QDF_STATUS get_vdev_cp_stats(struct wlan_objmgr_vdev *vdev,
 		qdf_mem_zero(&wait_event, sizeof(wait_event));
 		qdf_event_create(&wait_event);
 		qdf_event_reset(&wait_event);
-		vap->get_vdev_bcn_stats(vap);
+		vap->get_vdev_bcn_stats(vap, -1UL);
 		/* give enough delay in ms (50ms) to get beacon stats */
 		qdf_wait_single_event(&wait_event, 50);
 		if (qdf_atomic_read(&vap->vap_bcn_event) != 1)

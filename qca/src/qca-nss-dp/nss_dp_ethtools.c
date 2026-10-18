@@ -2,7 +2,7 @@
  **************************************************************************
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -401,7 +401,6 @@ static int nss_dp_get_ethtool_link_ksetting(struct net_device *dev, struct ethto
 	uint32_t port_id;
 	sw_error_t ret;
 	fal_port_duplex_t duplex = FAL_FULL_DUPLEX;
-	a_bool_t autoneg;
 
         __ETHTOOL_DECLARE_LINK_MODE_MASK(supported) = { 0, };
 
@@ -422,12 +421,6 @@ static int nss_dp_get_ethtool_link_ksetting(struct net_device *dev, struct ethto
 	ret = fal_port_duplex_get(NSS_DP_ACL_DEV_ID, port_id, &duplex);
 	if (ret != SW_OK) {
 		netdev_warn(dev, "Failed to get duplex for ethernet device\n");
-		return -ENODEV;
-	}
-
-	ret = fal_port_autoneg_status_get(NSS_DP_ACL_DEV_ID, port_id, &autoneg);
-	if (ret != SW_OK) {
-		netdev_warn(dev, "Failed to get autoneg for ethernet device\n");
 		return -ENODEV;
 	}
 
@@ -460,7 +453,7 @@ static int nss_dp_get_ethtool_link_ksetting(struct net_device *dev, struct ethto
 	cmd->base.port = PORT_MII;
 	cmd->base.speed = dp_priv->fixed_link_speed;
 	cmd->base.duplex = duplex;
-	cmd->base.autoneg = autoneg;
+	cmd->base.autoneg = false;
 
 	return 0;
 }

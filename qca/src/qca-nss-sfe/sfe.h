@@ -84,6 +84,7 @@ struct sfe_l2_info {
 	u16 parse_flags;	/* Flags indicating L2.5 headers presence */
 	u16 pppoe_session_id;	/* PPPOE header offset */
 	u16 protocol;		/* L3 Protocol */
+	u16 trimmed_len;	/* Trimmed length in the receiving path*/
 	u16 trustsec_sgt;	/* trustsec SGT value */
 	struct sfe_vlan_hdr vlan_hdr[SFE_MAX_VLAN_DEPTH];
 				/* VLAN tag(s) of ingress packet */

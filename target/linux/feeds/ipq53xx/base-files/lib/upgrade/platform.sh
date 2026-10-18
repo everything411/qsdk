@@ -205,7 +205,7 @@ do_flash_failsafe_partition() {
 		[ -f /proc/boot_info/$bcname/$default_mtd/upgradepartition ] && {
 			primary_bcname=$(get_current_bootconfig $bcname)
 			primaryboot=$(cat /proc/boot_info/$primary_bcname/$default_mtd/primaryboot)
-			mtdname=$(cat /proc/boot_info/$bcname/$default_mtd/upgradepartition)
+			mtdname=$(cat /proc/boot_info/$primary_bcname/$default_mtd/upgradepartition)
 			echo $((primaryboot ^= 1)) > /proc/boot_info/$bcname/$default_mtd/primaryboot
 		}
 	done
@@ -472,6 +472,8 @@ platform_do_upgrade() {
 	qcom,ipq5332-ap-mi01.2 |\
 	qcom,ipq5332-ap-mi01.2-c2 |\
 	qcom,ipq5332-ap-mi01.2-qcn9160-c1 |\
+	qcom,ipq5332-ap-mi01.2-qca81xx |\
+	qcom,ipq5332-ap-mi01.2-qca81xx-i2c |\
 	qcom,ipq5332-ap-mi01.3 |\
 	qcom,ipq5332-ap-mi01.3-c2 |\
 	qcom,ipq5332-ap-mi01.3-c3 |\
@@ -485,6 +487,8 @@ platform_do_upgrade() {
 	qcom,ipq5332-ap-mi04.1 |\
 	qcom,ipq5332-ap-mi04.1-c2 |\
 	qcom,ipq5332-ap-mi04.3 |\
+	qcom,ipq5332-tb-mi03.1 |\
+	qcom,ipq5332-tb-mi05.1 |\
 	qcom,ipq5332-db-mi01.1 |\
 	qcom,ipq5332-db-mi02.1)
 		for sec in $(print_sections $1); do

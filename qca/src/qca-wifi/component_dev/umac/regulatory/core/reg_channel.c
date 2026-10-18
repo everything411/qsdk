@@ -355,6 +355,12 @@ bool reg_is_phymode_chwidth_allowed(
 
 	phymode_bitmap = pdev_priv_obj->phybitmap;
 	wireless_modes = pdev_priv_obj->wireless_modes;
+	if (REG_IS_6GHZ_FREQ(freq))
+		wireless_modes &= WIRELESS_6G_MODES;
+	else if (REG_IS_5GHZ_FREQ(freq))
+		wireless_modes &= WIRELESS_5G_MODES;
+	else if (REG_IS_24GHZ_CH_FREQ(freq))
+		wireless_modes &= WIRELESS_2G_MODES;
 
 	if (reg_is_phymode_unallowed(phy_in, phymode_bitmap) ||
 	    !reg_is_phymode_in_wireless_modes(phy_in, wireless_modes))

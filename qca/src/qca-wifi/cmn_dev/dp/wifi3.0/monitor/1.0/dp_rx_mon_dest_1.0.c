@@ -1883,6 +1883,12 @@ dp_rx_mon_restitch_mpdu_from_msdus(struct dp_soc *soc,
 	}
 	wifi_hdr_len += sec_hdr_len;
 
+	/*Calculate +HTC/ORDER header length based on 'Order'
+	 */
+	if (wh->i_fc[1] & IEEE80211_FC1_ORDER) {
+		wifi_hdr_len += 4;
+	}
+
 	/* MSDU related stuff LLC - AMSDU subframe header etc */
 	msdu_llc_len = is_amsdu ? (14 + 8) : 8;
 
@@ -2202,6 +2208,12 @@ dp_rx_mon_frag_restitch_mpdu_from_msdus(struct dp_soc *soc,
 		sec_hdr_len = 0;
 	}
 	wifi_hdr_len += sec_hdr_len;
+
+	/*Calculate +HTC/ORDER header length based on 'Order'
+	 */
+	if (wh->i_fc[1] & IEEE80211_FC1_ORDER) {
+		wifi_hdr_len += 4;
+	}
 
 	/* MSDU related stuff LLC - AMSDU subframe header etc */
 	msdu_llc_len = is_amsdu ? (14 + 8) : 8;

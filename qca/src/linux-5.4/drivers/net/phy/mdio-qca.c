@@ -82,9 +82,10 @@
 #define UNIPHY_ADDR_NUM				3
 #define MII_HIGH_ADDR_PREFIX			0x18
 #define MII_LOW_ADDR_PREFIX			0x10
-#define SWITCH_REG_TYPE_MASK			GENMASK(31, 28)
+#define SWITCH_REG_TYPE_MASK			GENMASK(31, 29)
 #define SWITCH_REG_TYPE_QCA8386			0
 #define SWITCH_REG_TYPE_QCA8337			1
+#define SWITCH_REG_TYPE_QCA81XX			2
 #define SWITCH_HIGH_ADDR_DFLT			0x200
 
 #define CMN_PLL_REFERENCE_CLOCK			0x784
@@ -434,17 +435,77 @@ void qca8386_write(struct mii_bus *mii_bus, u32 reg, u32 val)
 	mii_bus->write(mii_bus, MII_LOW_ADDR_PREFIX | r2, r1 | BIT(1), hi);
 }
 
+static inline void qca81xx_split_addr(u32 regaddr, u16 *reg_low, u16 *reg_mid,
+					u16 *reg_high)
+{
+	/* bit2 is 1 for writing/reading high byte data[31, 16],
+	 * bit2 is 0 for writing/reading low byte data[15, 0].
+	 */
+	*reg_low = FIELD_GET(GENMASK(3, 0), regaddr);
+	*reg_low &= 0xc;
+	*reg_low <<= 1;
+
+	*reg_mid = FIELD_GET(GENMASK(19, 4), regaddr);
+
+	*reg_high = FIELD_GET(GENMASK(23, 20), regaddr);
+	*reg_high <<= 1;
+	*reg_high |= BIT(0);
+}
+
+static u32 qca81xx_read(struct mii_bus *bus, u32 reg)
+{
+	u16 reg_low, reg_mid, reg_high;
+	u16 lo, hi;
+	u32 addr;
+
+	addr = FIELD_GET(GENMASK(28, 24), reg);
+	qca81xx_split_addr(reg, &reg_low, &reg_mid, &reg_high);
+	/*write ahb address bit4~bit23*/
+	__mdiobus_write(bus, addr, reg_high & 0x1f, reg_mid);
+	udelay(100);
+	/*write ahb address bit0~bit3 and read low 16bit data*/
+	lo = __mdiobus_read(bus, addr, reg_low);
+	/*write ahb address bit0~bit3 and read high 16 bit data*/
+	hi = __mdiobus_read(bus, addr, (reg_low | BIT(2)));
+
+	return (hi << 16) | lo;
+}
+
+static void qca81xx_write(struct mii_bus *bus, u32 reg, u32 val)
+{
+	u16 reg_low, reg_mid, reg_high;
+	u16 lo, hi;
+	u32 addr;
+
+	addr = FIELD_GET(GENMASK(28, 24), reg);
+
+	qca81xx_split_addr(reg, &reg_low, &reg_mid, &reg_high);
+	lo = val & 0xffff;
+	hi = (u16)(val >> 16);
+
+	/*write ahb address bit4~bit23*/
+	__mdiobus_write(bus, addr, reg_high & 0x1f, reg_mid);
+	udelay(100);
+	/*write ahb address bit0~bit3 and write low 16 bit data*/
+	__mdiobus_write(bus, addr, reg_low, lo);
+	/*write ahb address bit0~bit3 and write high 16 bit data*/
+	__mdiobus_write(bus, addr, (reg_low | BIT(2)), hi);
+}
+
 u32 qca_mii_read(struct mii_bus *mii_bus, u32 reg)
 {
 	u32 val = 0xffffffff;
 	switch (FIELD_GET(SWITCH_REG_TYPE_MASK, reg)) {
-		case SWITCH_REG_TYPE_QCA8337:
-			val = qca8337_read(mii_bus, reg);
-			break;
-		case SWITCH_REG_TYPE_QCA8386:
-		default:
-			val = qca8386_read(mii_bus, reg);
-			break;
+	case SWITCH_REG_TYPE_QCA81XX:
+		val = qca81xx_read(mii_bus, reg);
+		break;
+	case SWITCH_REG_TYPE_QCA8337:
+		val = qca8337_read(mii_bus, reg);
+		break;
+	case SWITCH_REG_TYPE_QCA8386:
+	default:
+		val = qca8386_read(mii_bus, reg);
+		break;
 	}
 
 	return val;
@@ -454,13 +515,16 @@ EXPORT_SYMBOL_GPL(qca_mii_read);
 void qca_mii_write(struct mii_bus *mii_bus, u32 reg, u32 val)
 {
 	switch (FIELD_GET(SWITCH_REG_TYPE_MASK, reg)) {
-		case SWITCH_REG_TYPE_QCA8337:
-			qca8337_write(mii_bus, reg, val);
-			break;
-		case SWITCH_REG_TYPE_QCA8386:
-		default:
-			qca8386_write(mii_bus, reg, val);
-			break;
+	case SWITCH_REG_TYPE_QCA81XX:
+		qca81xx_write(mii_bus, reg, val);
+		break;
+	case SWITCH_REG_TYPE_QCA8337:
+		qca8337_write(mii_bus, reg, val);
+		break;
+	case SWITCH_REG_TYPE_QCA8386:
+	default:
+		qca8386_write(mii_bus, reg, val);
+		break;
 	}
 }
 EXPORT_SYMBOL_GPL(qca_mii_write);

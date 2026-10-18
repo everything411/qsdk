@@ -432,13 +432,17 @@ uint8_t ppe_drv_tun_xmit_port_get(uint8_t xmit_port)
 bool ppe_drv_tun_port_configure(struct ppe_drv_tun *ptun, uint16_t xmit_port)
 {
 	sw_error_t err;
+	struct ppe_drv *p = &ppe_drv_gbl;
 	fal_vport_state_t vp_state = {0};
 	struct ppe_drv_port *pp = ptun->pp;
 	uint32_t v_port = FAL_PORT_ID(FAL_PORT_TYPE_VPORT, pp->port);
 	uint16_t extra_hdr_len = 0;
 	uint8_t dp_queue_id;
+	uint8_t profile = 0;
 	struct ppe_drv_port *dp = NULL; /* Destination port */
 	uint16_t phy_port;
+	int port_num;
+	int i;
 
 	/*
 	 * TODO: Update extra header length setting in port MTU config
@@ -489,6 +493,19 @@ bool ppe_drv_tun_port_configure(struct ppe_drv_tun *ptun, uint16_t xmit_port)
 		 */
 		dp_queue_id = ppe_drv_port_ucast_queue_get(dp);
 		if (!ppe_drv_port_ucast_queue_set(ptun->pp, dp_queue_id)) {
+			ppe_drv_warn("%p: Failed to set queue %d for port", ptun, dp_queue_id);
+			return false;
+		}
+	}
+
+	for (i = 1; i < PPE_DRV_PORT_SRC_PROFILE_MAX; i++) {
+		if (p->prof2portmap[i] == -1)
+			continue;
+
+		port_num = ppe_drv_port_num_get(ptun->pp);
+		dp_queue_id = ppe_drv_port_ucast_queue_get_by_port(port_num);
+		profile = ppe_drv_port_ucast_queue_profile_get(port_num);
+		if (!ppe_drv_port_ucast_queue_profile_set(ptun->pp, i, dp_queue_id, profile)) {
 			ppe_drv_warn("%p: Failed to set queue %d for port", ptun, dp_queue_id);
 			return false;
 		}

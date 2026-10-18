@@ -285,6 +285,7 @@ struct tgt_info {
  * @mlo_get_group_id: Get the MLO group id of the SoC
  * @mlo_setup_done_event: MLO setup sequence complete event handler
  * @wifi_radar_support_enable: wifi radar support enable
+ * @get_num_beaconing_vdevs: Get number of beaconing vdevs
  */
 struct target_ops {
 	QDF_STATUS (*ext_resource_config_enable)
@@ -356,6 +357,8 @@ struct target_ops {
 	void (*wifi_radar_support_enable)(struct wlan_objmgr_psoc *psoc,
 					  struct target_psoc_info *tgt_hdl,
 					  uint8_t *event);
+	void (*get_num_beaconing_vdevs)(struct wlan_objmgr_pdev *pdev,
+					uint32_t *num_beaconing_vdevs);
 
 };
 
@@ -2354,6 +2357,22 @@ static inline int target_if_csa_switch_count_status(
 				psoc, csa_status);
 
 	return -1;
+}
+
+/**
+ * target_if_get_num_beaconing_vdevs() - API to get number of beaconing vdevs
+ * @pdev:  pdev object
+ * @tgt_hdl: target_psoc_info pointer
+ * @num_beaconing_vdevs: pointer to save number of beaconing vdevs
+ */
+static inline void target_if_get_num_beaconing_vdevs(
+		struct wlan_objmgr_pdev *pdev,
+		struct target_psoc_info *tgt_hdl,
+		uint32_t *num_beaconing_vdevs)
+{
+	if (tgt_hdl->tif_ops && tgt_hdl->tif_ops->get_num_beaconing_vdevs)
+		tgt_hdl->tif_ops->get_num_beaconing_vdevs(
+				pdev, num_beaconing_vdevs);
 }
 
 /**

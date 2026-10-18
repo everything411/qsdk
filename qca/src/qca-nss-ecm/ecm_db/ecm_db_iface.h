@@ -211,7 +211,8 @@ void ecm_db_iface_lag_address_get(struct ecm_db_iface_instance *ii, uint8_t *add
 #endif
 
 #ifdef ECM_INTERFACE_VLAN_ENABLE
-struct ecm_db_iface_instance *ecm_db_iface_find_and_ref_vlan(uint8_t *address,
+struct ecm_db_iface_instance *ecm_db_iface_find_and_ref_vlan(int32_t interface_identifier,
+							     uint8_t *address,
 							     uint16_t vlan_tag,
 							     uint16_t vlan_tpid);
 void ecm_db_iface_add_vlan(struct ecm_db_iface_instance *ii,

@@ -52,8 +52,8 @@ define Build/InstallDev
 endef
 
 define Package/$(PKG_NAME)/install
-	$(INSTALL_DIR) $(1)/lib/modules/$(LINUX_VERSION)
-	$(CP) $(PKG_BUILD_DIR)/*.ko $(1)/lib/modules/$(LINUX_VERSION)
+	$(INSTALL_DIR) $(1)/lib/modules/$(LINUX_UNAME_VERSION)
+	$(CP) $(PKG_BUILD_DIR)/*.ko $(1)/lib/modules/$(LINUX_UNAME_VERSION)
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

@@ -284,7 +284,7 @@ static inline void tgt_vdev_mgr_reg_set_mac_address_response(
 
 static void tgt_vdev_mgr_set_max_channel_switch_time(
 		struct wlan_objmgr_psoc *psoc, uint32_t *vdev_ids,
-		uint32_t num_vdevs)
+		uint32_t num_vdevs, uint32_t num_beaconing_vdevs)
 {
 	struct wlan_objmgr_vdev *vdev = NULL;
 	struct vdev_mlme_obj *vdev_mlme = NULL;
@@ -315,7 +315,7 @@ static void tgt_vdev_mgr_set_max_channel_switch_time(
 		}
 
 		status = wlan_util_vdev_mgr_compute_max_channel_switch_time
-			(vdev, &max_chan_switch_time);
+			(vdev, &max_chan_switch_time, num_beaconing_vdevs);
 		if (QDF_IS_STATUS_ERROR(status)) {
 			mlme_err("Failed to get the max channel switch time value");
 			wlan_objmgr_vdev_release_ref(vdev,

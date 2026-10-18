@@ -1176,6 +1176,8 @@ static void ecm_sfe_multicast_ipv4_connection_accelerate(struct ecm_front_end_co
 			vlan_in_dev = dev_get_by_index(&init_net, ecm_db_iface_interface_identifier_get(ii));
 			if (vlan_in_dev) {
 				vlan_value |= vlan_dev_get_egress_qos_mask(vlan_in_dev, pr->return_qos_tag);
+				DEBUG_TRACE("%px: vlan device: %s-[%d]\n", feci, vlan_in_dev->name,
+							ecm_db_iface_interface_identifier_get(ii));
 				dev_put(vlan_in_dev);
 				vlan_in_dev = NULL;
 			}
@@ -1511,6 +1513,8 @@ static void ecm_sfe_multicast_ipv4_connection_accelerate(struct ecm_front_end_co
 				vlan_out_dev = dev_get_by_index(&init_net, ecm_db_iface_interface_identifier_get(ii));
 				if (vlan_out_dev) {
 					vlan_value |= vlan_dev_get_egress_qos_mask(vlan_out_dev, pr->flow_qos_tag);
+					DEBUG_TRACE("%px: vlan device: %s-[%d]\n", feci, vlan_out_dev->name,
+							ecm_db_iface_interface_identifier_get(ii));
 					dev_put(vlan_out_dev);
 					vlan_out_dev = NULL;
 				}

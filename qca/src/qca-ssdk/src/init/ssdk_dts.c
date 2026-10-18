@@ -1214,6 +1214,10 @@ static void ssdk_dt_parse_led_source(a_uint32_t dev_id,
 				source_pattern.map |= LED_MAP_1000M_SPEED;
 			if (!strcmp(led_str, "2500M"))
 				source_pattern.map |= LED_MAP_2500M_SPEED;
+			if (!strcmp(led_str, "5000M"))
+				source_pattern.map |= LED_MAP_5000M_SPEED;
+			if (!strcmp(led_str, "10000M"))
+				source_pattern.map |= LED_MAP_10000M_SPEED;
 			if (!strcmp(led_str, "all"))
 				source_pattern.map |= LED_MAP_ALL_SPEED;
 

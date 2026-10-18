@@ -1671,6 +1671,11 @@ QDF_STATUS (*extract_pdev_sscan_fw_cmd_fixed_param)(
 				uint8_t *evt_buf,
 				struct spectral_startscan_resp_params *params);
 
+QDF_STATUS (*extract_pdev_sscan_spur_chan_impacted_bin_info)(
+			wmi_unified_t wmi_handle,
+			uint8_t *evt_buf,
+			struct spectral_spur_info *params);
+
 QDF_STATUS (*extract_pdev_sscan_fft_bin_index)(
 			wmi_unified_t wmi_handle,
 			uint8_t *evt_buf,

@@ -1366,6 +1366,7 @@ struct wlan_lmac_if_dfs_tx_ops {
 			bool *is_hw_mode_switch_in_progress);
 	bool (*dfs_get_persistent_nol_status)(
 			struct wlan_objmgr_pdev *pdev);
+	void (*dfs_configure_green_ap) (struct wlan_objmgr_pdev *pdev, bool enable);
 };
 
 /**
@@ -2864,7 +2865,8 @@ struct wlan_lmac_if_mlme_rx_ops {
 #endif
 	void (*vdev_mgr_set_max_channel_switch_time)
 		(struct wlan_objmgr_psoc *psoc,
-		 uint32_t *vdev_ids, uint32_t num_vdevs);
+		 uint32_t *vdev_ids, uint32_t num_vdevs,
+		 uint32_t num_beaconing_vdevs);
 #ifdef WLAN_FEATURE_11BE_MLO
 	QDF_STATUS (*vdev_mgr_quiet_offload)(
 			struct wlan_objmgr_psoc *psoc,

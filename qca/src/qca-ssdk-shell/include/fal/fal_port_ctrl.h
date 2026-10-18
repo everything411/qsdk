@@ -261,14 +261,14 @@ typedef enum {
 
 /** Phy counter information */
 typedef struct {
-	a_uint32_t RxGoodFrame;
-	a_uint32_t RxBadCRC;
-	a_uint32_t TxGoodFrame;
-	a_uint32_t TxBadCRC;
-	a_uint32_t SysRxGoodFrame;
-	a_uint32_t SysRxBadCRC;
-	a_uint32_t SysTxGoodFrame;
-	a_uint32_t SysTxBadCRC;
+	a_int64_t RxGoodFrame;
+	a_int64_t RxFcsErr;
+	a_int64_t TxGoodFrame;
+	a_int64_t TxFcsErr;
+	a_int64_t SysRxGoodFrame;
+	a_int64_t SysRxFcsErr;
+	a_int64_t SysTxGoodFrame;
+	a_int64_t SysTxFcsErr;
 } fal_port_counter_info_t;
 
 /*above is new add for malibu phy*/

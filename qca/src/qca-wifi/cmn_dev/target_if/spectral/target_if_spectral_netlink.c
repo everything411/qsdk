@@ -222,6 +222,10 @@ target_if_spectral_fill_samp_msg(struct target_if_spectral *spectral,
 			bin_pwr_data += bytes_copied;
 		}
 
+		if (spectral->spectral_spur_support)
+			target_if_spectral_spur_handle_bin_pwr(spectral,
+				      &spec_samp_msg->bin_pwr[start_bin_index]);
+
 		spec_samp_msg->bin_pwr_count += (pwr_count + num_edge_bins);
 	}
 

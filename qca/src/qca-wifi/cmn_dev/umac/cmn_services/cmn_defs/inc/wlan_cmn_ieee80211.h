@@ -2029,6 +2029,8 @@ struct subelem_header {
 #define EHTOP_GRP_ADDRESSED_BU_IND_LIMIT_BITS            1
 #define EHTOP_GRP_ADDRESSED_BU_IND_EXPONENT_IDX          4
 #define EHTOP_GRP_ADDRESSED_BU_IND_EXPONENT_BITS         2
+#define EHTOP_MCS15_DISABLE_IDX                          6
+#define EHTOP_MCS15_DISABLE_BITS                         1
 
 #define EHTOP_INFO_CHAN_WIDTH_IDX          0
 #define EHTOP_INFO_CHAN_WIDTH_BITS         3

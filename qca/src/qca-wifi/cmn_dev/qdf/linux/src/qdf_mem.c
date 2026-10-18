@@ -45,7 +45,7 @@
 #endif
 
 #if defined(MEMORY_DEBUG) || defined(NBUF_MEMORY_DEBUG)
-static bool mem_debug_disabled;
+static bool mem_debug_disabled = true;
 qdf_declare_param(mem_debug_disabled, bool);
 #endif
 

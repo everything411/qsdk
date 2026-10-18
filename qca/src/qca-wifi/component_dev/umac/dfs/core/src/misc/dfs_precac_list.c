@@ -514,6 +514,33 @@ dfs_precac_create_165mhz_precac_entry(struct wlan_dfs *dfs,
 	return status;
 }
 
+/* dfs_is_tree_node_marked_as_nol_for_freq() - Check if preCAC BSTree node is
+ * marked as NOL.
+ * @root: Pointer to root node of the preCAC BSTree.
+ * @freq: 20MHz channel to be checked if marked as NOL done already.
+ *
+ * Return: True if already marked, else false.
+ */
+static bool
+dfs_is_tree_node_marked_as_nol_for_freq(struct precac_tree_node *root,
+					uint16_t freq)
+{
+	struct precac_tree_node *curr_node = root;
+
+	while (curr_node) {
+		if (!curr_node->n_nol_subchs)
+			return false;
+
+		if (curr_node->ch_freq == freq)
+			return curr_node->n_nol_subchs;
+
+		curr_node = dfs_descend_precac_tree_for_freq(curr_node,
+							     freq);
+	}
+
+	return false;
+}
+
 /* dfs_is_tree_node_marked_as_cac_for_freq() - Check if preCAC BSTree node is
  * marked as CAC.
  * @root: Pointer to root node of the preCAC BSTree.
@@ -810,6 +837,18 @@ dfs_mark_tree_node_as_nol_for_freq(struct wlan_dfs *dfs,
 			"Precac tree root pointer is NULL!");
 		return;
 	}
+
+	/* If the freq is already marked as NOL, no need to mark it again.
+	 * Attempting to mark it as NOL again will cause all the ancestor
+	 * nodes to get incremented wrongly.
+	 */
+	if (dfs_is_tree_node_marked_as_nol_for_freq(pcac->tree_root,
+						    freq)) {
+		dfs_err(dfs, WLAN_DEBUG_DFS_ALWAYS,
+			"Freq already marked as PRE-CAC NOL: %d", freq);
+		return;
+	}
+
 	curr_node = pcac->tree_root;
 	while (curr_node) {
 		if (curr_node->n_nol_subchs <

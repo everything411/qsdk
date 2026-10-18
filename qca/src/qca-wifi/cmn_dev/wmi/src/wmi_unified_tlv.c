@@ -1200,6 +1200,7 @@ static QDF_STATUS send_vdev_stop_cmd_tlv(wmi_unified_t wmi,
 	wmi_buf_t buf;
 	int32_t len = sizeof(*cmd);
 	uint8_t *buf_ptr;
+	uint32_t vdev_id = params->vdev_id;
 
 	len += vdev_stop_mlo_params_size(params);
 
@@ -1222,7 +1223,7 @@ static QDF_STATUS send_vdev_stop_cmd_tlv(wmi_unified_t wmi,
 		wmi_buf_free(buf);
 		return QDF_STATUS_E_FAILURE;
 	}
-	wmi_debug("vdev id = %d", cmd->vdev_id);
+	wmi_debug("vdev id = %d", vdev_id);
 
 	return 0;
 }
@@ -9368,6 +9369,7 @@ static QDF_STATUS send_vdev_spectral_enable_cmd_tlv(wmi_unified_t wmi_handle,
 }
 
 #ifdef WLAN_CONV_SPECTRAL_ENABLE
+
 static QDF_STATUS
 extract_pdev_sscan_fw_cmd_fixed_param_tlv(
 		wmi_unified_t wmi_handle,
@@ -9409,6 +9411,69 @@ extract_pdev_sscan_fw_cmd_fixed_param_tlv(
 	wmi_debug("pdev id:%u smode:%u num_fft_bin_index:%u num_det_info:%u",
 		  ev->pdev_id, ev->spectral_scan_mode,
 		  param_buf->num_fft_bin_index, param_buf->num_det_info);
+
+	return QDF_STATUS_SUCCESS;
+}
+
+static QDF_STATUS
+extract_pdev_sscan_spur_chan_impacted_bin_info_tlv(
+		wmi_unified_t wmi_handle,
+		uint8_t *event, struct spectral_spur_info *param)
+{
+	WMI_PDEV_SSCAN_FW_PARAM_EVENTID_param_tlvs *param_buf;
+	wmi_pdev_sscan_spur_chan_impacted_bin_info *ev;
+	uint32_t i;
+	struct spectral_spur_chan_impacted_bin_info *bin_info_temp;
+
+	if (!wmi_handle) {
+		wmi_err("WMI handle is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	if (!event) {
+		wmi_err("WMI event is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	param_buf = (WMI_PDEV_SSCAN_FW_PARAM_EVENTID_param_tlvs *)event;
+	if (!param_buf) {
+		wmi_err("Param_buf is INVALID");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	if (!param_buf->num_spur_chan_impacted_bin_info) {
+		wmi_err("No impacted channel");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	if (!param) {
+		wmi_err("Spectral startscan response params is null");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	param->bin_info =
+	      qdf_mem_malloc(sizeof(struct spectral_spur_chan_impacted_bin_info)
+			     * param_buf->num_spur_chan_impacted_bin_info);
+	if (!param->bin_info) {
+		wmi_err("Spectral alloc not enough memory");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	ev = param_buf->spur_chan_impacted_bin_info;
+	if (!ev)
+		return QDF_STATUS_E_INVAL;
+
+	param->num_spur_info = param_buf->num_spur_chan_impacted_bin_info;
+	bin_info_temp = param->bin_info;
+	for (i = 0; i < param_buf->num_spur_chan_impacted_bin_info; i++, ev++) {
+		bin_info_temp[i].spur_freqx10 = ev->spur_freqx10 / 10;
+		bin_info_temp[i].spur_start_bin_idx = ev->spur_start_bin_idx;
+		bin_info_temp[i].spur_end_bin_idx = ev->spur_end_bin_idx;
+
+		wmi_debug("frequency :%d start_bin_idx:%d end_bin_idx:%d",
+			  ev->spur_freqx10, ev->spur_start_bin_idx,
+			  ev->spur_end_bin_idx);
+	}
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -22513,6 +22578,8 @@ struct wmi_ops tlv_ops =  {
 #ifdef WLAN_CONV_SPECTRAL_ENABLE
 	.extract_pdev_sscan_fw_cmd_fixed_param =
 				extract_pdev_sscan_fw_cmd_fixed_param_tlv,
+	.extract_pdev_sscan_spur_chan_impacted_bin_info =
+			     extract_pdev_sscan_spur_chan_impacted_bin_info_tlv,
 	.extract_pdev_sscan_fft_bin_index =
 				extract_pdev_sscan_fft_bin_index_tlv,
 	.extract_pdev_spectral_session_chan_info =
@@ -24094,6 +24161,8 @@ static void populate_tlv_service(uint32_t *wmi_service)
 	wmi_service[wmi_service_mlo_sap_emlsr_support] =
 				WMI_SERVICE_MLO_SAP_EMLSR_SUPPORT;
 #endif
+	wmi_service[wmi_service_spectral_spur_bin_info_support] =
+				WMI_SERVICE_SPECTRAL_SPUR_BIN_INFO_SUPPORT;
 }
 
 /**

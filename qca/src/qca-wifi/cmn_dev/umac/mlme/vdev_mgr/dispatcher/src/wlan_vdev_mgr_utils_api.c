@@ -37,6 +37,7 @@
 #include <wlan_utility.h>
 #include <wlan_mlo_mgr_sta.h>
 #endif
+#include <wlan_mlme_cmn.h>
 
 static QDF_STATUS vdev_mgr_config_ratemask_update(
 				uint8_t vdev_id,
@@ -789,14 +790,36 @@ bool wlan_util_vdev_mgr_get_acs_mode_for_vdev(struct wlan_objmgr_vdev *vdev)
 }
 
 #define FW_RESTART_TIMEOUT 30
-/* This value is derived based on the 16 MLDs */
-#define HOST_RESTART_TIMEOUT 520
+
+/*
+ * Host vdev restart time =
+ * 'Time required to process the CSA completion event from the FW and to
+ * send the multiple vdev restart command to the FW' +
+ * 'Time required process the restart response event from the FW and to
+ * send the vdev up command to the FW for all the vdevs'.
+ *
+ * For an AP device, compute the host vdev restart time based on the number of
+ * beaconing vdevs. For a single vdev, this value will be around
+ * 100 milliseconds (considered the max host vdev restart
+ * value of 2 GHz, 5 GHz and 6 GHz AP vdevs).
+ */
+#define HOST_SINGLE_VDEV_RESTART_TIMEOUT 100
+
+/* From the second beaconing vdev onwards 50 millisecond offset is added to the
+ * host vdev restart time.
+ */
+#define HOST_VDEV_RESTART_TIMEOUT_OFFSET 50
+
+/* Limit the maximum host vdev restart timeout value to 520 milliseconds */
+#define HOST_MAX_VDEV_RESTART_TIMEOUT 520
 
 QDF_STATUS wlan_util_vdev_mgr_get_csa_channel_switch_time(
 		struct wlan_objmgr_vdev *vdev,
-		uint32_t *chan_switch_time)
+		uint32_t *chan_switch_time,
+		uint32_t num_beaconing_vdevs)
 {
 	struct vdev_mlme_obj *vdev_mlme = NULL;
+	uint32_t host_vdev_restart_timeout = 0;
 
 	*chan_switch_time = 0;
 
@@ -809,8 +832,29 @@ QDF_STATUS wlan_util_vdev_mgr_get_csa_channel_switch_time(
 	/* Time between CSA count 1 and CSA count 0 is one beacon interval. */
 	*chan_switch_time = vdev_mlme->proto.generic.beacon_interval;
 
-	/* Host and FW vdev restart time */
-	*chan_switch_time += FW_RESTART_TIMEOUT + HOST_RESTART_TIMEOUT;
+	/* FW vdev restart time */
+	*chan_switch_time += FW_RESTART_TIMEOUT;
+
+	/* Determine the host vdev restart time:
+	 * STA vdev requires the channel switch time to check if RootAP
+	 * completed the CAC for seamless channel change, therefore, use the
+	 * maximum  host vdev restart timeout value.
+	 */
+	host_vdev_restart_timeout = (vdev->vdev_mlme.vdev_opmode == QDF_STA_MODE)?
+		HOST_MAX_VDEV_RESTART_TIMEOUT : HOST_SINGLE_VDEV_RESTART_TIMEOUT;
+
+	if ((vdev->vdev_mlme.vdev_opmode != QDF_STA_MODE) && (num_beaconing_vdevs > 1)) {
+		/* Increment the host vdev restart time according to the number
+		 * of beaconing vdevs.
+		 */
+		host_vdev_restart_timeout +=
+			(HOST_VDEV_RESTART_TIMEOUT_OFFSET * (num_beaconing_vdevs - 1));
+
+		if (host_vdev_restart_timeout > HOST_MAX_VDEV_RESTART_TIMEOUT)
+			host_vdev_restart_timeout = HOST_MAX_VDEV_RESTART_TIMEOUT;
+	}
+
+	*chan_switch_time += host_vdev_restart_timeout;
 
 	/* Add one beacon interval time required to send beacon on the
 	 * new channel after switching to the new channel.
@@ -821,12 +865,13 @@ QDF_STATUS wlan_util_vdev_mgr_get_csa_channel_switch_time(
 }
 
 QDF_STATUS wlan_util_vdev_mgr_compute_max_channel_switch_time(
-		struct wlan_objmgr_vdev *vdev, uint32_t *max_chan_switch_time)
+		struct wlan_objmgr_vdev *vdev, uint32_t *max_chan_switch_time,
+		uint32_t num_beaconing_vdevs)
 {
 	QDF_STATUS status;
 
 	status = wlan_util_vdev_mgr_get_csa_channel_switch_time(
-			vdev, max_chan_switch_time);
+			vdev, max_chan_switch_time, num_beaconing_vdevs);
 	if (QDF_IS_STATUS_ERROR(status)) {
 		mlme_err("Failed to get the CSA channel switch time");
 		return status;

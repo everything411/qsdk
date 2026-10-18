@@ -258,6 +258,12 @@ util_scan_get_phymode_11be(struct wlan_objmgr_pdev *pdev,
 
 	if (QDF_GET_BITS(eht_ops->ehtop_param,
 			 EHTOP_INFO_PRESENT_IDX, EHTOP_INFO_PRESENT_BITS)) {
+		if (eht_ops->elem_len <
+			(offsetof(struct wlan_ie_ehtops, ccfs1) - 1)) {
+			scm_err("Invalid EHT OP IE length %d with EHT OP info",
+				eht_ops->elem_len);
+			return phymode;
+		}
 		width = QDF_GET_BITS(eht_ops->control,
 				     EHTOP_INFO_CHAN_WIDTH_IDX,
 				     EHTOP_INFO_CHAN_WIDTH_BITS);
@@ -322,6 +328,11 @@ util_scan_get_phymode_11be(struct wlan_objmgr_pdev *pdev,
 	if (QDF_GET_BITS(eht_ops->ehtop_param,
 			 EHTOP_PARAM_DISABLED_SC_BITMAP_PRESENT_IDX,
 			 EHTOP_PARAM_DISABLED_SC_BITMAP_PRESENT_BITS)) {
+		if (eht_ops->elem_len < sizeof(struct wlan_ie_ehtops) - 2) {
+			scm_err("Invalid EHT OP IE len %d with dis_sc_bitmap",
+				eht_ops->elem_len);
+			return phymode;
+		}
 		scan_params->channel.puncture_bitmap =
 			QDF_GET_BITS(eht_ops->disabled_sub_chan_bitmap[0],
 				     0, 8);
@@ -437,6 +448,12 @@ util_scan_is_out_of_band_leak_eht(struct wlan_objmgr_pdev *pdev,
 	if (!QDF_GET_BITS(eht_ops->ehtop_param,
 			  EHTOP_INFO_PRESENT_IDX, EHTOP_INFO_PRESENT_BITS))
 		return false;
+
+	if (eht_ops->elem_len < (offsetof(struct wlan_ie_ehtops, ccfs1) - 1)) {
+		scm_err("Invalid EHT OP IE length %d with EHT OP info present",
+			eht_ops->elem_len);
+		return false;
+	}
 
 	ch_width = QDF_GET_BITS(eht_ops->control,
 				EHTOP_INFO_CHAN_WIDTH_IDX,
@@ -3311,7 +3328,7 @@ static uint32_t util_gen_new_ie(struct wlan_objmgr_pdev *pdev,
 		if (!(tmp_new[0] == WLAN_ELEMID_NONTX_BSSID_CAP ||
 		      tmp_new[0] == WLAN_ELEMID_SSID ||
 		      util_can_skip_mbssid_idx_ie(tmp_new) ||
-		      ((tmp_new[0] == WLAN_ELEMID_EXTN_ELEM) &&
+		      ((tmp_new[0] == WLAN_ELEMID_EXTN_ELEM) && tmp_new[1] &&
 		       (tmp_new[2] == WLAN_EXTN_ELEMID_NONINHERITANCE)))) {
 			if ((pos + tmp_new[1] + MIN_IE_LEN) <=
 			    (new_ie + ielen)) {

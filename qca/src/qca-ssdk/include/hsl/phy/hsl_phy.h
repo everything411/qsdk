@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015, 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -242,6 +242,8 @@ extern "C" {
 	typedef sw_error_t(*hsl_phy_eee_status_get) (a_uint32_t dev_id,
 					      a_uint32_t phy_id,
 					      a_uint32_t * status);
+	typedef sw_error_t(*hsl_phy_adjust_link_post) (a_uint32_t dev_id,
+					      a_uint32_t phy_id);
 /*qca808x_end*/
 	typedef sw_error_t(*hsl_phy_led_ctrl_pattern_set) (a_uint32_t dev_id,
 					      a_uint32_t phy_id,
@@ -524,6 +526,7 @@ extern "C" {
 		hsl_phy_eee_partner_adv_get phy_eee_partner_adv_get;
 		hsl_phy_eee_cap_get phy_eee_cap_get;
 		hsl_phy_eee_status_get phy_eee_status_get;
+		hsl_phy_adjust_link_post phy_adjust_link_post;
 /*qca808x_end*/
 		hsl_phy_led_ctrl_pattern_set phy_led_ctrl_pattern_set;
 		hsl_phy_led_ctrl_pattern_get phy_led_ctrl_pattern_get;
@@ -556,6 +559,7 @@ typedef enum
 	MPGE_PHY_CHIP,
 /*qca808x_start*/
 	QCA808X_PHY_CHIP,
+	QCA81XX_PHY_CHIP,
 	MAX_PHY_CHIP,
 } phy_type_t;
 
@@ -621,7 +625,7 @@ typedef struct {
 /*qca808x_end*/
 #define MP_GEPHY                0x004DD0C0
 #define SFP_PHY_MASK            0xffffffff
-
+#define QCA8111_PHY             0x004dd1c0
 #define CABLE_PAIR_A            0
 #define CABLE_PAIR_B            1
 #define CABLE_PAIR_C            2
@@ -767,6 +771,11 @@ hsl_phy_autoneg_adv_check(a_uint32_t dev_id, a_uint32_t phy_addr,
 	a_uint32_t adv);
 sw_error_t
 hsl_phy_adv_to_linkmode_adv(a_uint32_t autoadv, a_ulong_t *advertising);
+sw_error_t
+hsl_phydev_suspended_update(a_uint32_t dev_id, a_uint32_t phy_addr,
+	a_bool_t suspend);
+bool
+hsl_phydev_support_10m(a_uint32_t dev_id, a_uint32_t phy_addr);
 #ifdef IN_LED
 sw_error_t
 hsl_port_phy_led_ctrl_pattern_set(a_uint32_t dev_id, led_pattern_group_t group,
@@ -929,6 +938,25 @@ hsl_phy_debug_reg_write(a_uint32_t dev_id, a_uint32_t phy_addr,
 sw_error_t
 hsl_phy_modify_debug(a_uint32_t dev_id, a_uint32_t phy_addr,
 	a_uint32_t debug_reg, a_uint16_t mask, a_uint16_t value);
+a_uint16_t
+__hsl_phy_c45_debug_reg_read(a_uint32_t dev_id, a_uint32_t phy_addr,
+	a_uint32_t debug_reg);
+sw_error_t
+__hsl_phy_c45_debug_reg_write(a_uint32_t dev_id, a_uint32_t phy_id,
+	a_uint32_t debug_reg, a_uint16_t reg_val);
+sw_error_t
+__hsl_phy_c45_modify_debug(a_uint32_t dev_id, a_uint32_t phy_addr,
+	a_uint32_t debug_reg, a_uint16_t mask, a_uint16_t value);
+a_uint16_t
+hsl_phy_c45_debug_reg_read(a_uint32_t dev_id, a_uint32_t phy_addr,
+	a_uint32_t debug_reg);
+sw_error_t
+hsl_phy_c45_debug_reg_write(a_uint32_t dev_id, a_uint32_t phy_addr,
+	a_uint32_t debug_reg, a_uint16_t reg_val);
+sw_error_t
+hsl_phy_c45_modify_debug(a_uint32_t dev_id, a_uint32_t phy_addr,
+	a_uint32_t debug_reg, a_uint16_t mask, a_uint16_t value);
+
 sw_error_t
 hsl_port_phy_autoneg_status_get(a_uint32_t dev_id, fal_port_t port_id, a_bool_t * status);
 sw_error_t
@@ -970,6 +998,25 @@ hsl_port_phy_eee_cap_get(a_uint32_t dev_id, a_uint32_t port_id, a_uint32_t *cap)
 sw_error_t
 hsl_port_phy_eee_status_get(a_uint32_t dev_id, a_uint32_t port_id,
 	a_uint32_t *status);
+a_uint32_t
+hsl_soc_read(a_uint32_t dev_id, a_bool_t is_i2c, a_uint32_t reg);
+void
+hsl_soc_write(a_uint32_t dev_id, a_bool_t is_i2c, a_uint32_t reg,
+	a_uint32_t reg_val);
+int
+hsl_modify_soc(a_uint32_t dev_id, a_bool_t is_i2c, a_uint32_t reg,
+	a_uint32_t mask, a_uint32_t val);
+a_uint32_t
+hsl_phy_soc_read(a_uint32_t dev_id, a_uint32_t phy_addr,
+	a_uint32_t reg);
+void
+hsl_phy_soc_write(a_uint32_t dev_id, a_uint32_t phy_addr,
+	a_uint32_t reg, a_uint32_t val);
+int
+hsl_phy_modify_soc(a_uint32_t dev_id, a_uint32_t phy_addr, a_uint32_t reg,
+	a_uint32_t mask, a_uint32_t val);
+sw_error_t
+hsl_port_phy_adjust_link_post(a_uint32_t dev_id, a_uint32_t port_id);
 #ifndef IN_PORTCONTROL_MINI
 sw_error_t
 hsl_port_phy_local_loopback_set(a_uint32_t dev_id, fal_port_t port_id, a_bool_t enable);

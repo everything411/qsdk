@@ -8707,7 +8707,9 @@ static QDF_STATUS dp_set_pdev_param(struct cdp_soc_t *cdp_soc, uint8_t pdev_id,
 		return dp_monitor_config_enh_rx_capture(pdev,
 						val.cdp_pdev_param_en_rx_cap);
 	case CDP_CONFIG_ENH_TX_CAPTURE:
-		return dp_mon_enh_tx_capt_wrapper(pdev, val);
+		return dp_monitor_config_enh_tx_capture(pdev,
+						val.cdp_pdev_param_en_tx_cap,
+						0);
 	case CDP_CONFIG_HMMC_TID_OVERRIDE:
 		pdev->hmmc_tid_override_en = val.cdp_pdev_param_hmmc_tid_ovrd;
 		break;
@@ -8761,6 +8763,9 @@ static QDF_STATUS dp_set_pdev_param(struct cdp_soc_t *cdp_soc, uint8_t pdev_id,
 	case CDP_CONFIG_MON_FCS_CAP:
 		dp_mon_config_mon_fcs_cap(pdev->soc, pdev,
 					  val.cdp_pdev_param_mon_fcs_cap);
+		break;
+	case CDP_CONFIG_MON_VERSION:
+		dp_set_monitor_version(pdev, val.cdp_monitor_version);
 		break;
 	default:
 		return QDF_STATUS_E_INVAL;

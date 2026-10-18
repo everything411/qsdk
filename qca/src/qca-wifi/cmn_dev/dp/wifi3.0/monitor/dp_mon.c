@@ -2678,6 +2678,7 @@ dp_tx_rate_stats_update(struct dp_peer *peer,
 		dp_ath_rate_lpf(mon_peer->stats.tx.avg_tx_rate, ratekbps);
 	ppdu_tx_rate = dp_ath_rate_out(mon_peer->stats.tx.avg_tx_rate);
 	DP_STATS_UPD(mon_peer, tx.rnd_avg_tx_rate, ppdu_tx_rate);
+	DP_STATS_UPD(mon_peer, tx.tx_ratecode, ratecode);
 
 	mon_peer->stats.tx.bw_info = ppdu->bw;
 	mon_peer->stats.tx.gi_info = ppdu->gi;
@@ -3588,6 +3589,9 @@ dp_process_ppdu_stats_common_tlv(struct dp_pdev *pdev,
 	ppdu_desc->htt_seq_type =
 			HTT_PPDU_STATS_COMMON_TLV_PPDU_SEQ_TYPE_GET(*tag_buf);
 
+	tag_buf = start_tag_buf + HTT_GET_STATS_CMN_INDEX(CHAIN_MASK);
+	ppdu_desc->chain_mask = *tag_buf;
+
 	frame_ctrl = ppdu_desc->frame_ctrl;
 
 	ppdu_desc->bar_ppdu_id = ppdu_info->ppdu_id;
@@ -3725,6 +3729,8 @@ static void dp_process_ppdu_stats_user_common_tlv(
 	struct dp_peer *peer;
 	struct dp_vdev *vdev;
 	uint32_t tlv_type = HTT_STATS_TLV_TAG_GET(*tag_buf);
+	htt_ppdu_stats_user_common_tlv *start_tag_buf =
+				(htt_ppdu_stats_user_common_tlv *)tag_buf;
 
 	ppdu_desc =
 		(struct cdp_tx_completion_ppdu *)qdf_nbuf_data(ppdu_info->nbuf);
@@ -3817,7 +3823,12 @@ static void dp_process_ppdu_stats_user_common_tlv(
 		dp_peer_unref_delete(peer, DP_MOD_ID_TX_PPDU_STATS);
 	}
 
-	tag_buf += 10;
+	tag_buf += 5;
+	ppdu_user_desc->tx_pwr_multiplier =
+		HTT_PPDU_STATS_USER_COMMON_TLV_TX_PWR_MULTIPLIER_GET(*tag_buf);
+	ppdu_user_desc->tx_pwr =
+		HTT_PPDU_STATS_USER_COMMON_TLV_TX_PWR_GET(start_tag_buf, 0);
+	tag_buf += 5;
 	ppdu_user_desc->msduq_bitmap = *tag_buf;
 }
 

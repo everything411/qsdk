@@ -192,6 +192,7 @@ typedef enum {
   WLAN_MODULE_PHYLIB_SSCAN,             /* 0x95 */
   WLAN_MODULE_PHYLIB_RSVD,              /* 0x96 */
   WLAN_MODULE_USD,                      /* 0x97 */
+  WLAN_MODULE_C2C,                      /* 0x98 */
 
 
   WLAN_MODULE_ID_MAX,

@@ -3612,7 +3612,7 @@ wlan_cfg_mask_assignment(struct wlan_cfg_dp_soc_ctxt *wlan_cfg_ctx,
 		int_host2rxdma_mon_ring_mask =
 			mask_assignment->host2rxdma_mon_ring_mask[i];
 		if (int_host2rxdma_mon_ring_mask && !host2rxmon_mask_set) {
-			wlan_cfg_ctx->int_host2rxdma_mon_ring_mask[interrupt_index] =
+			wlan_cfg_ctx->int_host2rxdma_mon_ring_mask[i] =
 				mask_assignment->host2rxdma_mon_ring_mask[i];
 			host2rxmon_mask_set = true;
 		}
@@ -4516,6 +4516,8 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 	wlan_soc_lapb_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_soc_umac_reset_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_cfg_ctx->rx_buffer_size = cfg_get(psoc, CFG_DP_RX_BUFFER_SIZE);
+	wlan_cfg_ctx->spec_spur_method =
+			cfg_get(psoc, CFG_DP_SPECTRAL_SPUR_METHOD_REPORT);
 	wlan_cfg_ctx->avg_rate_stats_filter_val =
 		cfg_get(psoc, CFG_DP_STATS_AVG_RATE_FILTER);
 	wlan_soc_ast_cfg_attach(psoc, wlan_cfg_ctx);
@@ -4805,6 +4807,8 @@ wlan_cfg_soc_attach(struct cdp_ctrl_objmgr_psoc *psoc)
 			cfg_get(psoc, CFG_SPECIAL_FRAME_MSK);
 	wlan_soc_umac_reset_cfg_attach(psoc, wlan_cfg_ctx);
 	wlan_cfg_ctx->rx_buffer_size = cfg_get(psoc, CFG_DP_RX_BUFFER_SIZE);
+	wlan_cfg_ctx->spec_spur_method =
+			cfg_get(psoc, CFG_DP_SPECTRAL_SPUR_METHOD_REPORT);
 	wlan_cfg_ctx->avg_rate_stats_filter_val =
 		cfg_get(psoc, CFG_DP_STATS_AVG_RATE_FILTER);
 	wlan_soc_ast_cfg_attach(psoc, wlan_cfg_ctx);

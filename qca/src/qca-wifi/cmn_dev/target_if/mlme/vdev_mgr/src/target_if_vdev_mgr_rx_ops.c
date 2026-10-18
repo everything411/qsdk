@@ -918,6 +918,8 @@ static int target_if_pdev_csa_status_event_handler(
 	int i;
 	QDF_STATUS status;
 	struct wlan_lmac_if_mlme_rx_ops *rx_ops = NULL;
+	struct wlan_objmgr_pdev *pdev;
+	uint32_t num_beaconing_vdevs;
 
 	if (!scn || !data) {
 		mlme_err("Invalid input");
@@ -956,9 +958,23 @@ static int target_if_pdev_csa_status_event_handler(
 		return -EINVAL;
 	}
 
-	if (csa_status.current_switch_count == 1)
-		rx_ops->vdev_mgr_set_max_channel_switch_time
-			(psoc, csa_status.vdev_ids, csa_status.num_vdevs);
+	if (csa_status.current_switch_count == 1) {
+		pdev = wlan_objmgr_get_pdev_by_id(psoc, csa_status.pdev_id,
+						  WLAN_MLME_SB_ID);
+		if (!pdev) {
+			mlme_err("pdev object (id: %d) is NULL ",
+				 csa_status.pdev_id);
+			return -EINVAL;
+		}
+
+		target_if_get_num_beaconing_vdevs(pdev, tgt_hdl,
+						  &num_beaconing_vdevs);
+		wlan_objmgr_pdev_release_ref(pdev, WLAN_MLME_SB_ID);
+
+		rx_ops->vdev_mgr_set_max_channel_switch_time(
+				psoc, csa_status.vdev_ids, csa_status.num_vdevs,
+				num_beaconing_vdevs);
+	}
 
 	if (wlan_psoc_nif_fw_ext_cap_get(psoc, WLAN_SOC_CEXT_CSA_TX_OFFLOAD)) {
 		for (i = 0; i < csa_status.num_vdevs; i++) {

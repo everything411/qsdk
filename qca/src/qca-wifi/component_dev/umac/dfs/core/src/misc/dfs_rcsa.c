@@ -257,6 +257,7 @@ bool dfs_process_nol_ie_bitmap(struct wlan_dfs *dfs, uint8_t nol_ie_bandwidth,
 	uint16_t nol_freq_list[MAX_20MHZ_SUBCHANS];
 	bool should_nol_ie_be_sent = true;
 	uint8_t num_subchans;
+	QDF_STATUS status;
 
 	qdf_mem_zero(radar_subchans, sizeof(radar_subchans));
 	if (!dfs->dfs_use_nol_subchannel_marking) {
@@ -290,9 +291,21 @@ bool dfs_process_nol_ie_bitmap(struct wlan_dfs *dfs, uint8_t nol_ie_bandwidth,
 		return should_nol_ie_be_sent;
 	}
 
-	dfs_radar_add_channel_list_to_nol_for_freq(dfs, radar_subchans,
-						   nol_freq_list,
-						   &num_subchans);
+	status = dfs_radar_add_channel_list_to_nol_for_freq(dfs, radar_subchans,
+							    nol_freq_list,
+							    &num_subchans);
+
+	if (QDF_IS_STATUS_ERROR(status)) {
+		dfs_debug(dfs, WLAN_DEBUG_DFS_ALWAYS,
+			  "Failed to add radar channels to NOL");
+		return should_nol_ie_be_sent;
+	}
+
+	if (num_subchans)
+		dfs_mark_precac_nol_for_freq(dfs, 0, 0,
+					     nol_freq_list,
+					     num_subchans);
+
 	return should_nol_ie_be_sent;
 }
 #endif

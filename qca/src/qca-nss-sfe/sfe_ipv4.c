@@ -1114,9 +1114,11 @@ int sfe_ipv4_recv(struct net_device *dev, struct sk_buff *skb, struct sfe_l2_inf
 	 * Usually TCP ACK's(with length 18(eth)+20(IP)+20(TCP) < 64) have ethernet padding set.
 	 */
 	if (likely(!skb->data_len)) {
-		skb->len = tot_len;
-		skb_set_tail_pointer(skb, tot_len);
-		len = tot_len;
+		if (unlikely(tot_len < len)) {
+			l2_info->trimmed_len = len - tot_len;
+			__skb_trim(skb, tot_len);
+			len = tot_len;
+		}
 	}
 
 	/*
@@ -1480,6 +1482,20 @@ bool sfe_ipv4_service_class_stats_get(uint8_t sid, uint64_t *bytes, uint64_t *pa
 }
 
 /*
+ * sfe_ipv4_is_same_dest()
+ *     Check if both multicast destination are same
+ */
+static inline bool sfe_ipv4_is_same_dest(struct sfe_ipv4_mc_dest *md1, struct sfe_ipv4_mc_dest *md2)
+{
+	return md1->xmit_dev == md2->xmit_dev  &&
+		md1->egress_vlan_hdr_cnt == md2->egress_vlan_hdr_cnt &&
+		(md1->egress_vlan_hdr_cnt == 0 ||
+		 memcmp(md1->egress_vlan_hdr, md2->egress_vlan_hdr,
+			 sizeof(struct sfe_vlan_hdr) * md1->egress_vlan_hdr_cnt) == 0);
+
+}
+
+/*
  * sfe_ipv4_add_mc_dest_tail()
  *	Add mc dest to the tail.
  * return 0 successful, return 1 failed.
@@ -1489,8 +1505,9 @@ int sfe_ipv4_add_mc_dest_tail(struct sfe_ipv4_connection_match *cm, struct sfe_i
 	struct sfe_ipv4_mc_dest *cur;
 
 	list_for_each_entry_rcu(cur, &(cm->mc_list), list) {
-		if (cur->xmit_dev == mc_dest->xmit_dev) {
-			DEBUG_WARN("%px: The tail new destination[%s] already exists in the list\n", cm, mc_dest->xmit_dev->name);
+		if (sfe_ipv4_is_same_dest(cur, mc_dest)) {
+			DEBUG_WARN("%px: The tail new destination[%s] already exists in the list\n",
+					cm, mc_dest->xmit_dev->name);
 			return 1;
 		}
 	}
@@ -1507,8 +1524,9 @@ int sfe_ipv4_add_mc_dest_head(struct sfe_ipv4_connection_match *cm, struct sfe_i
 {
 	struct sfe_ipv4_mc_dest *cur;
 	list_for_each_entry_rcu(cur, &(cm->mc_list), list) {
-		if (cur->xmit_dev == mc_dest->xmit_dev) {
-			DEBUG_WARN("%px: The head new destination[%s] already exists in the list\n", cm, mc_dest->xmit_dev->name);
+		if (sfe_ipv4_is_same_dest(cur, mc_dest)) {
+			DEBUG_WARN("%px: The head new destination[%s] already exists in the list\n",
+					cm, mc_dest->xmit_dev->name);
 			return 1;
 		}
 	}
@@ -1522,12 +1540,24 @@ int sfe_ipv4_add_mc_dest_head(struct sfe_ipv4_connection_match *cm, struct sfe_i
  *	Delete the mc dest entry in the list.
  * return 0 successful, return 1 failed.
  */
-int sfe_ipv4_find_and_delete_mc_dest(struct sfe_ipv4_connection_match *cm, struct net_device *dest_dev)
+int sfe_ipv4_find_and_delete_mc_dest(struct sfe_ipv4_connection_match *cm,
+		struct sfe_ipv4_mc_device_entry *if_rule, struct net_device *dest_dev)
 {
 	struct sfe_ipv4_mc_dest *cur, *tmp;
+	struct sfe_ipv4_mc_dest dest = {/*zero*/};
+
+	dest.xmit_dev = dest_dev;
+	if (if_rule->valid_flags & SFE_MC_RULE_CREATE_IF_FLAG_VLAN_VALID) {
+		/*
+		 * Initialize egress VLAN information.
+		 */
+		sfe_ipv4_match_entry_set_vlan_hdr(&dest.egress_vlan_hdr_cnt, dest.egress_vlan_hdr,
+				if_rule->egress_vlan_tag[0],if_rule->egress_vlan_tag[1]);
+		DEBUG_TRACE("%d Vlan was set to %s\n",(u32)dest.egress_vlan_hdr_cnt, dest_dev->name);
+	}
 
 	list_for_each_entry_safe(cur, tmp, &(cm->mc_list), list) {
-		if(cur->xmit_dev == dest_dev) {
+		if (sfe_ipv4_is_same_dest(cur, &dest)) {
 			list_del_rcu(&cur->list);
 			call_rcu(&cur->rcu, sfe_ipv4_free_mc_dest_rcu);
 			return 0;
@@ -1679,7 +1709,7 @@ int sfe_ipv4_update_mc_dest(struct sfe_ipv4_connection_match *cm, struct sfe_ipv
 		}
 
 		if (if_rule->rule_flags & SFE_MC_RULE_CREATE_IF_FLAG_LEAVE) {
-			sfe_ipv4_find_and_delete_mc_dest(cm, dest_dev);
+			sfe_ipv4_find_and_delete_mc_dest(cm, if_rule, dest_dev);
 			dev_put(dest_dev);
 			continue;
 		}

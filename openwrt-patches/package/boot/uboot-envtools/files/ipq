@@ -146,6 +146,8 @@ case "$board" in
 	qcom,ipq9574-ap-al02-c20 |\
 	qcom,ipq9574-ap-al03-c2 |\
 	qcom,ipq9574-ap-al05 |\
+	qcom,ipq9574-ap-al05-qca81xx |\
+	qcom,ipq9574-ap-al05-qca81xx-i2c |\
 	qcom,ipq9574-ap-al06 |\
 	qcom,ipq9574-db-al01-c1 |\
 	qcom,ipq9574-db-al01-c2 |\
@@ -157,6 +159,8 @@ case "$board" in
 	qcom,ipq5332-ap-mi01.2 |\
 	qcom,ipq5332-ap-mi01.2-c2 |\
 	qcom,ipq5332-ap-mi01.2-qcn9160-c1 |\
+	qcom,ipq5332-ap-mi01.2-qca81xx |\
+	qcom,ipq5332-ap-mi01.2-qca81xx-i2c |\
 	qcom,ipq5332-ap-mi01.3 |\
 	qcom,ipq5332-ap-mi01.3-c2 |\
 	qcom,ipq5332-ap-mi01.3-c3 |\
@@ -171,6 +175,8 @@ case "$board" in
 	qcom,ipq5332-ap-mi04.1 |\
 	qcom,ipq5332-ap-mi04.1-c2 |\
 	qcom,ipq5332-ap-mi04.3 |\
+	qcom,ipq5332-tb-mi03.1 |\
+	qcom,ipq5332-tb-mi05.1 |\
 	qcom,ipq5332-db-mi01.1 |\
 	qcom,ipq5332-db-mi02.1 |\
 	qcom,ipq5332-db-mi03.1)

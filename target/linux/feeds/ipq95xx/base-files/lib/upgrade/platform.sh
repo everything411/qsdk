@@ -218,7 +218,7 @@ do_flash_failsafe_partition() {
 		[ -f /proc/boot_info/$bcname/$default_mtd/upgradepartition ] && {
 			primary_bcname=$(get_current_bootconfig $bcname)
 			primaryboot=$(cat /proc/boot_info/$primary_bcname/$default_mtd/primaryboot)
-			mtdname=$(cat /proc/boot_info/$bcname/$default_mtd/upgradepartition)
+			mtdname=$(cat /proc/boot_info/$primary_bcname/$default_mtd/upgradepartition)
 			echo $((primaryboot ^= 1)) > /proc/boot_info/$bcname/$default_mtd/primaryboot
 		}
 	done
@@ -506,6 +506,8 @@ platform_do_upgrade() {
 	qcom,ipq9574-ap-al02-c19 |\
 	qcom,ipq9574-ap-al02-c20 |\
 	qcom,ipq9574-ap-al05 |\
+	qcom,ipq9574-ap-al05-qca81xx |\
+	qcom,ipq9574-ap-al05-qca81xx-i2c |\
 	qcom,ipq9574-ap-al06 |\
 	qcom,ipq9574-db-al01-c1 |\
 	qcom,ipq9574-db-al01-c2 |\

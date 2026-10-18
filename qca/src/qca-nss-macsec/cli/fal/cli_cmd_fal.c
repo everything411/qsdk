@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, 2016, 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -4421,6 +4421,56 @@ DEFCMD(nss_macsec_secy_rx_sa_next_pn_set_func,
 	return CLI_OK;
 }
 
+DEFCMD(nss_macsec_secy_mib_saturate_en_get_func,
+	nss_macsec_secy_mib_saturate_en_get_cmd,
+	"nss_macsec_secy_mib_saturate_en get HEX",
+	"nss_macsec_secy_mib_saturate_en\n get\n secy_id\n")
+{
+	u32 secy_id = 0;
+	bool penable = 0;
+
+	cli_str_2_hex(argv[2], (u32 *) (&secy_id));
+
+	CLI_EXEC_API(nss_macsec_secy_mib_saturate_en_get(secy_id, &penable));
+	vty_print("penable : 0x%x\n", penable);
+
+	return CLI_OK;
+}
+
+DEFCMD(nss_macsec_secy_mib_saturate_en_set_func,
+	nss_macsec_secy_mib_saturate_en_set_cmd,
+	"nss_macsec_secy_mib_saturate_en set HEX HEX",
+	"nss_macsec_secy_mib_saturate_en\n set\n secy_id\n enable\n")
+{
+	u32 secy_id = 0;
+	u32 enable = 0;
+
+	cli_str_2_hex(argv[2], (u32 *) (&secy_id));
+	cli_str_2_hex(argv[3], (u32 *) (&enable));
+
+	CLI_EXEC_API(nss_macsec_secy_mib_saturate_en_set(secy_id, enable));
+
+	return CLI_OK;
+}
+
+DEFCMD(nss_macsec_secy_xor_key_set_func,
+	nss_macsec_secy_xor_key_set_cmd,
+	"nss_macsec_secy_xor_key set HEX HEX HEX",
+	"nss_macsec_secy_xor_key\n set\n secy_id\n enable\n key(16bits)\n")
+{
+	u32 secy_id = 0;
+	u32 enable = 0;
+	u32 key = 0;
+
+	cli_str_2_hex(argv[2], (u32 *) (&secy_id));
+	cli_str_2_hex(argv[3], (u32 *) (&enable));
+	cli_str_2_hex(argv[4], (u32 *) (&key));
+
+	CLI_EXEC_API(nss_macsec_secy_xor_key_set(secy_id, enable, (u16)key));
+
+	return CLI_OK;
+}
+
 int cli_cmd_fal_init(void)
 {
 	cli_install_cmd(CLI_MODE_ENABLE, &nss_macsec_secy_ext_reg_get_cmd);
@@ -4795,6 +4845,11 @@ int cli_cmd_fal_init(void)
 			&nss_macsec_secy_rx_udf_ufilt_cfg_get_cmd);
 	cli_install_cmd(CLI_MODE_ENABLE,
 			&nss_macsec_secy_rx_sa_next_pn_set_cmd);
+	cli_install_cmd(CLI_MODE_ENABLE,
+		&nss_macsec_secy_mib_saturate_en_get_cmd);
+	cli_install_cmd(CLI_MODE_ENABLE,
+		&nss_macsec_secy_mib_saturate_en_set_cmd);
+	cli_install_cmd(CLI_MODE_ENABLE, &nss_macsec_secy_xor_key_set_cmd);
 
 	return CLI_OK;
 }

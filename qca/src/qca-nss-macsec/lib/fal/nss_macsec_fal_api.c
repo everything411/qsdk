@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -3734,5 +3734,83 @@ u32 nss_macsec_secy_rx_sa_next_pn_set(u32 secy_id, u32 channel, u32 an,
 			NETLINK_SDK);
 	return ret;
 }
+
+u32 nss_macsec_secy_mib_saturate_en_get(u32 secy_id, bool *penable)
+{
+	unsigned char
+	buf[SDK_MSG_SIZE(
+		sizeof(struct nss_macsec_secy_mib_saturate_en_get_cmd))] = {0};
+	struct sdk_msg_header *msg_header =
+	    (struct sdk_msg_header *)SDK_MSG_HEADER(buf);
+	struct nss_macsec_secy_mib_saturate_en_get_cmd *param =
+	    (struct nss_macsec_secy_mib_saturate_en_get_cmd *)SDK_MSG_DATA(buf);
+	int ret = 0;
+
+	msg_header->version = SDK_MSG_VER;
+	msg_header->cmd_type = SDK_FAL_CMD;
+	msg_header->sub_type = NSS_MACSEC_SECY_MIB_SATURATE_EN_GET_CMD;
+	msg_header->buf_len =
+			sizeof(struct nss_macsec_secy_mib_saturate_en_get_cmd);
+	param->secy_id = secy_id;
+
+	ret = nss_macsec_sdk_netlink_msg(SDK_CALL_MSG, buf,
+		sizeof(struct nss_macsec_secy_mib_saturate_en_get_cmd),
+		NETLINK_SDK);
+	if (ret == SDK_RET_SUCCESS)
+		*penable = param->penable;
+
+	return ret;
+}
+
+u32 nss_macsec_secy_mib_saturate_en_set(u32 secy_id, bool enable)
+{
+
+	unsigned char
+	buf[SDK_MSG_SIZE(
+		sizeof(struct nss_macsec_secy_mib_saturate_en_set_cmd))] = {0};
+	struct sdk_msg_header *msg_header =
+	    (struct sdk_msg_header *)SDK_MSG_HEADER(buf);
+	struct nss_macsec_secy_mib_saturate_en_set_cmd *param =
+	    (struct nss_macsec_secy_mib_saturate_en_set_cmd *)SDK_MSG_DATA(buf);
+	int ret = 0;
+
+	msg_header->version = SDK_MSG_VER;
+	msg_header->cmd_type = SDK_FAL_CMD;
+	msg_header->sub_type = NSS_MACSEC_SECY_MIB_SATURATE_EN_SET_CMD;
+	msg_header->buf_len =
+			sizeof(struct nss_macsec_secy_mib_saturate_en_set_cmd);
+	param->secy_id = secy_id;
+	param->enable = enable;
+
+	ret = nss_macsec_sdk_netlink_msg(SDK_CALL_MSG, buf,
+			sizeof(struct nss_macsec_secy_mib_saturate_en_set_cmd),
+			NETLINK_SDK);
+	return ret;
+}
+
+u32 nss_macsec_secy_xor_key_set(u32 secy_id, bool enable, u16 key)
+{
+
+	unsigned char
+	buf[SDK_MSG_SIZE(sizeof(struct nss_macsec_secy_xor_key_set_cmd))] = {0};
+	struct sdk_msg_header *msg_header =
+	    (struct sdk_msg_header *)SDK_MSG_HEADER(buf);
+	struct nss_macsec_secy_xor_key_set_cmd *param =
+	    (struct nss_macsec_secy_xor_key_set_cmd *)SDK_MSG_DATA(buf);
+	int ret = 0;
+
+	msg_header->version = SDK_MSG_VER;
+	msg_header->cmd_type = SDK_FAL_CMD;
+	msg_header->sub_type = NSS_MACSEC_SECY_MIB_XOR_KEY_SET_CMD;
+	msg_header->buf_len = sizeof(struct nss_macsec_secy_xor_key_set_cmd);
+	param->secy_id = secy_id;
+	param->enable = enable;
+	param->key = key;
+
+	ret = nss_macsec_sdk_netlink_msg(SDK_CALL_MSG, buf,
+		sizeof(struct nss_macsec_secy_xor_key_set_cmd), NETLINK_SDK);
+	return ret;
+}
+
 
 

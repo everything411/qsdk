@@ -125,12 +125,12 @@
 			status = "disabled";
 		};
 
-		tzapp:tzapp@49B00000 {  /* TZAPPS */
+		tzapp: tzapp@49B00000 {  /* TZAPPS */
 			no-map;
 			reg = <0x0 0x49B00000 0x0 0x00600000>;
 		};
 
-		uboot@4A100000 {
+		uboot: uboot@4A100000 {
 			no-map;
 			reg = <0x0 0x4A100000 0x0 0x00400000>;
 		};

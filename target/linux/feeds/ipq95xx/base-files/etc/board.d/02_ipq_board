@@ -25,6 +25,8 @@ get_fw_name() {
 		"qcom,ipq9574-ap-al03-c1"|\
 		"qcom,ipq9574-ap-al03-c2"|\
 		"qcom,ipq9574-ap-al05"|\
+		"qcom,ipq9574-ap-al05-qca81xx" |\
+		"qcom,ipq9574-ap-al05-qca81xx-i2c" |\
 		"qcom,ipq9574-ap-al06"|\
 		"qcom,ipq9574-ap-al02-c9"|\
 		"qcom,ipq9574-ap-al02-c14"|\

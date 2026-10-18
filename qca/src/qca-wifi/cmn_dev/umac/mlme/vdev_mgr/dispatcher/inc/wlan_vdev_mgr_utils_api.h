@@ -110,23 +110,27 @@ void wlan_util_vdev_get_param(struct wlan_objmgr_vdev *vdev,
  * @vdev: Pointer to vdev object
  * @chan_switch_time: Pointer to save the CSA channel switch time. This does not
  *                    include the DFS CAC duration
+ * @num_beaconing_vdevs: Number of beaconing vdevs
  *
  * Return: QDF_STATUS - Success or Failure
  */
 QDF_STATUS wlan_util_vdev_mgr_get_csa_channel_switch_time(
 		struct wlan_objmgr_vdev *vdev,
-		uint32_t *chan_switch_time);
+		uint32_t *chan_switch_time,
+		uint32_t num_beaconing_vdevs);
 
 /**
  * wlan_util_vdev_mgr_compute_max_channel_switch_time() - Compute the max
  * channel switch time for the given vdev
  * @vdev: pointer to vdev object
  * @max_chan_switch_time: Pointer to save the computed max channel switch time
+ * @num_beaconing_vdevs: Number of beaconing vdevs
  *
  * Return: QDF_STATUS - Success or Failure
  */
 QDF_STATUS wlan_util_vdev_mgr_compute_max_channel_switch_time(
-		struct wlan_objmgr_vdev *vdev, uint32_t *max_chan_switch_time);
+		struct wlan_objmgr_vdev *vdev, uint32_t *max_chan_switch_time,
+		uint32_t num_beaconing_vdevs);
 
 /**
  * wlan_utils_get_vdev_remaining_channel_switch_time() - Get the remaining

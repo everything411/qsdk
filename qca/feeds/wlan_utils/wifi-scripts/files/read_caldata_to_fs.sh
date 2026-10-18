@@ -24,7 +24,7 @@ is_ftm_conf_supported() {
         local ftm_conf_path=$(get_config_file_path "caldata")
 
 	case "$board" in
-	ap-mi*|ap-al02-c4*|ap-al02-c6*|ap-al06*|ap-al05*|ap-al02-c7*|ap-al02-c8*|ap-al02-c9*|ap-al02-c10*|ap-al02-c11*|ap-al02-c12*|ap-al02-c14*|ap-al02-c15*|ap-al02-c16*|ap-al02-c20*|ap-al03-c1*|ap-al03-c2*|db-mi02.1*|ap-sdxpinn-qcn9224*)
+	ap-mi*|ap-al02-c4*|ap-al02-c6*|ap-al06*|ap-al05*|ap-al02-c7*|ap-al02-c8*|ap-al02-c9*|ap-al02-c10*|ap-al02-c11*|ap-al02-c12*|ap-al02-c14*|ap-al02-c15*|ap-al02-c16*|ap-al02-c20*|ap-al03-c1*|ap-al03-c2*|db-mi02.1*|ap-sdxpinn-qcn9224*|tb-mi03.1*|tb-mi05.1*)
 		ln -s $ftm_conf_path/ftm.conf /tmp/ftm.conf
 		;;
 	*)
@@ -384,15 +384,14 @@ do_load_ipq4019_board_bin()
 
                     create_cfg_caldata "${mtdblock}" "IPQ5332" "qcn9224" "0"
             ;;
-            ap-mi01.3*| ap-mi01.7*)
+            tb-mi03.1*|tb-mi05.1*)
                     [ -f /lib/firmware/IPQ5332/caldata.bin ] && return
                     mkdir -p ${apdk}/IPQ5332
                     mkdir -p ${apdk}/qcn6432
-                    do_ftm_conf_override
 
                     create_cfg_caldata "${mtdblock}" "IPQ5332" "qcn6432" "0"
             ;;
-            ap-mi04.3*| ap-mi04.1*| db-mi02.1*)
+            ap-mi04.3*| ap-mi04.1*| db-mi02.1*| ap-mi01.3*| ap-mi01.7*)
                     [ -f /lib/firmware/IPQ5332/caldata.bin ] && return
                     mkdir -p ${apdk}/IPQ5332
                     mkdir -p ${apdk}/qcn6432

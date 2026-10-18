@@ -787,6 +787,13 @@ static bool sfe_recv_parse_l2(struct net_device *dev, struct sk_buff *skb, struc
 void sfe_recv_undo_parse_l2(struct net_device *dev, struct sk_buff *skb, struct sfe_l2_info *l2_info)
 {
 	/*
+	 * Add padding back if skb is trimmed
+	 */
+	if (l2_info->trimmed_len > 0) {
+		__skb_trim(skb, skb->len + l2_info->trimmed_len);
+	}
+
+	/*
 	 * PPPoE undo
 	 */
 	sfe_pppoe_undo_parse(skb, l2_info);
@@ -2038,16 +2045,10 @@ EXPORT_SYMBOL(sfe_tun6rd_msg_init);
 int sfe_recv(struct sk_buff *skb)
 {
 	struct net_device *dev;
-	struct sfe_l2_info l2_info;
+	struct sfe_l2_info l2_info = {};
 	int ret;
 
 	dev = skb->dev;
-
-	/*
-	 * Setting parse flags to 0 since l2_info is passed for non L2.5 header case as well
-	 */
-	l2_info.parse_flags = 0;
-	l2_info.vlan_hdr_cnt = 0;
 
 	/*
 	 * If TC filter processing is enabled skip tc_classify check as:

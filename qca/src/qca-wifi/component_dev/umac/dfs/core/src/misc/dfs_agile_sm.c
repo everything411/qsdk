@@ -658,10 +658,20 @@ static bool dfs_agile_state_running_event(void *ctx,
 		status = true;
 		break;
 	case DFS_AGILE_SM_EV_AGILE_STOP:
-		if (dfs_is_agile_rcac_enabled(dfs))
+		if (dfs_is_agile_rcac_enabled(dfs)) {
 			dfs_abort_agile_rcac(dfs);
-		else if (dfs_is_agile_precac_enabled(dfs))
+		} else if (dfs_is_agile_precac_enabled(dfs)) {
+			struct wlan_objmgr_pdev *pdev;
+			struct wlan_objmgr_psoc *psoc;
+			struct wlan_lmac_if_dfs_tx_ops *dfs_tx_ops;
+
 			dfs_abort_agile_precac(dfs);
+			pdev = dfs->dfs_pdev_obj;
+			psoc = wlan_pdev_get_psoc(pdev);
+			dfs_tx_ops = wlan_psoc_get_dfs_txops(psoc);
+			if (dfs_tx_ops && dfs_tx_ops->dfs_configure_green_ap)
+				dfs_tx_ops->dfs_configure_green_ap(pdev, true);
+		}
 
 		dfs_agile_sm_transition_to(dfs_soc, DFS_AGILE_S_INIT);
 		status = true;

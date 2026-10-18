@@ -204,7 +204,7 @@ static ssize_t show_aes_derive_key(struct device *dev,
 	size_t req_size = 0;
 	size_t dma_buf_size = 0;
 	dma_addr_t dma_req_addr = 0;
-	const char *message = NULL;
+	char message[32] = {0};
 	int message_len = 0;
 	struct qti_storage_service_derive_key_cmd_t_v1 *req_ptr;
 
@@ -243,13 +243,12 @@ static ssize_t show_aes_derive_key(struct device *dev,
 	if (rc == KEY_HANDLE_OUT_OF_SLOT)
 		pr_info("Key handle out of slot. Clear a key and try again!\n");
 	if (!rc) {
-		message = "AES Key derive successful\n\0";
+		snprintf(message, 32, "%lu\n", (unsigned long)*key_handle);
+		pr_info("key_handle is: %lu\n", (unsigned long)*key_handle);
 	} else {
 		pr_err("SCM call failed..return value = %d\n", rc);
-		message = "AES Key derive failed\n\0";
+		pr_err("AES Key derive failed\n");
 	}
-
-	pr_info("key_handle is: %lu\n", (unsigned long)*key_handle);
 
 	message_len = strlen(message) + 1;
 	memcpy(buf, message, message_len);
@@ -269,7 +268,7 @@ static ssize_t show_aes_derive_128_byte_key(struct device *dev,
 	size_t req_size = 0;
 	size_t dma_buf_size = 0;
 	dma_addr_t dma_req_addr = 0;
-	const char *message = NULL;
+	char message[32] = {0};
 	int message_len = 0;
 	struct qti_storage_service_derive_key_cmd_t_v2 *req_ptr;
 
@@ -310,13 +309,12 @@ static ssize_t show_aes_derive_128_byte_key(struct device *dev,
 	if (rc == KEY_HANDLE_OUT_OF_SLOT)
 		pr_info("Key handle out of slot. Clear a key and try again!\n");
 	if (!rc) {
-		message = "AES Key derive successful\n\0";
+		snprintf(message, 32, "%lu\n", (unsigned long)*key_handle);
+		pr_info("key_handle is: %lu\n", (unsigned long)*key_handle);
 	} else {
 		pr_err("SCM call failed..return value = %d\n", rc);
-		message = "AES Key derive failed\n\0";
+		pr_err("AES Key derive failed\n");
 	}
-
-	pr_info("key_handle is: %lu\n", (unsigned long)*key_handle);
 
 	message_len = strlen(message) + 1;
 	memcpy(buf, message, message_len);
@@ -698,8 +696,6 @@ store_context_data(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
-	context_data_len = num_bytes;
-
 	if (count > (MAX_CONTEXT_BUFFER_LEN_V2 * 2)) {
 		pr_info("Invalid input\n");
 		pr_info("Context data length is %lu bytes\n",
@@ -714,6 +710,8 @@ store_context_data(struct device *dev, struct device_attribute *attr,
 		sscanf(buf, "%2hhx", &context_data[i]);
 		buf += 2;
 	}
+
+	context_data_len = num_bytes;
 
 	pr_debug("context_data is :\n");
 	for (i = 0; i < num_bytes; i++)
@@ -779,26 +777,37 @@ store_context_data_qtiapp(struct device *dev, struct device_attribute *attr,
                         const char *buf, size_t count)
 {
 	int i = 0;
+	int num_bytes = count / 2 ;
 
 	for (i = 0; i < MAX_CONTEXT_BUFFER_LEN_V1; i++)
 		aes_context_data[i] = 0;
-	aes_context_data_len = MAX_CONTEXT_BUFFER_LEN_V1;
 
-	if (count > ((MAX_CONTEXT_BUFFER_LEN_V1 * 2) + 1)) {
-		pr_info("Invalid input\n");
-		pr_info("Context data length is %lu bytes\n",
-		       (unsigned long)count);
-		pr_info("Context data length must be less than 64 bytes\n");
+	if(count % 2 != 0) {
+		pr_info("Input data should be in terms of bytes, which " \
+			"will have even number of digits\n");
+		pr_info("Context data length is %zu bytes\n", count);
+		aes_context_data_len = 0;
 		return -EINVAL;
 	}
 
-	for (i = 0; i < MAX_CONTEXT_BUFFER_LEN_V1; i++) {
+	if (count > (MAX_CONTEXT_BUFFER_LEN_V1 * 2)) {
+		pr_info("Invalid input\n");
+		pr_info("Context data length is %zu bytes\n", count);
+		pr_info("Context data length must be less than %u bytes\n",
+			MAX_CONTEXT_BUFFER_LEN_V1);
+		aes_context_data_len = 0;
+		return -EINVAL;
+	}
+
+	for (i = 0; i < num_bytes; i++) {
 		sscanf(buf, "%2hhx", &aes_context_data[i]);
 		buf += 2;
 	}
 
+	aes_context_data_len = num_bytes;
+
 	pr_debug("context_data is :\n");
-	for (i = 0; i < MAX_CONTEXT_BUFFER_LEN_V1; i++)
+	for (i = 0; i < num_bytes; i++)
 		pr_debug("0x%02x\n", (unsigned int)aes_context_data[i]);
 
 	return count;
@@ -904,7 +913,7 @@ store_aes_encrypted_data_qtiapp(struct device *dev, struct device_attribute *att
 		return -EINVAL;
 	}
 
-	aes_sealed_buf = memset(aes_sealed_buf, 0, MAX_ENCRYPTED_DATA_SIZE);
+	aes_sealed_buf = memset(aes_sealed_buf, 0, MAX_PLAIN_DATA_SIZE);
 	aes_encrypted_len = count;
 	memcpy(aes_sealed_buf, buf, count);
 
@@ -922,7 +931,7 @@ show_aes_v2_encrypted_data(struct device *dev, struct device_attribute *attr,
 	uint64_t output_len = 0;
 	dma_addr_t dma_req_addr = 0;
 
-	sealed_buf = memset(sealed_buf, 0, MAX_ENCRYPTED_DATA_SIZE);
+	sealed_buf = memset(sealed_buf, 0, MAX_PLAIN_DATA_SIZE);
 	output_len = decrypted_len;
 
 	if (decrypted_len <= 0 || decrypted_len % AES_BLOCK_SIZE) {
@@ -1002,7 +1011,7 @@ show_encrypted_data(struct device *dev, struct device_attribute *attr,
 		return rc;
 	}
 
-	sealed_buf = memset(sealed_buf, 0, MAX_ENCRYPTED_DATA_SIZE);
+	sealed_buf = memset(sealed_buf, 0, MAX_PLAIN_DATA_SIZE);
 	output_len = decrypted_len;
 
 	if (decrypted_len <= 0 || decrypted_len % AES_BLOCK_SIZE) {
@@ -1063,7 +1072,7 @@ static ssize_t
 store_encrypted_data(struct device *dev, struct device_attribute *attr,
 			const char *buf, size_t count)
 {
-	sealed_buf = memset(sealed_buf, 0, MAX_ENCRYPTED_DATA_SIZE);
+	sealed_buf = memset(sealed_buf, 0, MAX_PLAIN_DATA_SIZE);
 	encrypted_len = 0;
 
 	if ((count % AES_BLOCK_SIZE) || count > MAX_PLAIN_DATA_SIZE) {
@@ -1072,7 +1081,7 @@ store_encrypted_data(struct device *dev, struct device_attribute *attr,
 			(unsigned long)count);
 		pr_info("Encrypted data length must be multiple of AES block"
 			" size 16  and <= %ubytes\n",
-			(unsigned int)MAX_ENCRYPTED_DATA_SIZE);
+			(unsigned int)MAX_PLAIN_DATA_SIZE);
 		return -EINVAL;
 	}
 
@@ -2734,7 +2743,7 @@ static ssize_t show_aes_derive_key_qtiapp(struct device *dev,
 	size_t req_size = 0;
 	size_t dma_buf_size = 0;
 	dma_addr_t dma_req_addr = 0;
-	const char *message = NULL;
+	char message[32] = {0};
 	int message_len = 0;
 
 	if (!aes_source_data || !aes_context_data_len || !aes_bindings_data) {
@@ -2766,13 +2775,12 @@ static ssize_t show_aes_derive_key_qtiapp(struct device *dev,
 	rc = qtiapp_test(dev, (uint8_t *)dma_req_addr, NULL, req_size,
 						QTI_APP_KEY_DERIVE_TEST);
 	if (!rc) {
-		message = "AES Key derive successful\n\0";
+		snprintf(message, 32, "%lu\n", (unsigned long)*aes_key_handle);
+		pr_info("key_handle is: %lu\n", (unsigned long)*aes_key_handle);
 	} else {
 		pr_err("SCM call failed..return value = %d\n", rc);
-		message = "AES Key derive failed\n\0";
+		pr_err("AES Key derive failed\n");
 	}
-
-	pr_info("key_handle is: %lu\n", (unsigned long)*aes_key_handle);
 
 	message_len = strlen(message) + 1;
 	memcpy(buf, message, message_len);
@@ -2956,7 +2964,7 @@ show_aes_v2_encrypted_data_qtiapp(struct device *dev, struct device_attribute *a
 	uint64_t output_len = 0;
 	dma_addr_t dma_req_addr = 0;
 
-	aes_sealed_buf = memset(aes_sealed_buf, 0, MAX_ENCRYPTED_DATA_SIZE);
+	aes_sealed_buf = memset(aes_sealed_buf, 0, MAX_PLAIN_DATA_SIZE);
 	output_len = aes_decrypted_len;
 
 	if (aes_decrypted_len <= 0 || aes_decrypted_len % AES_BLOCK_SIZE) {
@@ -3040,7 +3048,7 @@ show_aes_encrypted_data_qtiapp(struct device *dev, struct device_attribute *attr
 		return rc;
 	}
 
-	aes_sealed_buf = memset(aes_sealed_buf, 0, MAX_ENCRYPTED_DATA_SIZE);
+	aes_sealed_buf = memset(aes_sealed_buf, 0, MAX_PLAIN_DATA_SIZE);
 	output_len = aes_decrypted_len;
 
 	if (aes_decrypted_len <= 0 || aes_decrypted_len % AES_BLOCK_SIZE) {
@@ -3992,7 +4000,7 @@ static int __init qtiapp_init(struct device *dev)
 	if (props->function & AES_TZAPP) {
 
 		dma_buf_size = PAGE_SIZE *
-				(1 << get_order(MAX_ENCRYPTED_DATA_SIZE));
+				(1 << get_order(MAX_PLAIN_DATA_SIZE));
 		buf_aes_sealed_buf = dma_alloc_coherent(dev, dma_buf_size,
 					&dma_aes_sealed_buf, GFP_KERNEL);
 
@@ -4011,7 +4019,7 @@ static int __init qtiapp_init(struct device *dev)
 
 			if (buf_aes_sealed_buf) {
 				dma_buf_size = PAGE_SIZE *
-				(1 << get_order(MAX_ENCRYPTED_DATA_SIZE));
+				(1 << get_order(MAX_PLAIN_DATA_SIZE));
 				dma_free_coherent(dev, dma_buf_size,
 					buf_aes_sealed_buf,
 					dma_aes_sealed_buf);
@@ -4392,7 +4400,7 @@ static int __exit qseecom_remove(struct platform_device *pdev)
 
 		if (buf_aes_sealed_buf) {
 			dma_buf_size = PAGE_SIZE *
-			(1 << get_order(MAX_ENCRYPTED_DATA_SIZE));
+			(1 << get_order(MAX_PLAIN_DATA_SIZE));
 			dma_free_coherent(dev, dma_buf_size,
 				buf_aes_sealed_buf,
 				dma_aes_sealed_buf);

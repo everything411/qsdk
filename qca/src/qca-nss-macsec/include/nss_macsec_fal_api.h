@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -151,6 +151,9 @@ enum {
 	NSS_MACSEC_SECY_TX_UDF_CFILT_CFG_GET_CMD,
 	NSS_MACSEC_SECY_TX_UDF_CFILT_CFG_SET_CMD,
 	NSS_MACSEC_SECY_RX_SA_NEXT_PN_SET_CMD,
+	NSS_MACSEC_SECY_MIB_SATURATE_EN_GET_CMD,
+	NSS_MACSEC_SECY_MIB_SATURATE_EN_SET_CMD,
+	NSS_MACSEC_SECY_MIB_XOR_KEY_SET_CMD,
 };
 
 struct nss_macsec_secy_interrupt_en_get_cmd {
@@ -867,6 +870,23 @@ struct nss_macsec_secy_rx_sa_next_pn_set_cmd {
 	u32 an;
 	u32 next_pn;
 };
+
+struct nss_macsec_secy_mib_saturate_en_get_cmd {
+	u32 secy_id;
+	bool penable;
+};
+
+struct nss_macsec_secy_mib_saturate_en_set_cmd {
+	u32 secy_id;
+	bool enable;
+};
+
+struct nss_macsec_secy_xor_key_set_cmd {
+	u32 secy_id;
+	bool enable;
+	u16 key;
+};
+
 unsigned int nss_macsec_fal_msg_handle(struct sdk_msg_header *header);
 
 #endif

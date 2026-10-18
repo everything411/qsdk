@@ -569,12 +569,6 @@ static inline QDF_STATUS dp_monitor_config_enh_tx_capture(struct dp_pdev *pdev,
 	return QDF_STATUS_E_INVAL;
 }
 
-static inline QDF_STATUS dp_mon_enh_tx_capt_wrapper(struct dp_pdev *pdev,
-						    cdp_config_param_type val)
-{
-	return QDF_STATUS_E_INVAL;
-}
-
 static inline QDF_STATUS dp_monitor_tx_peer_filter(struct dp_pdev *pdev,
 						   struct dp_peer *peer,
 						   uint8_t is_tx_pkt_cap_enable,
@@ -1067,6 +1061,12 @@ static inline void
 dp_monitor_update_mac_vdev_map(struct dp_vdev *vdev)
 {
 }
+
+static inline void
+dp_set_monitor_version(struct dp_pdev *pdev, uint8_t version)
+{
+}
+
 #endif /* !WIFI_MONITOR_SUPPORT */
 
 /**

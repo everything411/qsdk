@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -198,7 +198,14 @@ g_error_t qca808x_secy_rx_udf_filt_set(struct macsec_port *port, u32 index, stru
 g_error_t qca808x_secy_rx_udf_filt_get(struct macsec_port *port, u32 index, struct secy_udf_filt_t *filter);
 g_error_t qca808x_secy_tx_ctl_filt_en_set(struct macsec_port *port, bool enable);
 g_error_t qca808x_secy_rx_ctl_filt_en_set(struct macsec_port *port, bool enable);
-
+g_error_t qca81xx_secy_mib_saturate_en_set(struct macsec_port *port,
+						bool enable);
+g_error_t qca81xx_secy_mib_saturate_en_get(struct macsec_port *port,
+						bool *enable);
+g_error_t qca81xx_secy_xor_key_set(struct macsec_port *port,
+					bool enable, u16 key);
+g_error_t qca81xx_secy_xor_key_get(struct macsec_port *port,
+					bool *enable, u16 *key);
 
 
 #endif /* __QCA808X_MACSECY_H */

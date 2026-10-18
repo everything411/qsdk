@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -4369,6 +4369,8 @@ qca_hppe_mac_sw_sync_task(struct qca_phy_priv *priv)
 #ifdef IN_FDB
 			adpt_hppe_fdb_del_by_port(priv->device_id, port_id, !(FAL_FDB_DEL_STATIC));
 #endif
+			if(_adpt_hppe_port_phy_connected(priv->device_id, port_id))
+				hsl_port_phy_adjust_link_post(priv->device_id, port_id);
 		}
 		/* link status from down to up*/
 		if ((phy_status.link_status == PORT_LINK_UP) &&

@@ -708,18 +708,27 @@ void  dfs_prepare_agile_precac_chan(struct wlan_dfs *dfs, bool *is_chan_found)
 		qdf_info("%s : %d ADFS channel set request sent for pdev: %pK ch_freq: %d",
 			 __func__, __LINE__, pdev, ch_freq);
 
-		if (dfs_tx_ops && dfs_tx_ops->dfs_agile_ch_cfg_cmd)
+		if (dfs_tx_ops && dfs_tx_ops->dfs_agile_ch_cfg_cmd) {
+			*is_chan_found = true;
+			if (dfs_tx_ops->dfs_configure_green_ap)
+				dfs_tx_ops->dfs_configure_green_ap(pdev, false);
 			dfs_tx_ops->dfs_agile_ch_cfg_cmd(pdev,
 							 &adfs_param);
-		else
+		} else {
 			dfs_err(NULL, WLAN_DEBUG_DFS_ALWAYS,
 				"dfs_tx_ops=%pK", dfs_tx_ops);
-		*is_chan_found = true;
+			*is_chan_found = false;
+		}
 	} else {
 		dfs_cancel_precac_timer(dfs);
 		dfs_soc_obj->cur_agile_dfs_index = DFS_PSOC_NO_IDX;
 		dfs_agile_precac_cleanup(dfs);
 		*is_chan_found = false;
+	}
+
+	if (!(*is_chan_found)) {
+		if (dfs_tx_ops->dfs_configure_green_ap)
+			dfs_tx_ops->dfs_configure_green_ap(dfs->dfs_pdev_obj, true);
 	}
 }
 #endif

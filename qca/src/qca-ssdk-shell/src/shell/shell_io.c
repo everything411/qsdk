@@ -1398,25 +1398,25 @@ cmd_data_print_xgmib(a_uint8_t * param_name, a_uint64_t * buf, a_uint64_t size)
 static char *counter_regname[] =
 {
     "RxGoodFrame",
-    "RxBadCRC   ",
+    "RxFcsErr   ",
     "TxGoodFrame",
-    "TxBadCRC   ",
+    "TxFcsErr   ",
     "SysRxGoodFrame",
-    "SysRxBadCRC",
+    "SysRxFcsErr",
     "SysTxGoodFrame",
-    "SysTxBadCRC",
+    "SysTxFcsErr",
 };
 
 void
-cmd_data_print_counter_info(a_uint8_t * param_name, a_uint32_t * buf, a_uint32_t size)
+cmd_data_print_counter_info(a_uint8_t * param_name, a_uint64_t * buf, a_uint32_t size)
 {
     dprintf("\n[%s] \n", param_name);
     a_uint32_t offset = 0;
-    for (offset = 0; offset < (sizeof (fal_port_counter_info_t) / sizeof (a_uint32_t));
+    for (offset = 0; offset < (sizeof (fal_port_counter_info_t) / sizeof (a_uint64_t));
             offset++)
     {
 
-        dprintf("%s<0x%08x>\n", counter_regname[offset], *(buf + offset));
+        dprintf("%s<0x%016llx>\n", counter_regname[offset], *(buf + offset));
 
     }
 }
@@ -9358,6 +9358,22 @@ cmd_data_check_ledpattern(char *info, void * val, a_uint32_t size)
         {
             pattern.map |= (1 << POWER_ON_LIGHT_EN);
         }
+        cmd_data_check_element("link_10000m_light", "no", "usage: <yes/no/y/n>\n",
+                               cmd_data_check_confirm, (cmd, A_FALSE, &tmpdata,
+                                       sizeof (a_bool_t)));
+        if (1 == tmpdata)
+        {
+            pattern.map |= (1 << LINK_10000M_LIGHT_EN);
+        }
+
+        cmd_data_check_element("link_5000m_light", "no", "usage: <yes/no/y/n>\n",
+                               cmd_data_check_confirm, (cmd, A_FALSE, &tmpdata,
+                                       sizeof (a_bool_t)));
+        if (1 == tmpdata)
+        {
+            pattern.map |= (1 << LINK_5000M_LIGHT_EN);
+        }
+
         cmd_data_check_element("link_2500m_light", "no", "usage: <yes/no/y/n>\n",
                                cmd_data_check_confirm, (cmd, A_FALSE, &tmpdata,
                                        sizeof (a_bool_t)));
@@ -9486,6 +9502,18 @@ cmd_data_print_ledpattern(a_uint8_t * param_name, a_uint32_t * buf,
         if (pattern->map & (1 << POWER_ON_LIGHT_EN))
         {
             cmd_data_print_confirm("[power_on_light]:", A_TRUE, sizeof (a_bool_t));
+            dprintf("\n");
+        }
+
+        if (pattern->map & (1 << LINK_10000M_LIGHT_EN))
+        {
+            cmd_data_print_confirm("[link_10000m_light]:", A_TRUE, sizeof (a_bool_t));
+            dprintf("\n");
+        }
+
+        if (pattern->map & (1 << LINK_5000M_LIGHT_EN))
+        {
+            cmd_data_print_confirm("[link_5000m_light]:", A_TRUE, sizeof (a_bool_t));
             dprintf("\n");
         }
 

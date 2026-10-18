@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -149,6 +149,9 @@ unsigned int nss_macsec_cmd_len[] = {
 	sizeof(struct nss_macsec_secy_rx_udf_ufilt_cfg_set_cmd),
 	sizeof(struct nss_macsec_secy_rx_udf_ufilt_cfg_get_cmd),
 	sizeof(struct nss_macsec_secy_rx_sa_next_pn_set_cmd),
+	sizeof(struct nss_macsec_secy_mib_saturate_en_get_cmd),
+	sizeof(struct nss_macsec_secy_mib_saturate_en_set_cmd),
+	sizeof(struct nss_macsec_secy_xor_key_set_cmd),
 };
 
 unsigned int nss_macsec_fal_msg_handle(struct sdk_msg_header *header)
@@ -1439,6 +1442,32 @@ unsigned int nss_macsec_fal_msg_handle(struct sdk_msg_header *header)
 							      param->channel,
 							      param->an,
 							      param->next_pn);
+		}
+		break;
+	case NSS_MACSEC_SECY_MIB_SATURATE_EN_GET_CMD:{
+			struct nss_macsec_secy_mib_saturate_en_get_cmd *param =
+			(struct nss_macsec_secy_mib_saturate_en_get_cmd
+			*)(header + 1);
+			ret =
+			nss_macsec_secy_mib_saturate_en_get(param->secy_id,
+							&param->penable);
+		}
+		break;
+	case NSS_MACSEC_SECY_MIB_SATURATE_EN_SET_CMD:{
+			struct nss_macsec_secy_mib_saturate_en_set_cmd *param =
+			(struct nss_macsec_secy_mib_saturate_en_set_cmd
+			*)(header + 1);
+			ret =
+			nss_macsec_secy_mib_saturate_en_set(param->secy_id,
+							param->enable);
+		}
+		break;
+	case NSS_MACSEC_SECY_MIB_XOR_KEY_SET_CMD:{
+			struct nss_macsec_secy_xor_key_set_cmd *param =
+			(struct nss_macsec_secy_xor_key_set_cmd *)(header + 1);
+			ret = nss_macsec_secy_xor_key_set(param->secy_id,
+							param->enable,
+							param->key);
 		}
 		break;
 	default:

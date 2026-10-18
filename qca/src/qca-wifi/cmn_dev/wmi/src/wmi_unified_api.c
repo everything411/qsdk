@@ -2847,6 +2847,18 @@ QDF_STATUS wmi_extract_pdev_sscan_fw_cmd_fixed_param(
 	return QDF_STATUS_E_FAILURE;
 }
 
+QDF_STATUS wmi_extract_pdev_sscan_spur_chan_impacted_bin_info(
+			wmi_unified_t wmi_handle, uint8_t *evt_buf,
+			struct spectral_spur_info *param)
+{
+	if (wmi_handle->ops->extract_pdev_sscan_spur_chan_impacted_bin_info)
+		return wmi_handle->ops->
+		 extract_pdev_sscan_spur_chan_impacted_bin_info(wmi_handle,
+								evt_buf, param);
+
+	return QDF_STATUS_E_FAILURE;
+}
+
 QDF_STATUS wmi_extract_pdev_sscan_fft_bin_index(
 			wmi_unified_t wmi_handle,
 			uint8_t *evt_buf,

@@ -2196,6 +2196,58 @@ target_if_spectral_dump_phyerr_data_gen2(uint8_t *data, uint32_t datalen,
 }
 
 QDF_STATUS
+target_if_spectral_spur_handle_bin_pwr(struct target_if_spectral *spectral,
+				       void *dest_fft_buf)
+{
+	uint8_t *fft_bin_buf;
+	uint32_t start_idx;
+	uint32_t end_idx;
+	uint32_t i, j;
+	struct spectral_spur_chan_impacted_bin_info *bin_info_tmp;
+
+	if (!spectral) {
+		spectral_err("spectral lmac object is NULL");
+		return QDF_STATUS_E_NULL_VALUE;
+	}
+
+	if (!dest_fft_buf) {
+		spectral_err("destination fft bin buffer is NULL");
+		return QDF_STATUS_E_NULL_VALUE;
+	}
+
+	bin_info_tmp = spectral->spur_bin_info.bin_info;
+	for (j = 0; j < spectral->spur_bin_info.num_spur_info; j++) {
+		start_idx = bin_info_tmp[j].spur_start_bin_idx;
+		end_idx = bin_info_tmp[j].spur_end_bin_idx;
+
+		if (!(start_idx >= 0 && start_idx < spectral->bin_buf_count &&
+		      end_idx >= 0 && end_idx < spectral->bin_buf_count) ||
+		    (end_idx < start_idx))
+			return QDF_STATUS_E_NULL_VALUE;
+
+		fft_bin_buf = dest_fft_buf;
+		if (spectral->spectral_support_method ==
+		    SPECTRAL_METHOD_ID_AVERAGE) {
+			for (i = start_idx; i <= end_idx; i++) {
+				if (i == 0)
+					fft_bin_buf[i] = fft_bin_buf[i + 1];
+				else if (i == (spectral->bin_buf_count - 1))
+					fft_bin_buf[i] = fft_bin_buf[i - 1];
+				else
+					fft_bin_buf[i] = (fft_bin_buf[i - 1] +
+							fft_bin_buf[i + 1]) / 2;
+			}
+		} else if (spectral->spectral_support_method ==
+			   SPECTRAL_METHOD_ID_NULL) {
+			for (i = start_idx; i <= end_idx; i++)
+				fft_bin_buf[i] = 0;
+		}
+	}
+
+	return QDF_STATUS_SUCCESS;
+}
+
+QDF_STATUS
 target_if_spectral_copy_fft_bins(struct target_if_spectral *spectral,
 				 const void *src_fft_buf,
 				 void *dest_fft_buf,
@@ -2260,6 +2312,7 @@ target_if_spectral_copy_fft_bins(struct target_if_spectral *spectral,
 	}
 
 	*bytes_copied = num_dwords *  SPECTRAL_DWORD_SIZE;
+	spectral->bin_buf_count = fft_bin_idx;
 
 	return QDF_STATUS_SUCCESS;
 }

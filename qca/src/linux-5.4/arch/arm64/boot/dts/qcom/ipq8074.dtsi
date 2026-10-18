@@ -2015,6 +2015,8 @@
 				"wbm2host-tx-completions-ring2",
 				"wbm2host-tx-completions-ring1",
 				"tcl2host-status-ring";
+			led-gpio-2g = <&tlmm 42 0>;
+			led-gpio-5g = <&tlmm 43 0>;
 			status = "ok";
 			qcom,pta-num = <0>;
 			qcom,coex-mode = <0x2>;
