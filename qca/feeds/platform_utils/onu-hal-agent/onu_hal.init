@@ -1,0 +1,13 @@
+#!/bin/sh /etc/rc.common
+#
+#
+# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+# SPDX-License-Identifier: ISC
+#
+#
+
+START=70
+
+boot() {
+	/usr/bin/onu_hal_agent
+}

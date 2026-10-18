@@ -1,0 +1,83 @@
+From d69de48f6ed85ad2a3ee840d7ad0ac1b085ded84 Mon Sep 17 00:00:00 2001
+From: Pooventhiran G <quic_pooventh@quicinc.com>
+Date: Mon, 29 Nov 2021 15:17:08 +0530
+Subject: [PATCH] uci: Change UCI commit to copy instead of rename
+
+UCI-commit command will export the changes to a temp file and rename to
+the right config file. Since Yocto file-system is read-only and wireless
+config is mounted at /systemrw, change the logic to copy temp file
+contents to the config file instead of renaming the file.
+
+Signed-off-by: Pooventhiran G <quic_pooventh@quicinc.com>
+
+diff --git a/file.c b/file.c
+index 7333e48..098f2ad 100644
+--- a/file.c
++++ b/file.c
+@@ -724,7 +724,8 @@ static void uci_file_commit(struct uci_context *ctx, struct uci_package **packag
+ 	char *name = NULL;
+ 	char *path = NULL;
+ 	char *filename = NULL;
+-	bool do_rename = false;
++	char *cmd = NULL;
++	bool do_copy = false;
+ 	int fd;
+ 
+ 	if (!p->path) {
+@@ -734,7 +735,7 @@ static void uci_file_commit(struct uci_context *ctx, struct uci_package **packag
+ 			UCI_THROW(ctx, UCI_ERR_INVAL);
+ 	}
+ 
+-	if ((asprintf(&filename, "%s/.%s.uci-XXXXXX", ctx->confdir, p->e.name) < 0) || !filename)
++	if ((asprintf(&filename, "/tmp/.%s.uci", p->e.name) < 0) || !filename)
+ 		UCI_THROW(ctx, UCI_ERR_MEM);
+ 
+ 	/* open the config file for writing now, so that it is locked */
+@@ -771,7 +772,7 @@ static void uci_file_commit(struct uci_context *ctx, struct uci_package **packag
+ 			goto done;
+ 	}
+ 
+-	fd = mkstemp(filename);
++	fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+ 	if (fd == -1)
+ 		UCI_THROW(ctx, UCI_ERR_IO);
+ 
+@@ -781,7 +782,7 @@ static void uci_file_commit(struct uci_context *ctx, struct uci_package **packag
+ 	if (lseek(fd, 0, SEEK_SET) < 0)
+ 		UCI_THROW(ctx, UCI_ERR_IO);
+ 
+-	f2 = fdopen(fd, "w+");
++	f2 = fdopen(fd, "w");
+ 	if (!f2)
+ 		UCI_THROW(ctx, UCI_ERR_IO);
+ 
+@@ -791,7 +792,7 @@ static void uci_file_commit(struct uci_context *ctx, struct uci_package **packag
+ 	fsync(fileno(f2));
+ 	uci_close_stream(f2);
+ 
+-	do_rename = true;
++	do_copy = true;
+ 
+ 	UCI_TRAP_RESTORE(ctx);
+ 
+@@ -799,14 +800,16 @@ done:
+ 	free(name);
+ 	free(path);
+ 	uci_close_stream(f1);
+-	if (do_rename) {
++	if (do_copy) {
+ 		path = realpath(p->path, NULL);
+-		if (!path || rename(filename, path)) {
+-			unlink(filename);
++		if ((asprintf(&cmd, "cat %s > %s", filename, path) < 0) || !filename || !path)
++			UCI_THROW(ctx, UCI_ERR_MEM);
++
++		if (!path || system(cmd))
+ 			UCI_THROW(ctx, UCI_ERR_IO);
+-		}
+ 		free(path);
+ 	}
++	remove(filename);
+ 	free(filename);
+ 	if (ctx->err)
+ 		UCI_THROW(ctx, ctx->err);

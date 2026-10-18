@@ -1,0 +1,25 @@
+#!/bin/sh /etc/rc.common
+
+START=49
+BIN=htpdate
+DEFAULT=/etc/default/$BIN
+RUN_D=/var/run
+PID_F=$RUN_D/$BIN.pid
+
+start() {
+	[ -f $DEFAULT ] && . $DEFAULT
+	mkdir -p $RUN_D
+	$BIN -D -t -a -m 5 -M 7200 $OPTIONS
+}
+
+stop() {
+	[ -f $PID_F ] && kill $(cat $PID_F)
+	rm -rf $PID_F
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+

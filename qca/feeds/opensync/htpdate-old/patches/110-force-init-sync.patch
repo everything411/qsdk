@@ -1,0 +1,49 @@
+From: Atchaya R <quic_ratchaya@quicinc.com>
+Date: Fri, 20 Sep 2024 09:59:44 +0530
+Subject: [PATCH] openwrt patches for opensync
+
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+
+Index: htpdate-1.0.4/htpdate.c
+===================================================================
+--- htpdate-1.0.4.orig/htpdate.c
++++ htpdate-1.0.4/htpdate.c
+@@ -135,9 +135,9 @@ static void printlog( int is_error, char
+ 	va_end(args);
+ 
+     if ( logmode )
+-		syslog(is_error?LOG_WARNING:LOG_INFO, "%s", buf);
++		syslog(is_error?LOG_WARNING:LOG_INFO, "htpdate: %s", buf);
+ 	else
+-		fprintf(is_error?stderr:stdout, "%s\n", buf);
++		fprintf(is_error?stderr:stdout, "htpdate: %s\n", buf);
+ }
+ 
+ 
+@@ -501,6 +501,7 @@ int main( int argc, char *argv[] ) {
+ 	int					sleeptime = minsleep;
+ 	int					sw_uid = 0, sw_gid = 0;
+ 	time_t				starttime = 0;
++    int                 initset = 1; /*different set method for init time set*/
+ 
+ 	struct passwd		*pw;
+ 	struct group		*gr;
+@@ -765,9 +766,16 @@ int main( int argc, char *argv[] ) {
+ 			if ( precision && sumtimes < goodtimes && sumtimes > -goodtimes )
+ 				timeavg = (double)precision / 1000000 * sign(sumtimes);
+ 
+-			/* Correct the clock, if not in "adjtimex" mode */
+-			if ( setclock( timeavg, setmode ) < 0 )
++            if ( initset && (setmode == 1) && timeavg ) {
++                printlog( 1, "Initial time set" );
++			    if ( setclock( timeavg, 2 ) == 0 )
++                    initset = 0;
++            }
++            else {
++			    /* Correct the clock, if not in "adjtimex" mode */
++			    if ( setclock( timeavg, setmode ) < 0 )
+ 					printlog( 1, "Time change failed" );
++            }
+ 
+ 			/* Drop root privileges again */
+ 			if ( sw_uid ) seteuid( sw_uid );

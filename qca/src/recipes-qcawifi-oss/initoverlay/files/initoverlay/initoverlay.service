@@ -1,0 +1,15 @@
+[Unit]
+Description=InitOverlay service
+DefaultDependencies=no
+Wants=local-fs.target
+After=systemd-modules-load.service
+Before=systemd-tmpfiles-setup.service opkg-configure.service sysinit.target
+
+[Service]
+Type=oneshot
+ExecStart= /bin/sh -c "/sbin/initoverlay start"
+ExecStop=/bin/sh -c echo "Stopping/Restarting initoverlay" >> /dev/console
+RemainAfterExit=No
+
+[Install]
+WantedBy=sysinit.target

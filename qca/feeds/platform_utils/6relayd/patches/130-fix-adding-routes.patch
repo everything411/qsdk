@@ -1,0 +1,31 @@
+Author: Deepak kumar <quic_deepaku@quicinc.com>
+Date: Tue Nov 19 13:37:15 2024
+
+    opensync: fix for routing ipv6
+
+Signed-off-by: Deepak kumar <quic_deepaku@quicinc.com>
+
+Subject: [PATCH] Fix adding routes (Fix "E: Failed to exec: 14")
+
+The problem manifested with a route not added and log messages such as:
+
+I: add Route: 2001:db8:xxxx -> eth1
+E: Failed to exec: 14
+
+errno code 14 is EFAULT. The child process was crashing at
+    execvp("ip", IPCommandArgs);
+since IPCommandArgs list was not NULL-pointer terminated.
+
+Fixes: 61bcbeb5 ("Register route: Use 'ip' command instead of RTNETLINK")
+--- a/src/ndp.c
++++ b/src/ndp.c
+@@ -377,7 +377,7 @@ void relayd_setup_route(const struct in6_addr *addr, int prefixlen,
+ // Use rtnetlink to modify kernel routes
+ // Use 'ip' command to modify kernel routes (rtnetlink method is not working...)
+ 
+-static char *IPCommandArgs[9] = {0};
++static char *IPCommandArgs[10] = {0};
+ static char IPv6[64];
+ static char Proto[4];
+ 
+

@@ -1,0 +1,201 @@
+From df03801deca65643189aa51ecca13f233df3211f Mon Sep 17 00:00:00 2001
+From: Gokul Sriram Palanisamy <quic_gokulsri@quicinc.com>
+Date: Sun, 24 Oct 2021 08:22:59 +0530
+Subject: [PATCH] qdl: Enable qdl device over MHI FIREHOSE channel
+
+Signed-off-by: Gokul Sriram Palanisamy <quic_gokulsri@quicinc.com>
+---
+ Makefile   |  4 ++--
+ firehose.c |  6 +++--
+ patch.c    |  1 +
+ program.c  |  1 +
+ qdl.c      | 68 ++++++++++++++++++++++++++++++++++++++++++++++--------
+ util.c     |  1 +
+ 6 files changed, 68 insertions(+), 13 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 95692fc..4dcb9cb 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,7 +1,7 @@
+ OUT := qdl
+ 
+-CFLAGS := -O2 -Wall -g `pkg-config --cflags libxml-2.0`
+-LDFLAGS := `pkg-config --libs libxml-2.0 libudev`
++CFLAGS += -O2 -Wall -Werror -g `pkg-config --cflags libxml-2.0`
++LDFLAGS += `pkg-config --libs libxml-2.0 libudev`
+ prefix := /usr/local
+ 
+ SRCS := firehose.c qdl.c sahara.c util.c patch.c program.c ufs.c
+diff --git a/firehose.c b/firehose.c
+index 9e47f64..027a20c 100644
+--- a/firehose.c
++++ b/firehose.c
+@@ -138,6 +138,8 @@ static int firehose_read(struct qdl_device *qdl, int timeout_ms,
+ 
+ 			warnx("firehose operation timed out");
+ 			return -ETIMEDOUT;
++		} else if (n == 0) {
++			return 0;
+ 		}
+ 		buf[n] = '\0';
+ 
+@@ -417,9 +419,9 @@ static int firehose_program(struct qdl_device *qdl, struct program *program, int
+ 		fprintf(stderr, "[PROGRAM] failed\n");
+ 	} else if (t) {
+ 		fprintf(stderr,
+-			"[PROGRAM] flashed \"%s\" successfully at %ldkB/s\n",
++			"[PROGRAM] flashed \"%s\" successfully at %lldkB/s\n",
+ 			program->label,
+-			program->sector_size * num_sectors / t / 1024);
++			(long long int)program->sector_size * num_sectors / t / 1024);
+ 	} else {
+ 		fprintf(stderr, "[PROGRAM] flashed \"%s\" successfully\n",
+ 			program->label);
+diff --git a/patch.c b/patch.c
+index 5e2815e..953fd90 100644
+--- a/patch.c
++++ b/patch.c
+@@ -30,6 +30,7 @@
+  */
+ #include <errno.h>
+ #include <string.h>
++#include <stdlib.h>
+ #include <libxml/parser.h>
+ #include <libxml/tree.h>
+ 
+diff --git a/program.c b/program.c
+index ea7b706..c1761d4 100644
+--- a/program.c
++++ b/program.c
+@@ -31,6 +31,7 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <string.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ #include <libxml/parser.h>
+ #include <libxml/tree.h>
+diff --git a/qdl.c b/qdl.c
+index 256ca96..fae6a1d 100644
+--- a/qdl.c
++++ b/qdl.c
+@@ -339,7 +339,7 @@ found:
+ 	return 0;
+ }
+ 
+-int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
++int usb_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
+ {
+ 	struct usbdevfs_bulktransfer bulk = {};
+ 
+@@ -351,7 +351,7 @@ int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout
+ 	return ioctl(qdl->fd, USBDEVFS_BULK, &bulk);
+ }
+ 
+-int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
++int usb_write(struct qdl_device *qdl, const void *buf, size_t len)
+ {
+ 
+ 	unsigned char *data = (unsigned char*) buf;
+@@ -394,6 +394,53 @@ int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
+ 	return count;
+ }
+ 
++static int mhifirehosedev_open(struct qdl_device *qdl)
++{
++	qdl->fd = open("/dev/wwan0firehose0", O_RDWR | O_NOCTTY | O_NONBLOCK);
++	return 0;
++}
++
++int mhifirehosedev_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
++{
++	int ret;
++	struct pollfd pollfds[] = {{qdl->fd, POLLIN, 0}};
++
++	ret = poll(pollfds, 1, timeout);
++	if (ret <= 0)
++		return ret;
++
++	return read(qdl->fd, buf, len);
++}
++
++int mhifirehosedev_write(struct qdl_device *qdl, const void *buf, size_t len)
++{
++	int ret;
++	struct pollfd pollfds[] = {{qdl->fd, POLLOUT, 0}};
++
++	ret = poll(pollfds, 1, 5000);
++	if (ret <= 0)
++		return ret;
++
++	return write(qdl->fd, buf, len);
++}
++
++int qdl_read(struct qdl_device *qdl, void *buf, size_t len, unsigned int timeout)
++{
++	if (qdl->in_ep || qdl->out_ep)
++		return usb_read(qdl, buf, len, timeout);
++	else
++		return mhifirehosedev_read(qdl, buf, len, timeout);
++}
++
++int qdl_write(struct qdl_device *qdl, const void *buf, size_t len)
++{
++	if (qdl->in_ep || qdl->out_ep)
++		return usb_write(qdl, buf, len);
++	else
++		return mhifirehosedev_write(qdl, buf, len);
++}
++
++
+ static void print_usage(void)
+ {
+ 	extern const char *__progname;
+@@ -410,7 +457,7 @@ int main(int argc, char **argv)
+ 	int ret;
+ 	int opt;
+ 	bool qdl_finalize_provisioning = false;
+-	struct qdl_device qdl;
++	struct qdl_device qdl = {0};
+ 
+ 
+ 	static struct option options[] = {
+@@ -476,13 +523,16 @@ int main(int argc, char **argv)
+ 		}
+ 	} while (++optind < argc);
+ 
+-	ret = usb_open(&qdl);
+-	if (ret)
+-		return 1;
++	ret = mhifirehosedev_open(&qdl);
++	if (ret) {
++		ret = usb_open(&qdl);
++		if (ret)
++			return 1;
+ 
+-	ret = sahara_run(&qdl, prog_mbn);
+-	if (ret < 0)
+-		return 1;
++		ret = sahara_run(&qdl, prog_mbn);
++		if (ret < 0)
++			return 1;
++	}
+ 
+ 	ret = firehose_run(&qdl, incdir, storage);
+ 	if (ret < 0)
+diff --git a/util.c b/util.c
+index 4583418..f8138ae 100644
+--- a/util.c
++++ b/util.c
+@@ -32,6 +32,7 @@
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <string.h>
++#include <stdlib.h>
+ #include <libxml/parser.h>
+ #include <libxml/tree.h>
+ 
+-- 
+2.34.1
+

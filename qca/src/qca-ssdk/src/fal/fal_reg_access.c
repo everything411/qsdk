@@ -1,0 +1,222 @@
+/*
+ * Copyright (c) 2012, 2017-2018, The Linux Foundation. All rights reserved.
+ *
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+/*qca808x_start*/
+/**
+ * @defgroup fal_reg_access FAL_REG_ACCESS
+ * @{
+ */
+#include "sw.h"
+#include "fal_reg_access.h"
+#include "hsl_api.h"
+#include "hsl_phy.h"
+#include "adpt.h"
+
+sw_error_t fal_psgmii_reg_get(a_uint32_t dev_id, a_uint32_t reg_addr, a_uint8_t value[], a_uint32_t value_len)
+    DEFINE_FAL_FUNC_HSL_EXPORT(psgmii_reg_get, dev_id, reg_addr, value, value_len)
+
+sw_error_t fal_psgmii_reg_set(a_uint32_t dev_id, a_uint32_t reg_addr, a_uint8_t value[], a_uint32_t value_len)
+    DEFINE_FAL_FUNC_HSL_EXPORT(psgmii_reg_set, dev_id, reg_addr, value, value_len)
+
+sw_error_t fal_reg_field_get(a_uint32_t dev_id, a_uint32_t reg_addr, a_uint32_t bit_offset, a_uint32_t field_len, a_uint8_t value[], a_uint32_t value_len)
+    DEFINE_FAL_FUNC_HSL_EXPORT(reg_field_get, dev_id, reg_addr, bit_offset, field_len, value, value_len)
+
+sw_error_t fal_reg_field_set(a_uint32_t dev_id, a_uint32_t reg_addr, a_uint32_t bit_offset, a_uint32_t field_len, const a_uint8_t value[], a_uint32_t value_len)
+    DEFINE_FAL_FUNC_HSL_EXPORT(reg_field_set, dev_id, reg_addr, bit_offset, field_len, value, value_len)
+
+sw_error_t fal_reg_dump(a_uint32_t dev_id, a_uint32_t reg_idx,fal_reg_dump_t *reg_dump)
+    DEFINE_FAL_FUNC_HSL(register_dump, dev_id, reg_idx, reg_dump)
+    EXPORT_SYMBOL(fal_reg_dump);
+
+sw_error_t fal_debug_reg_dump(a_uint32_t dev_id, fal_debug_reg_dump_t *reg_dump)
+    DEFINE_FAL_FUNC_HSL(debug_register_dump, dev_id, reg_dump)
+    EXPORT_SYMBOL(fal_debug_reg_dump);
+
+sw_error_t fal_debug_psgmii_self_test(a_uint32_t dev_id, a_bool_t enable, a_uint32_t times, a_uint32_t *result)
+    DEFINE_FAL_FUNC_HSL_EXPORT(debug_psgmii_self_test, dev_id, enable, times, result)
+
+sw_error_t fal_phy_dump(a_uint32_t dev_id, a_uint32_t phy_addr, a_uint32_t idx, fal_phy_dump_t * phy_dump)
+    DEFINE_FAL_FUNC_HSL_EXPORT(phy_dump, dev_id, phy_addr, idx, phy_dump)
+
+sw_error_t fal_uniphy_reg_get(a_uint32_t dev_id, a_uint32_t index, a_uint32_t reg_addr, a_uint8_t value[], a_uint32_t value_len)
+    DEFINE_FAL_FUNC_HSL_EXPORT(uniphy_reg_get, dev_id, index, reg_addr, value, value_len)
+
+sw_error_t fal_uniphy_reg_set(a_uint32_t dev_id, a_uint32_t index, a_uint32_t reg_addr, a_uint8_t value[], a_uint32_t value_len)
+    DEFINE_FAL_FUNC_HSL_EXPORT(uniphy_reg_set, dev_id, index, reg_addr, value, value_len)
+
+static sw_error_t
+_fal_phy_get(a_uint32_t dev_id, a_uint32_t phy_addr,
+             a_uint32_t reg, a_uint32_t * value)
+{
+	/* for PHY SOC registers, the bit 20~23 of reg only can be 4, 8 and 9 */
+	/* and 0, 1 will be PHY registers*/
+	if ((reg >> 20 & 0xf) > 1) {
+		*value = hsl_phy_mii_soc_read(dev_id, phy_addr, reg);
+		return SW_OK;
+	}
+
+	*value = hsl_phy_mii_reg_read(dev_id, phy_addr, reg);
+
+	return SW_OK;
+}
+
+static sw_error_t
+_fal_phy_set(a_uint32_t dev_id, a_uint32_t phy_addr,
+             a_uint32_t reg, a_uint32_t value)
+{
+	/* for PHY SOC registers, the bit 20~23 of reg only can be 4, 8 and 9 */
+	/* and 0, 1 will be PHY registers*/
+	if ((reg >> 20 & 0xf) > 1) {
+		hsl_phy_mii_soc_write(dev_id, phy_addr, reg, value);
+		return SW_OK;
+	}
+
+	return hsl_phy_mii_reg_write(dev_id, phy_addr, reg,
+		(a_uint16_t)(value & GENMASK(15, 0)));
+}
+/*qca808x_end*/
+static sw_error_t
+_fal_reg_get(a_uint32_t dev_id, a_uint32_t reg_addr, a_uint8_t value[],
+             a_uint32_t value_len)
+{
+	sw_error_t rv;
+	hsl_api_t *p_api;
+
+	p_api = hsl_api_ptr_get(dev_id);
+	SW_RTN_ON_NULL(p_api);
+
+	/* access switch reg from MDIO bus */
+	if (reg_addr & 0xff000000 && NULL != p_api->mii_reg_get) {
+		rv = p_api->mii_reg_get(dev_id, reg_addr, value, value_len);
+		return rv;
+	}
+
+	if (NULL == p_api->reg_get)
+		return SW_NOT_SUPPORTED;
+
+	rv = p_api->reg_get(dev_id, reg_addr, value, value_len);
+	return rv;
+}
+
+static sw_error_t
+_fal_reg_set(a_uint32_t dev_id, a_uint32_t reg_addr, a_uint8_t value[],
+		a_uint32_t value_len)
+{
+	sw_error_t rv;
+	hsl_api_t *p_api;
+
+	p_api = hsl_api_ptr_get(dev_id);
+	SW_RTN_ON_NULL(p_api);
+
+	/* access switch reg from MDIO bus */
+	if (reg_addr & 0xff000000 && NULL != p_api->mii_reg_set) {
+		rv = p_api->mii_reg_set(dev_id, reg_addr, value, value_len);
+		return rv;
+	}
+
+	if (NULL == p_api->reg_set)
+		return SW_NOT_SUPPORTED;
+
+	rv = p_api->reg_set(dev_id, reg_addr, value, value_len);
+	return rv;
+}
+
+
+/**
+  * fal_phy_get - get value of specific phy device
+  * @phy_addr: id of the phy device
+  * @reg: register id of phy device
+  * @value: pointer to the memory storing the value.
+  * @return SW_OK or error code
+  */
+sw_error_t
+fal_phy_get(a_uint32_t dev_id, a_uint32_t phy_addr,
+            a_uint32_t reg, a_uint32_t * value)
+{
+    sw_error_t rv;
+
+    FAL_API_LOCK;
+    rv = _fal_phy_get(dev_id, phy_addr, reg, value);
+    FAL_API_UNLOCK;
+    return rv;
+}
+
+/**
+  * fal_phy_set - set value of specific phy device
+  * @phy_addr: id of the phy device
+  * @reg: register id of phy device
+  * @value: register value.
+  * @return SW_OK or error code
+  */
+sw_error_t
+fal_phy_set(a_uint32_t dev_id, a_uint32_t phy_addr,
+            a_uint32_t reg, a_uint32_t value)
+{
+    sw_error_t rv;
+
+    FAL_API_LOCK;
+    rv = _fal_phy_set(dev_id, phy_addr, reg, value);
+    FAL_API_UNLOCK;
+    return rv;
+}
+/*qca808x_end*/
+/**
+  * fal_reg_get - get value of specific register
+  * @reg_addr: address of the register
+  * @value: pointer to the memory storing the value.
+  * @value_len: length of the value.
+  *
+  * Get the value of a specific register field with related parameter
+  */
+sw_error_t
+fal_reg_get(a_uint32_t dev_id, a_uint32_t reg_addr, a_uint8_t value[],
+            a_uint32_t value_len)
+{
+    sw_error_t rv;
+
+    FAL_API_LOCK;
+    rv = _fal_reg_get(dev_id, reg_addr, value, value_len);
+    FAL_API_UNLOCK;
+    return rv;
+}
+
+/**
+  * fal_reg_set - set value of specific register
+  * @reg_addr: address of the register
+  * @value: pointer to the memory storing the value.
+  * @value_len: length of the value.
+  *
+  * Get the value of a specific register field with related parameter
+  */
+sw_error_t
+fal_reg_set(a_uint32_t dev_id, a_uint32_t reg_addr, a_uint8_t value[],
+            a_uint32_t value_len)
+{
+    sw_error_t rv;
+
+    FAL_API_LOCK;
+    rv = _fal_reg_set(dev_id, reg_addr, value, value_len);
+    FAL_API_UNLOCK;
+    return rv;
+}
+
+EXPORT_SYMBOL(fal_phy_get);
+EXPORT_SYMBOL(fal_phy_set);
+EXPORT_SYMBOL(fal_reg_get);
+EXPORT_SYMBOL(fal_reg_set);
+

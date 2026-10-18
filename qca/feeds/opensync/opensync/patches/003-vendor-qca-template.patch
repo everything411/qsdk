@@ -1,0 +1,482 @@
+Author: Deepak kumar <quic_deepaku@quicinc.com>
+Date: Tue Nov 19 13:37:15 2024
+
+    opensync: core layer changes and addition of miami sku
+
+Signed-off-by: Deepak kumar <quic_deepaku@quicinc.com>
+diff --git a/src/vendor/qca-template/Makefile b/src/vendor/qca-template/Makefile
+index 45cd937..de26554 100644
+--- a/src/vendor/qca-template/Makefile
++++ b/src/vendor/qca-template/Makefile
+@@ -16,7 +16,7 @@ VENDOR_OVSDB_HOOKS += $(VENDOR_DIR)/ovsdb/$(TARGET)
+ # (See also: core/ovsdb/20_kconfig.radio.json.sh)
+ #
+ ifeq ($(MAKECMDGOALS),rootfs)
+-ifneq ($(filter AKRONITE DAKOTA MAPLE_PINE_PINE ALDER_PINE_PINE MAPLE_SPRUCE_PINE,$(TARGET)),)
++ifneq ($(filter AKRONITE DAKOTA MAPLE_PINE_PINE ALDER_PINE_PINE MAPLE_SPRUCE_PINE ALDER_WAIKIKI MIAMI_WAIKIKI MIAMI_PEBBLE,$(TARGET)),)
+ 
+ ifeq ($(BACKHAUL_PASS),)
+ $(error TARGET=$(TARGET): Please provide BACKHAUL_PASS)
+diff --git a/src/vendor/qca-template/build/qsdk.mk b/src/vendor/qca-template/build/qsdk.mk
+index d566ab3..31903cc 100644
+--- a/src/vendor/qca-template/build/qsdk.mk
++++ b/src/vendor/qca-template/build/qsdk.mk
+@@ -4,7 +4,12 @@
+ # TOOLCHAIN_DIR and TARGET_CROSS variables are passed in
+ # as arguments from package/opensync Makefile
+ #
++
++ifeq ($(shell test -e $(TOPDIR)/qca/feeds/packages/net/openvswitch/openvswitch.mk && echo -n yes),yes)
++OVS_PACKAGE_VER := $(shell sed -n '/^ovs_version/{s/^.*=//p;q}' $(TOPDIR)/qca/feeds/packages/net/openvswitch/openvswitch.mk)
++else
+ OVS_PACKAGE_VER := $(shell sed -n '/^PKG_VERSION/{s/^.*=//p;q}' $(TOPDIR)/qca/feeds/packages/net/openvswitch/Makefile)
++endif
+ 
+ # add toolchain to the path
+ PATH           := $(PATH):$(TOOLCHAIN_DIR)/bin
+@@ -17,13 +22,7 @@ STRIP          = $(TARGET_CROSS)strip -g
+ TARGET_DIR     = $(STAGING_DIR)
+ LIB_DIR        = $(STAGING_DIR)/lib
+ 
+-SDK_INCLUDES  += -I$(TARGET_DIR)/include
+ SDK_INCLUDES  += -I$(TARGET_DIR)/usr/include
+-SDK_INCLUDES  += -I$(TARGET_DIR)/usr/include/protobuf-c
+-SDK_INCLUDES  += -I$(TARGET_DIR)/usr/include/openvswitch
+-ifeq ($(CONFIG_PLATFORM_QCA_QSDK110),y)
+-SDK_INCLUDES  += -I$(TARGET_DIR)/usr/include/libnl3
+-endif
+ SDK_INCLUDES  += -I$(TOOLCHAIN_DIR)/include
+ SDK_INCLUDES  += -I$(TOOLCHAIN_DIR)/usr/include
+ 
+diff --git a/src/vendor/qca-template/build/target-arch.mk b/src/vendor/qca-template/build/target-arch.mk
+index 77f49ef..0f2d020 100644
+--- a/src/vendor/qca-template/build/target-arch.mk
++++ b/src/vendor/qca-template/build/target-arch.mk
+@@ -6,6 +6,7 @@
+ #
+ QCA_TEMPLATE_TARGETS := AKRONITE DAKOTA MAPLE_PINE_PINE
+ QCA_TEMPLATE_TARGETS += ALDER_PINE_PINE ALDER_WAIKIKI MAPLE_SPRUCE_PINE
++QCA_TEMPLATE_TARGETS += MIAMI_WAIKIKI MIAMI_PEBBLE
+ 
+ OS_TARGETS          += $(QCA_TEMPLATE_TARGETS)
+ 
+diff --git a/src/vendor/qca-template/kconfig/targets/ALDER_WAIKIKI b/src/vendor/qca-template/kconfig/targets/ALDER_WAIKIKI
+index 1c84707..2c97d15 100644
+--- a/src/vendor/qca-template/kconfig/targets/ALDER_WAIKIKI
++++ b/src/vendor/qca-template/kconfig/targets/ALDER_WAIKIKI
+@@ -1,11 +1,11 @@
+ @include "base_qca_spf_12.x_alder"
+ CONFIG_CM2_STABILITY_THRESH_CPU="1.5"
+-# CONFIG_MANAGER_FCM is not set
+ CONFIG_MANAGER_WANO_IFACE_LIST="eth0 eth4 eth5 eth1 eth2 eth3"
+-# CONFIG_MANAGER_WM_L2UF_KICK is not set
++# CONFIG_MANAGER_WM is not set
++# CONFIG_MANAGER_BM is not set
+ CONFIG_OSN_BACKEND_FW_IPTABLES_THIN=y
+ CONFIG_OVSDB_BOOTSTRAP=y
+-CONFIG_OVSDB_BOOTSTRAP_WIFI_PHY_LIST="wifi0:15:HT40:11be:2.4G:qcn9224::200 wifi1:15:HT320:11be:6G:qcn9224 wifi2:15:HT40:11be:5G:qcn9224:dfs_usenol=\"1\",dfs_ignorecac=\"0\",dfs_enable=\"1\""
++CONFIG_OVSDB_BOOTSTRAP_WIFI_PHY_LIST="wifi0:15:HT40:11be:2.4G:qcn9224::200 wifi1:15:HT320:11be:6G:qcn9224 wifi2:15:HT80:11be:5G:qcn9224:dfs_usenol=\"1\",dfs_ignorecac=\"0\",dfs_enable=\"1\""
+ CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST="wifi0:bhaul-sta-24 wifi1:bhaul-sta-60 wifi2:bhaul-sta-50"
+ CONFIG_TARGET_ENABLE_EBTABLES=y
+ CONFIG_TARGET_ENABLE_TC_FILTERS=y
+@@ -22,4 +22,18 @@ CONFIG_TARGET_ETH5_NAME="eth5"
+ CONFIG_TARGET_MODEL="IPQ9574-AP-AL02-C4"
+ CONFIG_TARGET_NAME="Alder Waikiki"
+ CONFIG_TARGET_USE_NATIVE_BRIDGE=y
++CONFIG_FCM_LAN_STATS_COLLECT_METHOD=y
+ CONFIG_VENDOR_IS_QCA_TEMPLATE=y
++CONFIG_TARGET_IMC=y
++CONFIG_MANAGER_FCM=y
++CONFIG_MANAGER_QOSM=y
++CONFIG_MANAGER_VPNM=y
++CONFIG_PM_ENABLE_TM=y
++# CONFIG_PM_ENABLE_FAN_DUTY_CYCLE is not set
++CONFIG_PM_ENABLE_OBJM=y
++CONFIG_PM_GW_OFFLINE_CFG=y
++CONFIG_MANAGER_FM=y
++CONFIG_OSBUS_LIB=y
++CONFIG_OSBUS_UBUS=y
++CONFIG_USE_OSBUS=y
++#CONFIG_WPD_WATCHDOG_DEVICE="/dev/watchdog1"
+diff --git a/src/vendor/qca-template/kconfig/targets/MIAMI_PEBBLE b/src/vendor/qca-template/kconfig/targets/MIAMI_PEBBLE
+new file mode 100644
+index 0000000..77193dd
+--- /dev/null
++++ b/src/vendor/qca-template/kconfig/targets/MIAMI_PEBBLE
+@@ -0,0 +1,34 @@
++#
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++# SPDX-License-Identifier: ISC
++@include "base_qca_spf_12.x_miami"
++CONFIG_CM2_STABILITY_THRESH_CPU="1.5"
++CONFIG_MANAGER_WANO_IFACE_LIST="eth0 eth1"
++# CONFIG_MANAGER_WM is not set
++# CONFIG_MANAGER_BM is not set
++CONFIG_OSN_BACKEND_FW_IPTABLES_THIN=y
++CONFIG_OVSDB_BOOTSTRAP=y
++CONFIG_OVSDB_BOOTSTRAP_WIFI_PHY_LIST="wifi0:3:HT40:11be:2.4G:qca5332::200 wifi1:3:HT80:11be:5G:qcn6432:dfs_usenol=\"1\",dfs_ignorecac=\"0\",dfs_enable=\"1\" wifi2:3:HT320:11be:6G:qcn6432"
++CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST="wifi0:bhaul-sta-24 wifi1:bhaul-sta-50 wifi2:bhaul-sta-60"
++CONFIG_TARGET_ENABLE_EBTABLES=y
++CONFIG_TARGET_ENABLE_TC_FILTERS=y
++CONFIG_TARGET_ETH1_LIST=y
++CONFIG_TARGET_ETH1_NAME="eth1"
++CONFIG_TARGET_MODEL="IPQ5332-AP-MI01-3"
++CONFIG_TARGET_NAME="Miami Pebble"
++CONFIG_TARGET_USE_NATIVE_BRIDGE=y
++CONFIG_FCM_LAN_STATS_COLLECT_METHOD=y
++CONFIG_VENDOR_IS_QCA_TEMPLATE=y
++CONFIG_TARGET_IMC=y
++CONFIG_MANAGER_FCM=y
++CONFIG_MANAGER_QOSM=y
++CONFIG_MANAGER_VPNM=y
++CONFIG_PM_ENABLE_TM=y
++# CONFIG_PM_ENABLE_FAN_DUTY_CYCLE is not set
++CONFIG_PM_ENABLE_OBJM=y
++CONFIG_PM_GW_OFFLINE_CFG=y
++CONFIG_MANAGER_FM=y
++CONFIG_OSBUS_LIB=y
++CONFIG_OSBUS_UBUS=y
++CONFIG_USE_OSBUS=y
++#CONFIG_WPD_WATCHDOG_DEVICE="/dev/watchdog1"
+diff --git a/src/vendor/qca-template/kconfig/targets/MIAMI_WAIKIKI b/src/vendor/qca-template/kconfig/targets/MIAMI_WAIKIKI
+new file mode 100644
+index 0000000..30088fd
+--- /dev/null
++++ b/src/vendor/qca-template/kconfig/targets/MIAMI_WAIKIKI
+@@ -0,0 +1,34 @@
++#
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++# SPDX-License-Identifier: ISC
++@include "base_qca_spf_12.x_miami"
++CONFIG_CM2_STABILITY_THRESH_CPU="1.5"
++CONFIG_MANAGER_WANO_IFACE_LIST="eth0 eth1"
++# CONFIG_MANAGER_WM is not set
++# CONFIG_MANAGER_BM is not set
++CONFIG_OSN_BACKEND_FW_IPTABLES_THIN=y
++CONFIG_OVSDB_BOOTSTRAP=y
++CONFIG_OVSDB_BOOTSTRAP_WIFI_PHY_LIST="wifi0:3:HT40:11be:2.4G:qca5332::200 wifi1:3:HT80:11be:5G:qcn9224:dfs_usenol=\"1\",dfs_ignorecac=\"0\",dfs_enable=\"1\" wifi2:3:HT320:11be:6G:qcn9224"
++CONFIG_OVSDB_BOOTSTRAP_WIFI_STA_LIST="wifi0:bhaul-sta-24 wifi1:bhaul-sta-50 wifi2:bhaul-sta-60"
++CONFIG_TARGET_ENABLE_EBTABLES=y
++CONFIG_TARGET_ENABLE_TC_FILTERS=y
++CONFIG_TARGET_ETH1_LIST=y
++CONFIG_TARGET_ETH1_NAME="eth1"
++CONFIG_TARGET_MODEL="IPQ5332-AP-MI01-6"
++CONFIG_TARGET_NAME="Miami Waikiki"
++CONFIG_TARGET_USE_NATIVE_BRIDGE=y
++CONFIG_FCM_LAN_STATS_COLLECT_METHOD=y
++CONFIG_VENDOR_IS_QCA_TEMPLATE=y
++CONFIG_TARGET_IMC=y
++CONFIG_MANAGER_FCM=y
++CONFIG_MANAGER_QOSM=y
++CONFIG_MANAGER_VPNM=y
++CONFIG_PM_ENABLE_TM=y
++# CONFIG_PM_ENABLE_FAN_DUTY_CYCLE is not set
++CONFIG_PM_ENABLE_OBJM=y
++CONFIG_PM_GW_OFFLINE_CFG=y
++CONFIG_MANAGER_FM=y
++CONFIG_OSBUS_LIB=y
++CONFIG_OSBUS_UBUS=y
++CONFIG_USE_OSBUS=y
++#CONFIG_WPD_WATCHDOG_DEVICE="/dev/watchdog1"
+diff --git a/src/vendor/qca-template/rootfs/common/INSTALL_PREFIX/scripts/delayed-reboot b/src/vendor/qca-template/rootfs/common/INSTALL_PREFIX/scripts/delayed-reboot
+index 041a49f..4a63f75 100755
+--- a/src/vendor/qca-template/rootfs/common/INSTALL_PREFIX/scripts/delayed-reboot
++++ b/src/vendor/qca-template/rootfs/common/INSTALL_PREFIX/scripts/delayed-reboot
+@@ -1,4 +1,5 @@
+ #!/bin/sh
++# {# jinja-parse #}
+ #
+ # $1 - reboot delay time
+ # $2 - factory reset flag (true/false)
+diff --git a/src/vendor/qca-template/rootfs/common/etc/hotplug.d/net/99-regdomain b/src/vendor/qca-template/rootfs/common/etc/hotplug.d/net/99-regdomain
+new file mode 100755
+index 0000000..58b56a1
+--- /dev/null
++++ b/src/vendor/qca-template/rootfs/common/etc/hotplug.d/net/99-regdomain
+@@ -0,0 +1,31 @@
++#!/bin/sh
++#
++#
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++# SPDX-License-Identifier: ISC
++# Set wifi regulatory domain when VAP is created on given radio
++#
++
++[ "$ACTION" = add ] || exit 0
++grep -q "$INTERFACE" /proc/net/wireless || exit 0
++
++configure_country()
++{
++    local radio=$1
++    local next_country=$2
++    local prev_country=$(cfg80211tool $radio getCountry | sed 's/.*://g')
++
++    if [ "$prev_country" != "$next_country" ]; then
++        logger "$radio: setCountry $next_country, prev=$prev_country"
++        cfg80211tool $radio setCountry $next_country > /dev/console 2>&1
++    fi
++}
++
++country=US # Using US as a default setting
++radio=$(cat /sys/class/net/$INTERFACE/parent)
++
++case "$radio" in
++    wifi*)
++        configure_country $radio $country
++        ;;
++esac
+diff --git a/src/vendor/qca-template/rootfs/common/etc/init.d/dropbear b/src/vendor/qca-template/rootfs/common/etc/init.d/dropbear
+deleted file mode 100755
+index a057807..0000000
+--- a/src/vendor/qca-template/rootfs/common/etc/init.d/dropbear
++++ /dev/null
+@@ -1,53 +0,0 @@
+-#!/bin/sh /etc/rc.common
+-
+-START=51
+-STOP=51
+-
+-NAME=dropbear
+-DAEMON="/usr/sbin/dropbear"
+-DAEMON_OPTS=""
+-
+-SERVICE_PID_FILE="/var/run/${NAME}.pid"
+-
+-keygen()
+-{
+-    mkdir -p /tmp/dropbear
+-
+-    for keytype in rsa; do
+-        # check for keys
+-        key=dropbear/dropbear_${keytype}_host_key
+-        [ -f /tmp/$key -o -s /etc/$key ] || {
+-            # generate missing keys
+-            [ -x /usr/bin/dropbearkey ] && {
+-                /usr/bin/dropbearkey -t $keytype -f /tmp/$key
+-            }
+-        }
+-    done
+-
+-    mkdir -p /etc/dropbear
+-    mv /tmp/dropbear/dropbear_* /etc/dropbear/
+-    chown root /etc/dropbear
+-    chmod 0700 /etc/dropbear
+-}
+-
+-start()
+-{
+-    echo "Starting daemon: "$NAME
+-    [ -s /etc/dropbear/dropbear_rsa_host_key ] || {
+-        keygen
+-    }
+-    start-stop-daemon -S -q -b -p $SERVICE_PID_FILE -x $DAEMON -- $DAEMON_OPTS
+-}
+-
+-stop()
+-{
+-    echo "Stopping daemon: "$NAME
+-    start-stop-daemon -K -q -p $SERVICE_PID_FILE
+-}
+-
+-restart()
+-{
+-    echo "Restarting daemon: "$NAME
+-    start-stop-daemon -K -q -p $SERVICE_PID_FILE
+-    start-stop-daemon -S -q -b -p $SERVICE_PID_FILE -x $DAEMON -- $DAEMON_OPTS
+-}
+diff --git a/src/vendor/qca-template/rootfs/target/MIAMI_PEBBLE/usr/opensync/etc/ff/use_dfs_punc b/src/vendor/qca-template/rootfs/target/MIAMI_PEBBLE/usr/opensync/etc/ff/use_dfs_punc
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/vendor/qca-template/rootfs/target/MIAMI_PEBBLE/usr/opensync/etc/ff/use_owm b/src/vendor/qca-template/rootfs/target/MIAMI_PEBBLE/usr/opensync/etc/ff/use_owm
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/vendor/qca-template/rootfs/target/MIAMI_WAIKIKI/usr/opensync/etc/ff/use_dfs_punc b/src/vendor/qca-template/rootfs/target/MIAMI_WAIKIKI/usr/opensync/etc/ff/use_dfs_punc
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/vendor/qca-template/rootfs/target/MIAMI_WAIKIKI/usr/opensync/etc/ff/use_owm b/src/vendor/qca-template/rootfs/target/MIAMI_WAIKIKI/usr/opensync/etc/ff/use_owm
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/vendor/qca-template/src/lib/osp/src/osp_temp_srcs.c b/src/vendor/qca-template/src/lib/osp/src/osp_temp_srcs.c
+index d1817be..b3e9139 100644
+--- a/src/vendor/qca-template/src/lib/osp/src/osp_temp_srcs.c
++++ b/src/vendor/qca-template/src/lib/osp/src/osp_temp_srcs.c
+@@ -7,6 +7,8 @@ static const struct temp_src osp_temp_srcs[] =
+ {
+     { "wifi0", "2.4G", osp_temp_get_temperature_kernel },
+     { "wifi1", "5G", osp_temp_get_temperature_kernel },
++    { "wifi2", "6G", osp_temp_get_temperature_kernel },
++    // FIXME: parse CONFIG_OVSDB_BOOTSTRAP_WIFI_PHY_LIST or get it by runtime
+ };
+ 
+ const struct temp_src* osp_temp_get_srcs(void)
+diff --git a/src/vendor/qca-template/src/lib/osp/src/osp_tm_therm_tbls.c b/src/vendor/qca-template/src/lib/osp/src/osp_tm_therm_tbls.c
+index ee4e77e..84fad8f 100644
+--- a/src/vendor/qca-template/src/lib/osp/src/osp_tm_therm_tbls.c
++++ b/src/vendor/qca-template/src/lib/osp/src/osp_tm_therm_tbls.c
+@@ -1,10 +1,12 @@
+ #include "osp_tm.h"
++#include "const.h"
+ 
+ 
+ static const struct osp_tm_therm_state osp_tm_therm_tbl[] =
+ {
+-    {{ 0,  0  }, { 15, 3 }, 0 },
+-    {{ 85, 85 }, { 3,  1 }, 5500 }
++    {{ 0,  0,  0  }, { 15, 15, 15 }, 0    },
++    {{ 85, 85, 85 }, { 3,  3,  3  }, 5500 }
++    // Fixme: check CONFIG_OSP_TM_TEMP_SRC_MAX
+ };
+ 
+ const struct osp_tm_therm_state* osp_tm_get_therm_tbl()
+diff --git a/src/vendor/qca-template/src/lib/target/inc/target_ALDER_WAIKIKI.h b/src/vendor/qca-template/src/lib/target/inc/target_ALDER_WAIKIKI.h
+index 6d49433..f2b2bbe 100644
+--- a/src/vendor/qca-template/src/lib/target/inc/target_ALDER_WAIKIKI.h
++++ b/src/vendor/qca-template/src/lib/target/inc/target_ALDER_WAIKIKI.h
+@@ -1,5 +1,5 @@
+-#ifndef TARGET_ALDER_PINE_PINE_H_INCLUDED
+-#define TARGET_ALDER_PINE_PINE_H_INCLUDED
++#ifndef TARGET_ALDER_WAIKIKI_H_INCLUDED
++#define TARGET_ALDER_WAIKIKI_H_INCLUDED
+ 
+ #include "ioctl80211_client.h"
+ #include "ioctl80211_survey.h"
+@@ -57,4 +57,4 @@
+ #include "target_qca.h"
+ #include "target_common.h"
+ 
+-#endif /* TARGET_ALDER_PINE_PINE_H_INCLUDED */
++#endif /* TARGET_ALDER_WAIKIKI_H_INCLUDED */
+diff --git a/src/vendor/qca-template/src/lib/target/inc/target_MIAMI_PEBBLE.h b/src/vendor/qca-template/src/lib/target/inc/target_MIAMI_PEBBLE.h
+new file mode 100644
+index 0000000..9b618f8
+--- /dev/null
++++ b/src/vendor/qca-template/src/lib/target/inc/target_MIAMI_PEBBLE.h
+@@ -0,0 +1,61 @@
++/*
++* Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++* SPDX-License-Identifier: ISC
++*/
++#ifndef TARGET_MIAMI_PEBBLE_H_INCLUDED
++#define TARGET_MIAMI_PEBBLE_H_INCLUDED
++
++#include "ioctl80211_client.h"
++#include "ioctl80211_survey.h"
++#include "ioctl80211_scan.h"
++#include "ioctl80211_device.h"
++#include "ioctl80211_capacity.h"
++#include "ioctl80211_radio.h"
++
++#define TARGET_ETHCLIENT_IFLIST  "eth0", "eth1"
++
++#define TARGET_CERT_PATH         "/var/certs"
++#define TARGET_MANAGERS_PID_PATH "/tmp/dmpid"
++#define TARGET_OVSDB_SOCK_PATH   "/var/run/openvswitch/db.sock"
++#define TARGET_LOGREAD_FILENAME  "/var/log/messages"
++
++/******************************************************************************
++ *  MANAGERS definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  CLIENT definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  RADIO definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  VIF definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  SURVEY definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  NEIGHBOR definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  DEVICE definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  CAPACITY definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  VENDOR definitions
++ *****************************************************************************/
++
++#include "target_qca.h"
++#include "target_common.h"
++
++#endif /* TARGET_MIAMI_PEBBLE_H_INCLUDED */
+diff --git a/src/vendor/qca-template/src/lib/target/inc/target_MIAMI_WAIKIKI.h b/src/vendor/qca-template/src/lib/target/inc/target_MIAMI_WAIKIKI.h
+new file mode 100644
+index 0000000..85ee2d9
+--- /dev/null
++++ b/src/vendor/qca-template/src/lib/target/inc/target_MIAMI_WAIKIKI.h
+@@ -0,0 +1,61 @@
++/*
++* Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++* SPDX-License-Identifier: ISC
++*/
++#ifndef TARGET_MIAMI_WAIKIKI_H_INCLUDED
++#define TARGET_MIAMI_WAIKIKI_H_INCLUDED
++
++#include "ioctl80211_client.h"
++#include "ioctl80211_survey.h"
++#include "ioctl80211_scan.h"
++#include "ioctl80211_device.h"
++#include "ioctl80211_capacity.h"
++#include "ioctl80211_radio.h"
++
++#define TARGET_ETHCLIENT_IFLIST  "eth0", "eth1"
++
++#define TARGET_CERT_PATH         "/var/certs"
++#define TARGET_MANAGERS_PID_PATH "/tmp/dmpid"
++#define TARGET_OVSDB_SOCK_PATH   "/var/run/openvswitch/db.sock"
++#define TARGET_LOGREAD_FILENAME  "/var/log/messages"
++
++/******************************************************************************
++ *  MANAGERS definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  CLIENT definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  RADIO definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  VIF definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  SURVEY definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  NEIGHBOR definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  DEVICE definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  CAPACITY definitions
++ *****************************************************************************/
++
++/******************************************************************************
++ *  VENDOR definitions
++ *****************************************************************************/
++
++#include "target_qca.h"
++#include "target_common.h"
++
++#endif /* TARGET_MIAMI_WAIKIKI_H_INCLUDED */

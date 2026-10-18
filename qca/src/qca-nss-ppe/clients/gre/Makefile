@@ -1,0 +1,10 @@
+# Makefile for the PPE GRE client
+
+ccflags-y += -I$(obj)/../../exports -I$(obj)/../../drv/exports
+ccflags-y += -DNSS_PPE_GRE_BUILD_ID="$(BUILD_ID)"
+
+obj-m += qca-nss-ppe-gre.o
+qca-nss-ppe-gre-objs := nss_ppe_gre.o
+
+ccflags-y += -DNSS_PPE_GRE_DEBUG_LEVEL=0
+ccflags-y += -Wall -Werror

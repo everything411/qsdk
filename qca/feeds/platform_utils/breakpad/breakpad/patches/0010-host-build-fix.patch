@@ -1,0 +1,37 @@
+From 8a9a7e184797b5453fd7f9e06ce4abe94eb0dc98 Mon Sep 17 00:00:00 2001
+From: Sohan Madhav Bangaru <quic_sbangaru@quicinc.com>
+Date: Wed, 16 Nov 2022 12:08:25 -0800
+Subject: [PATCH] host-build-fix
+
+Signed-off-by: Sohan Madhav Bangaru <quic_sbangaru@quicinc.com>
+---
+ src/processor/basic_source_line_resolver.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+Index: breakpad-0.1/src/processor/basic_source_line_resolver.cc
+===================================================================
+--- breakpad-0.1.orig/src/processor/basic_source_line_resolver.cc       2025-04-14 10:39:13.831725992 +0530
++++ breakpad-0.1/src/processor/basic_source_line_resolver.cc    2025-04-14 10:39:13.827726027 +0530
+@@ -450,7 +450,7 @@
+                                            &origin_name)) {
+     inline_origins_.insert(make_pair(
+         origin_id,
+-        new InlineOrigin(has_file_id, source_file_id, origin_name)));
++        google_breakpad::linked_ptr<InlineOrigin>(new InlineOrigin(has_file_id, source_file_id, origin_name))));
+     return true;
+   }
+   return false;
+Index: breakpad-0.1/src/processor/exploitability_linux.cc
+===================================================================
+--- breakpad-0.1.orig/src/processor/exploitability_linux.cc     2022-06-04 01:42:57.000000000 +0530
++++ breakpad-0.1/src/processor/exploitability_linux.cc  2025-04-14 10:40:23.207128776 +0530
+@@ -514,7 +515,7 @@
+            raw_bytes_tmpfile);
+   FILE* objdump_fp = popen(cmd, "r");
+   if (!objdump_fp) {
+-    fclose(objdump_fp);
++
+     unlink(raw_bytes_tmpfile);
+     BPLOG(ERROR) << "Failed to call objdump.";
+     return false;
+

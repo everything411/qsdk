@@ -1,0 +1,511 @@
+Author: Deepak kumar <quic_deepaku@quicinc.com>
+Date: Tue Nov 19 13:37:15 2024
+
+   opensync: core layer changes
+
+Signed-off-by: Deepak kumar <quic_deepaku@quicinc.com>
+diff --git a/src/core/src/dm/src/dm_manager.c b/src/core/src/dm/src/dm_manager.c
+index fb1217ca4..0a491c52c 100644
+--- a/src/core/src/dm/src/dm_manager.c
++++ b/src/core/src/dm/src/dm_manager.c
+@@ -291,6 +291,7 @@ bool dm_manager_stop_all(char *except_mgrs)
+     struct schema_Node_Services *list;
+     struct schema_Node_Services *manager;
+     struct dm_manager *dm;
++    struct dm_manager *dm_tmp;
+     struct dm_manager *mgr_ptr;
+     int count;
+     char *start;
+@@ -363,7 +364,7 @@ bool dm_manager_stop_all(char *except_mgrs)
+         }
+     }
+ 
+-    ds_tree_foreach(&dm_manager_list, dm)
++    ds_tree_foreach_safe(&dm_manager_list, dm, dm_tmp)
+     {
+         skip_kill = 0;
+ 
+diff --git a/src/core/src/lib/dhcp_relay/ut/unit.mk b/src/core/src/lib/dhcp_relay/ut/unit.mk
+index d8d9c74eb..d4c927396 100644
+--- a/src/core/src/lib/dhcp_relay/ut/unit.mk
++++ b/src/core/src/lib/dhcp_relay/ut/unit.mk
+@@ -14,8 +14,8 @@ UNIT_DEPS += src/lib/dhcp_relay
+ UNIT_DEPS += src/lib/unit_test_utils
+ 
+ # Ensure the required file is copied in its correct location
+-$(UNIT_BUILD)/.target: /tmp/dhcp_relay.conf
+-/tmp/dhcp_relay.conf: $(UNIT_PATH)/dhcp_relay.conf FORCE_DHCP_RELAY_CONF
++$(UNIT_BUILD)/.target: /tmp/dhcp_relay.conf.$(USER)
++/tmp/dhcp_relay.conf.$(USER): $(UNIT_PATH)/dhcp_relay.conf FORCE_DHCP_RELAY_CONF
+ 	${NQ} " $(call color_copy,copy)    [$(call COLOR_BOLD,dhcp_relay.conf)] -> $@"
+ 	${Q} cp $< $@
+ FORCE_DHCP_RELAY_CONF:
+diff --git a/src/core/src/lib/gatekeeper_plugin/src/gatekeeper_multi_curl.c b/src/core/src/lib/gatekeeper_plugin/src/gatekeeper_multi_curl.c
+index ba06419b8..62de0c63d 100644
+--- a/src/core/src/lib/gatekeeper_plugin/src/gatekeeper_multi_curl.c
++++ b/src/core/src/lib/gatekeeper_plugin/src/gatekeeper_multi_curl.c
+@@ -10,6 +10,9 @@
+ #include "memutil.h"
+ #include "log.h"
+ 
++/* Curl version is defined as 0xXXYYZZ in hexadecimal So 7.32.0 becomes 0x072000 */
++#define CURL_V_7_32_0 0x072000
++
+ /**
+  * @brief logs error is curl operation failed.
+  *
+@@ -734,7 +737,11 @@ gk_send_mcurl_request(struct fsm_gk_session *fsm_gk_session,
+     curl_easy_setopt(conn->easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+     curl_easy_setopt(conn->easy, CURLOPT_ERRORBUFFER, conn->error);
+     curl_easy_setopt(conn->easy, CURLOPT_PRIVATE, conn);
+-    curl_easy_setopt(conn->easy, CURLOPT_PROGRESSFUNCTION, prog_cb);
++    #if LIBCURL_VERSION_NUM >= CURL_V_7_32_0
++        curl_easy_setopt(conn->easy, CURLOPT_XFERINFOFUNCTION, prog_cb);
++    #else
++        curl_easy_setopt(conn->easy, CURLOPT_PROGRESSFUNCTION, prog_cb);
++    #endif
+     curl_easy_setopt(conn->easy, CURLOPT_PROGRESSDATA, conn);
+     curl_easy_setopt(conn->easy, CURLOPT_LOW_SPEED_TIME, 3L);
+     curl_easy_setopt(conn->easy, CURLOPT_LOW_SPEED_LIMIT, 10L);
+diff --git a/src/core/src/lib/nl/src/nl_80211.c b/src/core/src/lib/nl/src/nl_80211.c
+index fe5a97893..caae0859e 100644
+--- a/src/core/src/lib/nl/src/nl_80211.c
++++ b/src/core/src/lib/nl/src/nl_80211.c
+@@ -1223,8 +1223,8 @@ nl_80211_alloc_get_reg(struct nl_80211 *nl_80211,
+                        uint32_t wiphy)
+ {
+     struct nl_msg *msg = nlmsg_alloc();
+-    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY, wiphy) == 0);
+     nl_80211_put_cmd(nl_80211, msg, 0, NL80211_CMD_GET_REG);
++    assert(nla_put_u32(msg, NL80211_ATTR_WIPHY, wiphy) == 0);
+     return msg;
+ }
+ 
+diff --git a/src/core/src/lib/osn/kconfig/Kconfig.osn b/src/core/src/lib/osn/kconfig/Kconfig.osn
+index 642fb49d6..15cb22143 100644
+--- a/src/core/src/lib/osn/kconfig/Kconfig.osn
++++ b/src/core/src/lib/osn/kconfig/Kconfig.osn
+@@ -51,6 +51,19 @@ if OSN_LINUX_ENABLED
+             This option implements the lnx_ip6 API and enables the
+             "Linux IPv6" backend (osn_ip6).
+ 
++    config OSN_SKIP_ACCEL
++        string
++        default "SKIPLOG" if PLATFORM_IS_BCM
++        default "skipaccel"
++        help
++            OpenSync SKIP-ACCEL mechanism using xtables
++
++            The set value if provided to NFM so that it never
++            tries to create a chain with the given name. This
++            can prevent unnecessary error messages when targets
++            with the same name are available on the system (e.g.,
++            `SKIPLOG` or `skipaccel`).
++
+     menuconfig OSN_UDHCPC
+         bool "udhcp DHCPv4 client"
+         default y
+diff --git a/src/core/src/lib/osn/src/linux/mupnp_server.c b/src/core/src/lib/osn/src/linux/mupnp_server.c
+index 291914d6d..1c90ed3e7 100644
+--- a/src/core/src/lib/osn/src/linux/mupnp_server.c
++++ b/src/core/src/lib/osn/src/linux/mupnp_server.c
+@@ -77,6 +77,7 @@ static bool service_init(mupnp_server_t *self, const mupnp_config_t *cfg)
+     if(NULL == path_pid) goto oom_err;
+ 
+     daemon_atexit(&self->server_process, &upnp_process_on_exit);
++    daemon_arg_add(&self->server_process, "-d"); // Run in foreground
+     daemon_arg_add(&self->server_process, "-f", path_cfg); // add config file path
+     daemon_arg_add(&self->server_process, "-P", path_pid); // add PID file path
+ 
+diff --git a/src/core/src/lib/osn/src/osn_fw_iptables_full.c b/src/core/src/lib/osn/src/osn_fw_iptables_full.c
+index 6c082b809..67aa3b197 100644
+--- a/src/core/src/lib/osn/src/osn_fw_iptables_full.c
++++ b/src/core/src/lib/osn/src/osn_fw_iptables_full.c
+@@ -73,7 +73,8 @@ static char *osfw_target_builtin[] =
+ 	"TOS",
+ 	"TPROXY",
+ 	"TTL",
+-	"ULOG"
++	"ULOG",
++	CONFIG_OSN_SKIP_ACCEL
+ };
+ 
+ static struct osfw_nfbase osfw_nfbase;
+diff --git a/src/core/src/lib/osn/src/osn_fw_iptables_thin.c b/src/core/src/lib/osn/src/osn_fw_iptables_thin.c
+index c784e7d93..9e2d058a7 100644
+--- a/src/core/src/lib/osn/src/osn_fw_iptables_thin.c
++++ b/src/core/src/lib/osn/src/osn_fw_iptables_thin.c
+@@ -103,7 +103,8 @@ static char *osfw_target_builtin[] =
+     "TOS",
+     "TPROXY",
+     "TTL",
+-    "ULOG"
++    "ULOG",
++    CONFIG_OSN_SKIP_ACCEL
+ };
+ 
+ static struct osfw_nfbase self;
+diff --git a/src/core/src/lib/osp/src/osp_ble_null.c b/src/core/src/lib/osp/src/osp_ble_null.c
+index de401acba..e53a0587f 100644
+--- a/src/core/src/lib/osp/src/osp_ble_null.c
++++ b/src/core/src/lib/osp/src/osp_ble_null.c
+@@ -33,7 +33,7 @@ bool osp_ble_set_device_name(const char *device_name)
+     return true;
+ }
+ 
+-bool osp_ble_set_advertising_data(const uint8_t payload[31], uint8_t len)
++bool osp_ble_set_advertising_data(const uint8_t payload[28], uint8_t len)
+ {
+     (void)payload;
+     (void)len;
+diff --git a/src/core/src/lib/osp/src/osp_dl_curl.c b/src/core/src/lib/osp/src/osp_dl_curl.c
+index 0f1b39cfd..ef6fc2b3c 100644
+--- a/src/core/src/lib/osp/src/osp_dl_curl.c
++++ b/src/core/src/lib/osp/src/osp_dl_curl.c
+@@ -38,6 +38,9 @@
+ /* Connection timeout in seconds */
+ #define OSP_DL_CURL_CONNECT_TIMEOUT     30
+ 
++/* Curl version is defined as 0xXXYYZZ in hexadecimal So 7.55.0 becomes 0x073700 */
++#define CURL_V_7_55_0 0x073700
++
+ struct osp_dl_curl;
+ 
+ /* Curl object callbacks */
+@@ -1001,26 +1004,44 @@ void osp_dl_curl_timeout_timer_fn(struct ev_loop *loop, ev_timer *w, int revent)
+ 
+ void osp_dl_curl_progress(struct osp_dl_curl *dc)
+ {
++    #if LIBCURL_VERSION_NUM >= CURL_V_7_55_0
++    curl_off_t content_len;
++    curl_off_t dl_size;
++    curl_off_t dl_speed;
++    #else
+     double content_len;
+     double dl_size;
+     double dl_speed;
++    #endif
+     CURLcode erc;
+ 
+     int prc_done = -1;
+ 
+-    erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
++    #if LIBCURL_VERSION_NUM >= CURL_V_7_55_0
++        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &content_len);
++    #else
++        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &content_len);
++    #endif
+     if (erc != CURLE_OK)
+     {
+         content_len = -1.0;
+     }
+ 
+-    erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SIZE_DOWNLOAD, &dl_size);
++    #if LIBCURL_VERSION_NUM >= CURL_V_7_55_0
++        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SIZE_DOWNLOAD_T, &dl_size);
++    #else
++        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SIZE_DOWNLOAD, &dl_size);
++    #endif
+     if (erc != CURLE_OK)
+     {
+         dl_size = -1.0;
+     }
+ 
+-    erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SPEED_DOWNLOAD, &dl_speed);
++    #if LIBCURL_VERSION_NUM >= CURL_V_7_55_0
++        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SPEED_DOWNLOAD_T, &dl_speed);
++    #else
++        erc = curl_easy_getinfo(dc->dc_curl, CURLINFO_SPEED_DOWNLOAD, &dl_speed);
++    #endif
+     if (erc != CURLE_OK)
+     {
+         dl_speed = -1.0;
+diff --git a/src/core/src/lib/osp/src/osp_led_null.c b/src/core/src/lib/osp/src/osp_led_null.c
+index fad0d3624..a05915a94 100644
+--- a/src/core/src/lib/osp/src/osp_led_null.c
++++ b/src/core/src/lib/osp/src/osp_led_null.c
+@@ -17,3 +17,32 @@ enum osp_led_state osp_led_str_to_state(const char *str)
+ 
+     return OSP_LED_ST_LAST;
+ }
++
++int osp_led_init(void)
++{
++    return -1;
++}
++
++enum osp_led_state osp_led_ovsdb_get_active_led_state(uint8_t position)
++{
++    (void)position;
++
++    return -1;
++}
++
++int osp_led_ovsdb_add_led_config(enum osp_led_state state, uint32_t priority, uint8_t position)
++{
++    (void)state;
++    (void)priority;
++    (void)position;
++
++    return -1;
++}
++
++int osp_led_ovsdb_delete_led_config(enum osp_led_state state, uint8_t position)
++{
++    (void)state;
++    (void)position;
++
++    return -1;
++}
+diff --git a/src/core/src/lib/osp/src/osp_upgrade_generic.c b/src/core/src/lib/osp/src/osp_upgrade_generic.c
+index a76662aae..3afaad357 100644
+--- a/src/core/src/lib/osp/src/osp_upgrade_generic.c
++++ b/src/core/src/lib/osp/src/osp_upgrade_generic.c
+@@ -28,6 +28,7 @@
+ #endif
+ 
+ #if defined(CONFIG_OSP_UPG_CRC_MD5)
++#include <openssl/evp.h>
+ #include <openssl/md5.h>
+ #define OSP_UPG_GEN_CRC_EXT     ".md5"
+ #define OSP_UPG_GEN_MD5_HEX_LEN (MD5_DIGEST_LENGTH * 2 + 1)
+@@ -410,7 +411,6 @@ bool osp_upg_gen_download_verify(void)
+     char md5_sum[OSP_UPG_GEN_MD5_HEX_LEN];
+     char img_sum[OSP_UPG_GEN_MD5_HEX_LEN];
+ 
+-    MD5_CTX md5_ctx;
+     char buf[128];
+     ssize_t nrd;
+ 
+@@ -430,10 +430,22 @@ bool osp_upg_gen_download_verify(void)
+         goto exit;
+     }
+ 
++
++#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
++    EVP_MD_CTX *md_ctx = EVP_MD_CTX_create();
++    const EVP_MD *md = EVP_md5();
++    EVP_DigestInit_ex(md_ctx, md, NULL);
++#else
++    MD5_CTX md5_ctx;
+     MD5_Init(&md5_ctx);
++#endif
+     while ((nrd = read(imgfd, buf, sizeof(buf))) > 0)
+     {
++#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
++        EVP_DigestUpdate(md_ctx, buf, nrd);
++#else
+         MD5_Update(&md5_ctx, buf, nrd);
++#endif
+     }
+ 
+     if (nrd < 0)
+@@ -444,7 +456,12 @@ bool osp_upg_gen_download_verify(void)
+         goto exit;
+     }
+ 
++#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
++    EVP_DigestFinal_ex(md_ctx, img_sum_raw, 0);
++    EVP_MD_CTX_destroy(md_ctx);
++#else
+     MD5_Final(img_sum_raw, &md5_ctx);
++#endif
+     bin2hex(img_sum_raw, MD5_DIGEST_LENGTH, img_sum, sizeof(img_sum));
+ 
+     /*
+diff --git a/src/core/src/lib/osw/src/osw_drv_nl80211_rfkill.c.h b/src/core/src/lib/osw/src/osw_drv_nl80211_rfkill.c.h
+index 7fb166318..c352b6423 100644
+--- a/src/core/src/lib/osw/src/osw_drv_nl80211_rfkill.c.h
++++ b/src/core/src/lib/osw/src/osw_drv_nl80211_rfkill.c.h
+@@ -19,7 +19,7 @@ rfkill_get(const char *phy_name, const char *type)
+     for (i = 0; i < g.gl_pathc; i++) {
+         const char *path = g.gl_pathv[i];
+         const char *data = file_geta(path);
+-        LOGT("%s: %s: read: '%s'", __func__, path, data);
++        //LOGT("%s: %s: read: '%s'", __func__, path, data);
+         if (WARN_ON(data == NULL)) continue;
+         if (atoi(data) == 1) blocked = true;
+     }
+diff --git a/src/core/src/lib/ovsdb/src/ovsdb.c b/src/core/src/lib/ovsdb/src/ovsdb.c
+index 98a2b8e8e..3881345c5 100644
+--- a/src/core/src/lib/ovsdb/src/ovsdb.c
++++ b/src/core/src/lib/ovsdb/src/ovsdb.c
+@@ -98,8 +98,8 @@ static void cb_ovsdb_read(struct ev_loop *loop, struct ev_io *watcher, int reven
+         new_buf = REALLOC(ovs_buffer, new_size);
+         if (ovs_buffer_size > 0) {
+             // only log trace when increasing size, skip initial allocs
+-            LOG(TRACE,"cb_ovsdb_read: realloc(%p, %d -> %d) = %p",
+-                    ovs_buffer, (int)ovs_buffer_size, (int)new_size, new_buf);
++            //LOG(TRACE,"cb_ovsdb_read: realloc(%p, %d -> %d) = %p",
++            //        ovs_buffer, (int)ovs_buffer_size, (int)new_size, new_buf);
+         }
+         ovs_buffer = new_buf;
+         ovs_buffer_size = new_size;
+diff --git a/src/core/src/lib/ow/src/ow_stats_conf.c b/src/core/src/lib/ow/src/ow_stats_conf.c
+index b53719ef5..cb65c56de 100644
+--- a/src/core/src/lib/ow/src/ow_stats_conf.c
++++ b/src/core/src/lib/ow/src/ow_stats_conf.c
+@@ -632,7 +632,15 @@ ow_stats_conf_sub_report_survey(struct ow_stats_conf_entry *e,
+     if (busy) r->chan_busy = osw_tlv_get_u32(busy);
+     if (nf) r->chan_noise = (int)osw_tlv_get_float(nf);
+ 
+-    LOGT("ow: stats: conf: report: survey:"
++    int level;
++    level = LOG_SEVERITY_TRACE;
++    if (r->chan_tx > 100 || r->chan_rx > 100 || r->chan_self > 100 || r-> chan_busy > 100) {
++        level = LOG_SEVERITY_WARN;
++    }
++    if (r->chan_tx > r->chan_busy || r->chan_rx > r-> chan_busy || r->chan_self > r-> chan_busy) {
++        level = LOG_SEVERITY_WARN;
++    }
++    mlog(level, MODULE_ID, "ow: stats: conf: report: survey:"
+          " type=%s"
+          " chan=%"PRIu32
+          " ts=%"PRIu64
+@@ -1821,6 +1829,7 @@ ow_stats_conf_entry_set_reporting_limit(struct ow_stats_conf_entry *e,
+     osw_timer_arm_at_nsec(&e->conf->work, 0);
+     e->params_next.valid = true;
+     e->params_next.report_limit = count;
++    e->report_counter = 0;
+ }
+ 
+ void
+diff --git a/src/core/src/nfm/src/nfm_objm.c b/src/core/src/nfm/src/nfm_objm.c
+index 5a18eaef6..ce67f7626 100644
+--- a/src/core/src/nfm/src/nfm_objm.c
++++ b/src/core/src/nfm/src/nfm_objm.c
+@@ -117,7 +117,7 @@ static void callback_Object_Store_State(
+             return;
+     }
+ 
+-    LOG(DEBUG, "nfm_objm: update old=%s, new=%s", old_version, new_version);
++    //LOG(DEBUG, "nfm_objm: update old=%s, new=%s", old_version, new_version);
+ 
+     if (old_version != NULL)
+     {
+diff --git a/src/core/src/nm2/src/nm2_nb_port.c b/src/core/src/nm2/src/nm2_nb_port.c
+index bdfde8c4a..377701614 100644
+--- a/src/core/src/nm2/src/nm2_nb_port.c
++++ b/src/core/src/nm2/src/nm2_nb_port.c
+@@ -24,13 +24,14 @@ static void nm2_port_release(struct nm2_port *port)
+     /* destroy the reference link */
+     reflink_fini(&port->port_reflink);
+ 
++    /* clean up */
++    ds_tree_remove(&nm2_port_list, port);
++    uuidset_fini(&port->port_interfaces);
++
+     /* Destroy the inet object */
+     LOGD("%s(): freeing port_inet %p for %s", __func__, port->port_inet, port->port_name);
+     inet_del(port->port_inet);
+ 
+-    /* clean up */
+-    ds_tree_remove(&nm2_port_list, port);
+-    uuidset_fini(&port->port_interfaces);
+     nm2_port_free(port);
+ }
+ 
+diff --git a/src/core/src/pm/src/pm_cert_update.c b/src/core/src/pm/src/pm_cert_update.c
+index 035e11d04..ee504d737 100644
+--- a/src/core/src/pm/src/pm_cert_update.c
++++ b/src/core/src/pm/src/pm_cert_update.c
+@@ -15,6 +15,7 @@
+ #include "target.h"
+ #include "util.h"
+ #include <curl/curl.h>
++#include <openssl/evp.h>
+ #include <openssl/md5.h>
+ 
+ #include "ovsdb.h"
+@@ -48,8 +49,14 @@ bool pm_calculate_md5(const char *file_path, unsigned char *digest)
+         return false;
+     }
+ 
++#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
++    EVP_MD_CTX *md_ctx = EVP_MD_CTX_create();
++    const EVP_MD *md = EVP_md5();
++    EVP_DigestInit_ex(md_ctx, md, NULL);
++#else
+     MD5_CTX context;
+     MD5_Init(&context);
++#endif
+ 
+     size_t buffer_size = 2048;
+     unsigned char buffer[buffer_size];
+@@ -57,12 +64,21 @@ bool pm_calculate_md5(const char *file_path, unsigned char *digest)
+ 
+     while ((bytes_read = fread(buffer, 1, buffer_size, file)) != 0)
+     {
++#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
++        EVP_DigestUpdate(md_ctx, buffer, bytes_read);
++#else
+         MD5_Update(&context, buffer, bytes_read);
++#endif
+     }
+ 
+     fclose(file);
+ 
++#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
++    EVP_DigestFinal_ex(md_ctx, digest, 0);
++    EVP_MD_CTX_destroy(md_ctx);
++#else
+     MD5_Final(digest, &context);
++#endif
+     return true;
+ }
+ 
+diff --git a/src/core/src/psm/src/psm_ovsdb_row.c b/src/core/src/psm/src/psm_ovsdb_row.c
+index fc8cb28f7..04f2d5c08 100644
+--- a/src/core/src/psm/src/psm_ovsdb_row.c
++++ b/src/core/src/psm/src/psm_ovsdb_row.c
+@@ -10,6 +10,7 @@
+ #include "util.h"
+ 
+ #include "psm.h"
++#include <openssl/evp.h>
+ 
+ #define PSM_ROW_KEY_LEN ((SHA256_DIGEST_LENGTH * 2) + 1)
+ 
+@@ -503,22 +504,38 @@ void psm_ovsdb_row_sync(struct ev_loop *loop, ev_debounce *w, int revent)
+ void psm_ovsdb_row_key_from_json(struct psm_ovsdb_row_key *key, const char *table, json_t *row)
+ {
+     const char *row_data;
++#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
++    EVP_MD_CTX *md_ctx = EVP_MD_CTX_create();
++    const EVP_MD *md = EVP_sha256();
++#else
+     SHA256_CTX sha_ctx;
++#endif
+     uint8_t sha_buf[SHA256_DIGEST_LENGTH];
+ 
+     memset(key, 0, sizeof(*key));
+ 
++    /* Generate a compact representation of the row data and add it to the hash */
++    row_data = json_dumps(row, JSON_COMPACT | JSON_SORT_KEYS | JSON_ENSURE_ASCII);
++
++#if OPENSSL_VERSION_NUMBER >= 0x030000000  // 3.0.0
++    EVP_DigestInit_ex(md_ctx, md, NULL);
++
++    /* Include the trailing \0 in the hash */
++    EVP_DigestUpdate(md_ctx, table, strlen(table) + 1);
++    EVP_DigestUpdate(md_ctx, row_data, strlen(row_data) + 1);
++
++    EVP_DigestFinal_ex(md_ctx, sha_buf, 0);
++    EVP_MD_CTX_destroy(md_ctx);
++#else
+     SHA256_Init(&sha_ctx);
+ 
+     /* Include the trailing \0 in the hash */
+     SHA256_Update(&sha_ctx, table, strlen(table) + 1);
+-
+-    /* Generate a compact representation of the row data and add it to the hash */
+-    row_data = json_dumps(row, JSON_COMPACT | JSON_SORT_KEYS | JSON_ENSURE_ASCII);
+     SHA256_Update(&sha_ctx, row_data, strlen(row_data) + 1);
+-    json_memdbg_free((void *)row_data);
+ 
+     SHA256_Final(sha_buf, &sha_ctx);
++#endif
++    json_memdbg_free((void *)row_data);
+ 
+     bin2hex(sha_buf, sizeof(sha_buf), key->rk_key, sizeof(key->rk_key));
+ }

@@ -1,0 +1,25 @@
+From efacb4bc293190e59d1a0e179eb16e7aed5ca82d Mon Sep 17 00:00:00 2001
+From: Atchaya R <quic_ratchaya@quicinc.com>
+Date: Wed, 15 Jun 2022 12:58:46 +0530
+Subject: [PATCH] obuspa: Enable factory reset to set the database values by
+ default
+
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+---
+ src/vendor/vendor_defs.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/vendor/vendor_defs.h b/src/vendor/vendor_defs.h
+index bd21e1f..ee1ffb1 100755
+--- a/src/vendor/vendor_defs.h
++++ b/src/vendor/vendor_defs.h
+@@ -107,7 +107,7 @@
+ #define FACTORY_RESET_FILE      ""
+ 
+ // Uncomment the following to get the values of the factory reset parameters from VENDOR_GetFactoryResetParams()
+-// #define INCLUDE_PROGRAMMATIC_FACTORY_RESET
++#define INCLUDE_PROGRAMMATIC_FACTORY_RESET
+ 
+ //-----------------------------------------------------------------------------------------
+ // Uncomment the following to remove code and features from the standard build
+

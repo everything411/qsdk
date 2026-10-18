@@ -1,0 +1,213 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+#include "ipq5424.dtsi"
+
+/ {
+	config_name = "config-default";
+
+	aliases {
+		console = &se1_uart1;
+		spi0 = &se4_spi0;
+		sdhci = &mmc;
+		uart2 = &se0_uart0;
+	};
+
+	soc: soc@0 {
+		tlmm: pinctrl@1000000 {
+			uart0_pinmux: uart0 {
+				u-boot,dm-pre-reloc;
+				uart0_tx {
+					u-boot,dm-pre-reloc;
+					pins = "GPIO_13";
+					function = "uart0_tx";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				uart0_rx {
+					u-boot,dm-pre-reloc;
+					pins = "GPIO_12";
+					function = "uart0_rx";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-down;
+				};
+			};
+
+			uart1_pinmux: uart1 {
+				u-boot,dm-pre-reloc;
+				uart1_tx {
+					u-boot,dm-pre-reloc;
+					pins = "GPIO_44";
+					function = "uart1_tx";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				uart1_rx {
+					u-boot,dm-pre-reloc;
+					pins = "GPIO_43";
+					function = "uart1_rx";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-down;
+				};
+			};
+
+			spi0_pinmux: spi0 {
+				spi0_sclk {
+					pins = "GPIO_6";
+					function = "spi0_sclk";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-down;
+				};
+
+				spi0_cs0 {
+					pins = "GPIO_7";
+					function = "spi0_cs0";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				spi0_miso {
+					pins = "GPIO_8";
+					function = "spi0_miso";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-down;
+				};
+
+				spi0_mosi {
+					pins = "GPIO_9";
+					function = "spi0_mosi";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-down;
+				};
+			};
+
+			sdhci_pinmux: mmc {
+				emmc_data {
+					pins = "GPIO_0", "GPIO_1", "GPIO_2",
+						"GPIO_3";
+					function = "sdc_data";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				emmc_cmd {
+					pins = "GPIO_4";
+					function = "sdc_cmd";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				emmc_clk {
+					pins = "GPIO_5";
+					function = "sdc_clk";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+			};
+
+			qspi_pinmux: nand {
+				qspi_data {
+					pins = "GPIO_0", "GPIO_1", "GPIO_2",
+						"GPIO_3";
+					function = "qspi_data";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qspi_cs_n {
+					pins = "GPIO_4";
+					function = "qspi_cs_n";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qspi_clk {
+					pins = "GPIO_5";
+					function = "qspi_clk";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+			};
+
+			pcie0_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_25";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie1_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_28";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie2_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_31";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie3_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_34";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+		};
+
+		qupv3: geniqup@1ac0000 {
+			status = "okay";
+
+			se0_uart0: serial@1a80000 {
+				pinctrl-0 = <&uart0_pinmux>;
+				pinctrl-names = "default";
+				status = "okay";
+			};
+
+			se1_uart1: serial@1a84000 {
+				pinctrl-0 = <&uart1_pinmux>;
+				pinctrl-names = "default";
+				status = "okay";
+			};
+
+			se4_spi0: spi@1a90000 {
+				pinctrl-0 = <&spi0_pinmux>;
+				pinctrl-names = "default";
+				status = "okay";
+
+				nor-flash@0 {
+					compatible = "jedec,spi-nor";
+					reg = <0>;
+					spi-max-frequency = <50000000>;
+				};
+			};
+		};
+
+		mmc: sdhci@7800000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&sdhci_pinmux>;
+			status = "okay";
+		};
+
+		nand: nand-controller@79B0000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&qspi_pinmux>;
+			status = "okay";
+		};
+
+		watchdog: non-sec@f410000 {
+			status = "okay";
+		};
+	};
+};

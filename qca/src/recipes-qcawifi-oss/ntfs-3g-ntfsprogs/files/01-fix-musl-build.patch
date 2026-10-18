@@ -1,0 +1,20 @@
+--- a/libfuse-lite/fusermount.c
++++ b/libfuse-lite/fusermount.c
+@@ -33,6 +33,7 @@
+ #include <sys/mount.h>
+ #include <sys/socket.h>
+ #include <sys/utsname.h>
++#include <paths.h>
+ 
+ #define FUSE_DEV_NEW "/dev/fuse"
+ 
+--- a/libfuse-lite/mount_util.c
++++ b/libfuse-lite/mount_util.c
+@@ -23,6 +23,7 @@
+ #include <sys/mount.h>
+ #include <sys/param.h>
+ #endif /* __SOLARIS__ */
++#include <paths.h>
+ 
+ #ifdef __SOLARIS__
+ 

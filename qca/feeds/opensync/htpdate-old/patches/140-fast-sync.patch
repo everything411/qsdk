@@ -1,0 +1,28 @@
+From: Atchaya R <quic_ratchaya@quicinc.com>
+Date: Fri, 20 Sep 2024 09:59:44 +0530
+Subject: [PATCH] openwrt patches for opensync
+
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+
+Index: htpdate-1.0.4/htpdate.c
+===================================================================
+--- htpdate-1.0.4.orig/htpdate.c
++++ htpdate-1.0.4/htpdate.c
+@@ -65,7 +65,7 @@
+ #define	DEFAULT_MIN_SLEEP		1800			/* 30 minutes */
+ #define	DEFAULT_MAX_SLEEP		115200			/* 32 hours */
+ #define	MAX_DRIFT				32768000		/* 500 PPM */
+-#define	MAX_ATTEMPT				2				/* Poll attempts */
++#define	MAX_ATTEMPT				1				/* Poll attempts */
+ #define	DEFAULT_PID_FILE		"/var/run/htpdate.pid"
+ #define	URLSIZE					128
+ #define	BUFFERSIZE				1024
+@@ -858,6 +858,8 @@ int main( int argc, char *argv[] ) {
+ 			sleep( sleeptime / numservers );
+         }
+ 
++        if ( initset && ( validtimes >= 1 ))
++            break; /* for        */
+ 	}
+ 
+ 	/* Sort the timedelta results */

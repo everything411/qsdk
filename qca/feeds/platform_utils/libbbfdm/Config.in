@@ -1,0 +1,27 @@
+if PACKAGE_libbbfdm
+
+config BBF_VENDOR_EXTENSION
+	bool "Enable Vendor Extension"
+	default y
+
+config BBF_VENDOR_LIST
+	string "Vendor List"
+	default "openwrt"
+
+config BBF_VENDOR_PREFIX
+	string "Vendor Prefix"
+	default "X_IOPSYS_EU_"
+
+config BBF_TR181
+	bool "Enable TR-181 Data Model Support"
+	default y
+
+config BBF_TR104
+	bool "Enable TR-104 Data Model Support"
+	default y
+
+config BBF_TR143
+	bool "Enable TR-143 Data Model Support"
+	default y
+
+endif

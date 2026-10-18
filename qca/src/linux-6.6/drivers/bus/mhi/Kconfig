@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# MHI bus
+#
+# Copyright (c) 2021, Linaro Ltd.
+#
+
+config MHI_BUS_TEST
+	tristate "MHI bus Test driver"
+	depends on MHI_BUS
+	help
+	  Test driver for testing the MHI bus
+
+source "drivers/bus/mhi/host/Kconfig"
+source "drivers/bus/mhi/ep/Kconfig"
+source "drivers/bus/mhi/clients/Kconfig"

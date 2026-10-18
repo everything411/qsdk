@@ -1,0 +1,31 @@
+From: Atchaya R <quic_ratchaya@quicinc.com>
+Date: Fri, 20 Sep 2024 09:59:44 +0530
+Subject: [PATCH] openwrt patches for opensync
+
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+
+Index: htpdate-1.0.4/htpdate.c
+===================================================================
+--- htpdate-1.0.4.orig/htpdate.c
++++ htpdate-1.0.4/htpdate.c
+@@ -510,10 +510,18 @@ static int setclock( double timedelta, i
+ 		if ( seteuid(0) ) {
+ 			printlog( 1, "seteuid()" );
+ 			exit(1);
+-		} else {
+-			return( adjtime(&timeofday, NULL) );
+ 		}
+ 
++		int rc = adjtime(&timeofday, NULL);
++		if (rc >= 0 || errno != EINVAL)
++		{
++			return rc;
++		}
++
++		/* errno is EINVAL here, this means that the ajdtime() interval was too big */
++		printlog(1, "Interval is too big, setting the clock forcefully.");
++		/* Fallthrough */
++
+ 	case 2:					/* Set time */
+ 		printlog( 0, "Setting %.3f seconds", timedelta );
+ 

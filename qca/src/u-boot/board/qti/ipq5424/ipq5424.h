@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
+#ifndef _IPQ5424_H_
+#define _IPQ5424_H_
+
+#include <configs/ipq5424.h>
+#include <asm/u-boot.h>
+
+typedef enum {
+	SMEM_SPINLOCK_ARRAY = 7,
+	SMEM_AARM_PARTITION_TABLE = 9,
+	SMEM_HW_SW_BUILD_ID = 137,
+	SMEM_USABLE_RAM_PARTITION_TABLE = 402,
+	SMEM_POWER_ON_STATUS_INFO = 403,
+	SMEM_MACHID_INFO_LOCATION = 425,
+	SMEM_IMAGE_VERSION_TABLE = 469,
+	SMEM_BOOT_FLASH_TYPE = 498,
+	SMEM_BOOT_FLASH_INDEX = 499,
+	SMEM_BOOT_FLASH_CHIP_SELECT = 500,
+	SMEM_BOOT_FLASH_BLOCK_SIZE = 501,
+	SMEM_BOOT_FLASH_DENSITY = 502,
+	SMEM_BOOT_DUALPARTINFO = 503,
+	SMEM_PARTITION_TABLE_OFFSET = 504,
+	SMEM_SPI_FLASH_ADDR_LEN = 505,
+	SMEM_TRY_MODE_INPROGRESS = 507,
+	SMEM_ATF_ENABLE = 509,
+	SMEM_EDL_MODE = 510,
+	SMEM_FIRST_VALID_TYPE = SMEM_SPINLOCK_ARRAY,
+	SMEM_LAST_VALID_TYPE = SMEM_EDL_MODE,
+	SMEM_MAX_SIZE = SMEM_EDL_MODE + 1,
+} smem_mem_type_t;
+
+#define SET_AB_USABLE				(0x0UL)
+#define DONT_USE_SET_A				(0x1UL)
+#define DONT_USE_SET_B				(0x2UL)
+#define DONT_USE_SET_AB				(0x3UL)
+
+#define BOOT_SET_A				0x0
+#define BOOT_SET_B				0x1
+#define BOOT_SET_INVALID 			0xFFFF
+
+#define BC_UBOOT_OWNER				0x1
+
+#define BOOTCONFIG_V3_MAGIC			(0x72637279UL)
+
+/* MACH IDs for various RDPs */
+#define MACH_TYPE_IPQ5424_EMU			0x8050001
+#define MACH_TYPE_IPQ5424_EMU_FBC		0xF060000
+
+/*
+ * TCSR Registers
+ */
+#define TCSR_TZ_WONCE0				0x195C000
+#define TCSR_TZ_WONCE1				0x195C004
+
+#define MACH_TYPE_IPQ5424_RDP464_C2		0x8070000
+#define MACH_TYPE_IPQ5424_RDP464		0x8070001
+#define MACH_TYPE_IPQ5424_RDP466_C2		0x8070100
+#define MACH_TYPE_IPQ5424_RDP466_C3		0x8070102
+#define MACH_TYPE_IPQ5424_RDP466		0x8071100
+#define MACH_TYPE_IPQ5424_RDP496		0x8071110
+#define MACH_TYPE_IPQ5424_RDP466_RFFE		0x8070110
+#define MACH_TYPE_IPQ5424_RDP485_C3		0x8070103
+#define MACH_TYPE_IPQ5424_RDP485_C2		0x8070101
+#define MACH_TYPE_IPQ5424_RDP485		0x8071101
+#define MACH_TYPE_IPQ5424_RDP485_RFFE_C2	0x8071111
+#define MACH_TYPE_IPQ5424_RDP485_RFFE		0x8070111
+#define MACH_TYPE_IPQ5424_RDP487		0x8070200
+#define MACH_TYPE_IPQ5424_RDP487_C2		0x8070201
+#define MACH_TYPE_IPQ5424_DB_MR01_1		0x1070000
+
+/* Crashdump Magic registers & values */
+#define TCSR_BOOT_MISC_REG			((u32*)0x195C100)
+
+#define DLOAD_MAGIC_COOKIE			0x10
+#define DLOAD_DISABLED				0x40
+#define DLOAD_ENABLE				BIT(4)
+#define DLOAD_DISABLE				(~BIT(4))
+#define MARK_UBOOT_MILESTONE			BIT(8)
+#define CRASHDUMP_RESET				BIT(11)
+#define ENABLE_EDL_MODE				BIT(0)
+
+#define EDL_RECOVERY_MODE			0x2
+#define UBOOT_RECOVERY_MODE			0x1
+
+/* Crashdump minimal configs */
+#define CFG_CPU_CONTEXT_DUMP_SIZE		0x180F0
+#define TME_CTXT_SIZE				(128 * 1024)
+#define CPU_CNTXT_HDR_SIZE			4624
+#define TLV_BUF_OFFSET				(500 * 1024) - TME_CTXT_SIZE \
+							- CPU_CNTXT_HDR_SIZE
+#define CFG_TLV_DUMP_SIZE			(12 * 1024)
+
+/* DT Fixup nodes */
+#define LINUX_6_x_NAND_DTS_NODE		"/soc@0/nand@79b0000/"
+#define LINUX_6_x_MMC_DTS_NODE		"/soc@0/mmc@7804000/"
+
+#define LINUX_6_x_USB_DTS_NODE		"/soc@0/usb3@8a00000/dwc3@8a00000/"
+#define LINUX_6_x_USB_DR_MODE_FIXUP	"/soc@0/usb3@8a00000/dwc3@8a00000%dr_mode%?peripheral"
+#define LINUX_6_x_USB_MAX_SPEED_FIXUP	"/soc@0/usb3@8a00000/dwc3@8a00000%maximum-speed%?high-speed"
+
+#define LINUX_6_x_USB2_DTS_NODE		"/soc@0/usb2@1e00000/dwc3@1e00000/"
+#define LINUX_6_x_USB2_DR_MODE_FIXUP	"/soc@0/usb2@1e00000/dwc3@1e00000%dr_mode%?peripheral"
+#define LINUX_6_x_USB2_MAX_SPEED_FIXUP	"/soc@0/usb2@1e00000/dwc3@1e00000%maximum-speed%?high-speed"
+
+#define LINUX_RSVD_MEM_DTS_NODE		"/reserved-memory/"
+#define STATUS_OK			"status%?okay"
+#define STATUS_DISABLED			"status%?disabled"
+
+/* USB softsku fuse */
+#define USB_SOFTSKU_STATUS		0xA628C
+#define USB_SOFTSKU_STATUS_DISABLE	BIT(0)
+
+/*
+ * Rootfs authentication fuse
+ */
+#define ROOTFS_AUTH_FUSE	0xA0058
+
+#define OEM_SEC_BOOT_ENABLE	BIT(7)
+
+struct fuse_payload {
+	u32 fuse_addr;
+	u32 lsb_val;
+	u32 msb_val;
+};
+
+#define TME_OEM_ATE_FUSE_START			0x000A00E0
+#define TME_OEM_ATE_FUSE_CNT			0x1
+#define TME_OEM_ATE_FUSE_READ_SIZE		0x8
+
+#define TME_OEM_MRC_HASH_FUSE_START		0x000A00F8
+#define TME_OEM_MRC_HASH_FUSE_CNT		0x7
+#define TME_OEM_MRC_HASH_FUSE_READ_SIZE		0x8
+
+#define TME_AUTH_EN_MASK			0x82
+#define TME_OEM_ID_MSK				0xFFFF0000
+#define TME_PRODUCT_ID_MSK			0x0000FFFF
+#endif /* _IPQ5424_H_ */

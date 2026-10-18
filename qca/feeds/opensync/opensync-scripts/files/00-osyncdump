@@ -1,0 +1,56 @@
+#!/bin/sh
+#
+#
+# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+# SPDX-License-Identifier: ISC
+
+# Read user config options for live minidump
+SERVER=$(fw_printenv serverip | cut -c10-24);
+DUMP_PATH=$(uci get osyncdump.livedump.path);
+TFTP=$(uci get osyncdump.livedump.tftp);
+SAVE_DUMPS=$(uci get osyncdump.livedump.save_dump);
+
+if [ -e /dev/$DEVICENAME ] && [ "$ACTION" = add ]; then
+	mkdir $DUMP_PATH
+	count=$(ls -1 $DUMP_PATH/*.gz | wc -l)
+
+# If number of dumps exceed max count, delete the oldest dumpfile
+	if [ $count -ge $MAX_COUNT ]; then
+		oldest=$(ls -1t $DUMP_PATH/*.gz | tail -1)
+		echo "Deleting file $oldest" > /dev/console
+		rm $oldest
+	fi
+
+# Path to store dumps is prefixed with timestamp
+	timestamp="$(date +"%s")"
+	mkdir $DUMP_PATH/$timestamp
+
+# Compress dump binaries
+	cd $DUMP_PATH
+	chmod 777 -R $timestamp/*
+	rm $timestamp/log.txt
+	tar -czvf osyncdump_$timestamp.tar.gz $timestamp/*
+	rm -rf $timestamp
+
+# If tftp option is enabled, send dumps to tftp server
+	if [ "$TFTP" -eq 1 ]; then
+		if [ ! -n "$SERVER" ]; then
+			printf "%s\n" "Wrong configuaration SERVER = $SERVER" > /dev/console
+			exit 0
+		fi
+
+		printf "%s\n" "Collecting $DEVICENAME dump in $SERVER" > /dev/console
+		$(tftp -l osyncdump_$timestamp.tar.gz -p $SERVER 2>&1)
+		if [ $? -eq 0 ]; then
+			printf "%s\n" "$DEVICENAME dump collected in $SERVER" > /dev/console
+		else
+			printf "%s\n" "$DEVICENAME dump collection failed in $SERVER" > /dev/console
+		fi
+	fi
+
+# If save dump to filesystem option is disabled, delete dump file
+	if [ "$SAVE_DUMPS" -ne 1 ]; then
+		rm osyncdump_$timestamp.tar.gz
+	fi
+	cd-
+fi

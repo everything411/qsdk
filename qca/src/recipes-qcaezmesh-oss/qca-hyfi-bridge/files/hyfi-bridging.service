@@ -1,0 +1,28 @@
+# Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+[Unit]
+Description=Trigger hyfi-bridging service
+Wants=hyfi-bridging.path
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sh -c 'while true; do var=`syscfg get ezmesh.config.Enable`; if [ "$var" == "1" ]; then sleep 10; break; fi; sleep 5; done'
+ExecStartPre=/bin/sh -c 'while true; do if [ ! -f /etc/rdk_extender ] || [ -f /tmp/wifi_initialized ]; then sleep 1; break; fi; sleep 5; done'
+ExecStart=/etc/initscripts/start_hyfi-bridging start
+ExecStartPost=/sbin/rdk_helper.sh eth-hyfi-enable
+ExecStartPost=systemctl restart qca-wsplcd.service
+ExecStartPost=systemctl restart qca-ezmesh.service
+RemainAfterExit=Yes
+StandardOutput=syslog+console

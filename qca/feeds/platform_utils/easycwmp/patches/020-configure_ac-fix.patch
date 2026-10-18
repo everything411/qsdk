@@ -1,0 +1,32 @@
+Author: Ermine Jose J <quic_erminejo@quicinc.com>
+Date:   Tue Jul 9 14:17:07 2024 +0530
+
+    easycwmp: upgrade to 1.8.6 from 1.6.0
+
+    Signed-off-by: Ermine Jose <quic_erminejo@quicinc.com>
+    Change-Id: Ia0e259267e87e39a91f55a1d1828aa5f7f99b7d8
+
+---
+Index: easycwmp-1.8.6/configure.ac
+===================================================================
+--- easycwmp-1.8.6.orig/configure.ac
++++ easycwmp-1.8.6/configure.ac
+@@ -1,5 +1,4 @@
+ AC_INIT([easycwmpd], [1.8.6], [mohamed.kallel@pivasoftware.com])
+-AM_INIT_AUTOMAKE
+ AC_CONFIG_SRCDIR([src/easycwmp.c])
+ 
+ AM_INIT_AUTOMAKE([subdir-objects])
+Index: easycwmp-1.8.6/src/cwmp.h
+===================================================================
+--- easycwmp-1.8.6.orig/src/cwmp.h
++++ easycwmp-1.8.6/src/cwmp.h
+@@ -142,7 +142,7 @@ struct cwmp_internal {
+ };
+ 
+ extern struct cwmp_internal *cwmp;
+-struct event_code event_code_array[__EVENT_MAX];
++extern struct event_code event_code_array[__EVENT_MAX];
+ 
+ static void cwmp_periodic_inform(struct uloop_timeout *timeout);
+ static void cwmp_do_inform(struct uloop_timeout *timeout);

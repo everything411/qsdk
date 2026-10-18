@@ -1,0 +1,127 @@
+#!/bin/sh /etc/rc.common
+#
+# Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+
+configure_al_mr_irq_affinity() {
+
+        [ -f /tmp/sysinfo/board_name ] && {
+                board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+        }
+
+        ppeds_nodes=$(cat /proc/interrupts | grep edma_ppeds_rxfill_ | wc -l)
+        if [ $ppeds_nodes == 0 ]; then
+                echo " No PPEDS interrupts present"
+                echo "  Board Name: $board"
+                return
+        fi
+
+        radio_0=$(cat /proc/interrupts | grep "ppe.*_0" | grep -v "reo" | grep -v "tcl" | grep -v "rxdesc" | cut -d ':' -f 1 | tr -d ' ')
+        radio_1=$(cat /proc/interrupts | grep "ppe.*_1" | grep -v "reo" | grep -v "tcl" | grep -v "rxdesc" | cut -d ':' -f 1 | tr -d ' ')
+        radio_2=$(cat /proc/interrupts | grep "ppe.*_2" | grep -v "reo" | grep -v "tcl" | grep -v "rxdesc" | cut -d ':' -f 1 | tr -d ' ')
+        radio_3=$(cat /proc/interrupts | grep "ppe.*_3" | grep -v "reo" | grep -v "tcl" | grep -v "rxdesc" | cut -d ':' -f 1 | tr -d ' ')
+      	radio_reo_idx=$(cat /proc/interrupts | grep "ppe.*" | grep "reo" | cut -d ':' -f 1 | tr -d ' ')
+        radio_tcl_idx=$(cat /proc/interrupts | grep "ppe.*" | grep "tcl" | cut -d ':' -f 1 | tr -d ' ')
+        radio_rxdesc_idx=$(cat /proc/interrupts | grep "ppe.*" | grep "rxdesc" | cut -d ':' -f 1 | tr -d ' ')
+
+        for i in $radio_0; do
+                echo $1 > /proc/irq/$i/smp_affinity
+        done
+
+        for i in $radio_1; do
+                echo $1 > /proc/irq/$i/smp_affinity
+        done
+
+        for i in $radio_2; do
+                echo $1 > /proc/irq/$i/smp_affinity
+        done
+
+        for i in $radio_3; do
+                echo $1 > /proc/irq/$i/smp_affinity
+        done
+
+        for i in $radio_reo_idx; do
+                echo $2 > /proc/irq/$i/smp_affinity
+        done
+
+        for i in $radio_tcl_idx; do
+            	echo $2 > /proc/irq/$i/smp_affinity
+        done
+
+        for i in $radio_rxdesc_idx; do
+             	echo $2 > /proc/irq/$i/smp_affinity
+        done
+
+        echo "Configured the IRQ affinity for Alder DS mode in $board"
+}
+
+configure_irq_affinity() {
+
+	[ -f /tmp/sysinfo/board_name ] && {
+		board=ap$(cat /tmp/sysinfo/board_name | awk -F 'ap' '{print$2}')
+	}
+
+	ppeds_nodes=$(cat /proc/interrupts | grep edma_ppeds_rxfill_ | wc -l)
+	if [ $ppeds_nodes == 0 ]; then
+		echo " No PPEDS interrupts present"
+		echo "  Board Name: $board"
+		return
+	fi
+
+	radio_0=$(cat /proc/interrupts | grep "ppe.*_0" | cut -d ':' -f 1 | tr -d ' ')
+	radio_1=$(cat /proc/interrupts | grep "ppe.*_1" | cut -d ':' -f 1 | tr -d ' ')
+	radio_2=$(cat /proc/interrupts | grep "ppe.*_2" | cut -d ':' -f 1 | tr -d ' ')
+	radio_3=$(cat /proc/interrupts | grep "ppe.*_3" | cut -d ':' -f 1 | tr -d ' ')
+
+	for i in $radio_0; do
+		echo $1 > /proc/irq/$i/smp_affinity
+	done
+
+	for i in $radio_1; do
+		echo $2 > /proc/irq/$i/smp_affinity
+	done
+
+	for i in $radio_2; do
+		echo $3 > /proc/irq/$i/smp_affinity
+	done
+
+	for i in $radio_3; do
+		echo $4 > /proc/irq/$i/smp_affinity
+	done
+
+	echo "Configured the IRQ affinity for DS mode in $board"
+}
+
+start() {
+	board=$(cat /tmp/sysinfo/board_name)
+	case $board in
+		*'ap-al02-c20'*)
+		configure_irq_affinity 2 2 1 4
+		;;
+		*'ipq5424'*)
+		if [ -f /sys/firmware/devicetree/base/MP_256 ] || [ -f /sys/firmware/devicetree/base/MP_512 ]; then
+			configure_al_mr_irq_affinity 2 4 2 4
+		else
+			configure_irq_affinity 2 4 2 4
+		fi
+		;;
+		*ap-al*)
+		configure_al_mr_irq_affinity 2 4 2 4
+		;;
+		*)
+		configure_irq_affinity 2 4 2 4
+		;;
+	esac
+}

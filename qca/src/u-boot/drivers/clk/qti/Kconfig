@@ -1,0 +1,20 @@
+config CLK_IPQ5332
+	depends on DM && PINCTRL_QTI && TARGET_IPQ5332
+	default y
+	bool "Clock controller driver for QTI IPQ5332"
+	help
+	  Enable this to support the clocks on IPQ5332 SoCs.
+
+config CLK_IPQ9574
+	depends on DM && PINCTRL_QTI && TARGET_IPQ9574
+	default y
+	bool "Clock controller driver for QTI IPQ9574"
+	help
+	  Enable this to support the clocks on QTI IPQ9574 Soc.
+
+config CLK_IPQ5424
+	depends on DM && PINCTRL_QTI && TARGET_IPQ5424
+	default y
+	bool "Clock controller driver for QTI IPQ5424"
+	help
+	  Enable this to support the clocks on IPQ5424 Soc.

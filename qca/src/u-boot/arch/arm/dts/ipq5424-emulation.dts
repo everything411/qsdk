@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+#include "ipq5424-default.dts"
+
+/ {
+	config_name = "config-emulation-fbc";
+
+	aliases {
+		console = &se0_uart0;
+		uart2 = &se1_uart1;
+	};
+
+	soc: soc@0 {
+
+		tlmm: pinctrl@1000000 {
+			pcie0_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_39";
+					drive-strength = <DRIVE_STRENGTH_2MA>;
+					bias-pull-down;
+				};
+			};
+			pcie1_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_40";
+					drive-strength = <DRIVE_STRENGTH_2MA>;
+					bias-pull-down;
+				};
+			};
+			pcie2_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_41";
+					drive-strength = <DRIVE_STRENGTH_2MA>;
+					bias-pull-down;
+				};
+			};
+			pcie3_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_42";
+					drive-strength = <DRIVE_STRENGTH_2MA>;
+					bias-pull-down;
+				};
+			};
+		};
+
+		usb3_0: usb@8af8800 {
+			qti,quirk-ref-clk-per = <0xc804010>;
+			qti,quirk-ref-clk-adj = <0x8c80c8a0>;
+			status = "okay";
+
+			dwc3@8a00000 {
+				phys = <&qusb2_phy_0>, <&qmp_ssphy_0>;
+				phy-names = "usb2-phy", "usb3-phy";
+				maximum-speed = "super-speed";
+			};
+		};
+
+		usb2_0: usb@1ef8800 {
+			qti,quirk-ref-clk-per = <0xc804010>;
+			qti,quirk-ref-clk-adj = <0x8c00c8a0>;
+			status = "okay";
+
+			dwc3@1e00000 {
+				phys = <&qusb2_phy_1>;
+				phy-names = "usb2-phy";
+				maximum-speed = "high-speed";
+			};
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			status = "disabled";
+
+			phy0: phy@0 {
+				id = <1>;
+			};
+
+			phy1: phy@1 {
+				id = <2>;
+			};
+
+			phy2: phy@2 {
+				id = <3>;
+			};
+		};
+
+		ethernet: nss-switch {
+			qti,emulation;
+			pinctrl-names = "default";
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			phy-handle2 = <&phy2>;
+			status = "okay";
+		};
+
+		pcie0: pcie@70000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie0_pinmux>;
+			/delete-property/ phys;
+			/delete-property/ phy-names;
+			max-link-speed = <1>;
+			perst_gpio = <&tlmm 39 GPIO_ACTIVE_HIGH>;
+			status = "disabled";
+		};
+
+		pcie1: pcie@60000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie1_pinmux>;
+			/delete-property/ phys;
+			/delete-property/ phy-names;
+			max-link-speed = <1>;
+			perst_gpio = <&tlmm 40 GPIO_ACTIVE_HIGH>;
+			status = "okay";
+		};
+
+		pcie2: pcie@50000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie2_pinmux>;
+			/delete-property/ phys;
+			/delete-property/ phy-names;
+			max-link-speed = <1>;
+			perst_gpio = <&tlmm 41 GPIO_ACTIVE_HIGH>;
+			status = "disabled";
+		};
+
+		pcie3: pcie@40000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie3_pinmux>;
+			/delete-property/ phys;
+			/delete-property/ phy-names;
+			max-link-speed = <1>;
+			perst_gpio = <&tlmm 42 GPIO_ACTIVE_HIGH>;
+			status = "disabled";
+		};
+	};
+};

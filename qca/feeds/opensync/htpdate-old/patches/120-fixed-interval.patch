@@ -1,0 +1,250 @@
+From: Atchaya R <quic_ratchaya@quicinc.com>
+Date: Fri, 20 Sep 2024 09:59:44 +0530
+Subject: [PATCH] openwrt patches for opensync
+
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+
+Index: htpdate-1.0.4/htpdate.c
+===================================================================
+--- htpdate-1.0.4.orig/htpdate.c
++++ htpdate-1.0.4/htpdate.c
+@@ -66,6 +66,7 @@
+ #define	DEFAULT_PID_FILE		"/var/run/htpdate.pid"
+ #define	URLSIZE					128
+ #define	BUFFERSIZE				1024
++#define PLUME_EPOCH             1451602800      /* 01/01/2016   */
+ 
+ #define sign(x) (x < 0 ? (-1) : 1)
+ 
+@@ -141,7 +142,7 @@ static void printlog( int is_error, char
+ }
+ 
+ 
+-static long getHTTPdate( char *host, char *port, char *proxy, char *proxyport, char *httpversion, int ipversion, int when ) {
++static long getHTTPdate( char *host, char *port, char *proxy, char *proxyport, char *httpversion, int ipversion, int when, int * error ) {
+ 	int					server_s;
+ 	int					rc;
+ 	struct addrinfo		hints, *res, *res0;
+@@ -171,6 +172,8 @@ static long getHTTPdate( char *host, cha
+ 	hints.ai_socktype = SOCK_STREAM;
+ 	hints.ai_flags = AI_CANONNAME;
+ 
++    *error = 0;
++
+ 	if ( proxy == NULL ) {
+ 		rc = getaddrinfo( host, port, &hints, &res0 );
+ 	} else {
+@@ -180,8 +183,10 @@ static long getHTTPdate( char *host, cha
+ 
+ 	/* Was the hostname and service resolvable? */
+ 	if ( rc ) {
+-		printlog( 1, "%s host or service unavailable", host );
+-		return(0);				/* Assume correct time */
++        if ( debug )
++		    printlog( 1, "%s host or service unavailable", host );
++        *error = 1;
++		return(0);
+ 	}
+ 
+ 	/* Build a combined HTTP/1.0 and 1.1 HEAD request
+@@ -213,7 +218,9 @@ static long getHTTPdate( char *host, cha
+ 	freeaddrinfo(res0);
+ 
+ 	if ( rc ) {
+-		printlog( 1, "%s connection failed", host );
++        if ( debug )
++		    printlog( 1, "%s connection failed", host );
++        *error = 1;
+ 		return(0);				/* Assume correct time */
+ 	}
+ 
+@@ -280,8 +287,10 @@ static long getHTTPdate( char *host, cha
+ 
+ 		} else {
+ 			printlog( 1, "%s no timestamp", host );
++            close( server_s );
++            *error = 1;
++            return (0);
+ 		}
+-
+ 	}						/* bytes received */
+ 
+ 	close( server_s );
+@@ -382,6 +391,23 @@ static int htpdate_adjtimex( double drif
+ 
+ }
+ 
++/* check whether current date is in plume epoch */
++static int htpdate_plumeepoch( void ) {
++
++    struct timeval  timeofday;
++    int pepoch = 0;
++
++	if ( gettimeofday(&timeofday, NULL) )
++    {
++        printlog ( 1, "plume epoch" );
++    }
++
++    if ( timeofday.tv_sec > PLUME_EPOCH )
++        pepoch  = 1;
++
++    return pepoch;
++}
++
+ 
+ static void showhelp() {
+ 	puts("htpdate version "VERSION"\n\
+@@ -501,7 +527,12 @@ int main( int argc, char *argv[] ) {
+ 	int					sleeptime = minsleep;
+ 	int					sw_uid = 0, sw_gid = 0;
+ 	time_t				starttime = 0;
+-    int                 initset = 1; /*different set method for init time set*/
++    int                 initset;        /*differ between init time set and adjust*/
++
++    /* set to 1 if daemon debug is needed in interactive mode   */
++    int                 daemonize_dbg;
++    /* distinguish between http error and time stamp == 0       */
++    int                 http_err;
+ 
+ 	struct passwd		*pw;
+ 	struct group		*gr;
+@@ -592,6 +623,7 @@ int main( int argc, char *argv[] ) {
+ 			break;
+ 		case 'D':			/* run as daemon */
+ 			daemonize = 1;
++			daemonize_dbg = 1;
+ 			logmode = 1;
+ 			break;
+ 		case 'M':			/* maximum poll interval */
+@@ -659,9 +691,19 @@ int main( int argc, char *argv[] ) {
+ 		nap = 500000;
+ 	}
+ 
++    /* check if this is initial time sync (time is around 01/01/1970)
++     * or current date / time is after plume epoch (01/01/2016)
++     * In that case we probably need just time adjust
++     */
++    initset = htpdate_plumeepoch() ? 0 : 1;  
++
++
+ 	/* Infinite poll cycle loop in daemonize mode */
+ 	do {
+ 
++    if ( debug )
++        printlog (0, "-----------------------");
++
+ 	/* Initialize number of received valid timestamps, good timestamps
+ 	   and the average of the good timestamps
+ 	*/
+@@ -679,6 +721,9 @@ int main( int argc, char *argv[] ) {
+ 		port = DEFAULT_HTTP_PORT;
+ 		splithostport( &host, &port );
+ 
++        if ( debug )
++            printlog (0, "Trying host %s, port %d", host, port);
++
+ 		/* if burst mode, reset "when" */
+ 		if ( burstmode ) {
+ 			if ( precision )
+@@ -694,19 +739,20 @@ int main( int argc, char *argv[] ) {
+ 			do {
+ 				if ( debug ) printlog( 0, "burst: %d try: %d when: %d", \
+ 					burst + 1, MAX_ATTEMPT - try + 1, when );
++                http_err = 0;
+ 				timestamp = getHTTPdate( host, port, proxy, proxyport,\
+-						httpversion, ipversion, when );
++						httpversion, ipversion, when, &http_err );
+ 				try--;
+-			} while ( timestamp && try );
++			} while ( timestamp && try && !http_err );
+ 
+ 			/* Only include valid responses in timedelta[] */
+-			if ( timestamp < timelimit && timestamp > -timelimit ) {
++			if ( timestamp < timelimit && timestamp > -timelimit && !http_err ) {
+ 				timedelta[validtimes] = timestamp;
+ 				validtimes++;
+ 			}
+ 
+ 			/* If we detected a time offset, set the flag */
+-			if ( timestamp )
++			if ( timestamp && !http_err )
+ 				offsetdetect = 1;
+ 
+ 			/* Take a nap, to spread polls equally within a second.
+@@ -725,8 +771,11 @@ int main( int argc, char *argv[] ) {
+ 		} while ( burst < (argc - optind) * burstmode );
+ 
+ 		/* Sleep for a while, unless we detected a time offset */
+-		if ( daemonize && !offsetdetect )
++		if ( daemonize_dbg && !offsetdetect ) {
++            if ( debug )
++                printlog( 0, "Sleeping (1): %d", sleeptime / numservers );
+ 			sleep( sleeptime / numservers );
++        }
+ 
+ 	}
+ 
+@@ -747,6 +796,9 @@ int main( int argc, char *argv[] ) {
+ 		}
+ 	}
+ 
++    if ( debug )
++        printlog ( 0, "gootimes %d", goodtimes );
++
+ 	/* Check if we have at least one valid response */
+ 	if ( goodtimes ) {
+ 
+@@ -759,7 +811,7 @@ int main( int argc, char *argv[] ) {
+ 		}
+ 
+ 		/* Do I really need to change the time?  */
+-		if ( sumtimes || !daemonize ) {
++		if ( sumtimes || !daemonize_dbg ) {
+ 			/* If a precision was specified and the time offset is small
+ 			   (< +-1 second), adjust the time with the value of precision
+ 			*/
+@@ -780,7 +832,7 @@ int main( int argc, char *argv[] ) {
+ 			/* Drop root privileges again */
+ 			if ( sw_uid ) seteuid( sw_uid );
+ 
+-			if ( daemonize ) {
++			if ( daemonize_dbg ) {
+ 				if ( starttime ) {
+ 					/* Calculate systematic clock drift */
+ 					drift = timeavg / ( time(NULL) - starttime );
+@@ -805,19 +857,22 @@ int main( int argc, char *argv[] ) {
+ 				sleeptime = minsleep;
+ 
+ 				/* Sleep for 30 minutes after a time adjust or set */
++                printlog( 0, "Sleeping (2) %d", DEFAULT_MIN_SLEEP );
+ 				sleep( DEFAULT_MIN_SLEEP );
+ 			}
+ 		} else {
+-			/* Increase polling interval */
+-			if ( sleeptime < maxsleep )
+-				sleeptime <<= 1;
++            /* sleep max pooling interval */
++            printlog( 0, "Sleeping (3) %d", maxsleep );
++            sleep( maxsleep );
+ 		}
+ 
+ 	} else {
+ 		printlog( 1, "No server suitable for synchronization found" );
+ 		/* Sleep for minsleep to avoid flooding */
+-		if ( daemonize )
++		if ( daemonize_dbg ) {
++            printlog( 0, "Sleeping (4) %d", minsleep );
+ 			sleep( minsleep );
++        }
+ 		else
+ 			exit(1);
+ 	}
+@@ -827,7 +882,7 @@ int main( int argc, char *argv[] ) {
+ 		setmode = 1;
+ 	}
+ 
+-	} while ( daemonize );		/* end of infinite while loop */
++	} while ( daemonize_dbg );		/* end of infinite while loop */
+ 
+ 	exit(0);
+ }

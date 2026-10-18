@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+# /etc/initscripts/start_hyfi-bridging
+start() {
+#		/etc/initscripts/start_emesh-sp start
+		if lsmod | grep -wq "hyfi_bridging"; then
+			rmmod /lib/modules/$(uname -r)/kernel/drivers/qca-hyfi-bridge/hyfi-bridging.ko
+		fi
+		insmod /lib/modules/$(uname -r)/kernel/drivers/qca-hyfi-bridge/hyfi-bridging.ko
+		if [  -f /tmp/wifi_initialized ];then
+			hyctl attach brlan0
+		fi
+#		/etc/init.d/repacd repacd_set_map_dpp_config
+#		/etc/init.d/hyfi-bridging start
+}
+
+stop() {
+#		/etc/init.d/hyfi-bridging stop
+		hyctl detach brlan0
+		rmmod /lib/modules/$(uname -r)/kernel/drivers/qca-hyfi-bridge/hyfi-bridging.ko
+#		/etc/initscripts/start_emesh-sp stop
+}
+
+case "$1" in
+  start)
+        start
+        ;;
+  stop)
+       stop
+       ;;
+  *)
+    echo "Usage : /etc/initscripts/start_hyfi-bridging start|stop"
+    ;;
+esac
+
+exit 0

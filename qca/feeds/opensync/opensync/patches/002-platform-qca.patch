@@ -1,0 +1,374 @@
+Author: Deepak kumar <quic_deepaku@quicinc.com>
+Date: Tue Nov 19 13:37:15 2024
+
+    opensync: core layer changes and addition of miami sku
+
+Signed-off-by: Deepak kumar <quic_deepaku@quicinc.com>
+diff --git a/src/platform/qca/kconfig/targets/base_qca_spf_12.x_miami b/src/platform/qca/kconfig/targets/base_qca_spf_12.x_miami
+new file mode 100644
+index 0000000..c75aac7
+--- /dev/null
++++ b/src/platform/qca/kconfig/targets/base_qca_spf_12.x_miami
+@@ -0,0 +1,4 @@
++#
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++# SPDX-License-Identifier: ISC
++@include "base_qca_spf_12.x"
+diff --git a/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/log_archive.sh b/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/log_archive.sh
+new file mode 100755
+index 0000000..f033829
+--- /dev/null
++++ b/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/log_archive.sh
+@@ -0,0 +1,18 @@
++#!/bin/sh
++#
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++# SPDX-License-Identifier: ISC
++# Collect QCA info
++#
++. "$LOGPULL_LIB"
++
++collect_log_archive()
++{
++    collect_dir ${CONFIG_FM_BT_PATH}
++    collect_dir ${CONFIG_FM_LOG_FLASH_ARCHIVE_PATH}/${CONFIG_FM_CRASH_LOG_DIR}
++    collect_dir ${CONFIG_FM_LOG_FLASH_ARCHIVE_PATH}/${CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY}
++    collect_dir ${CONFIG_FM_LOG_RAM_ARCHIVE_PATH}/${CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY}
++
++}
++
++collect_log_archive
+diff --git a/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/qca.sh b/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/qca.sh
+index 7687b51..d6ea283 100644
+--- a/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/qca.sh
++++ b/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/qca.sh
+@@ -70,7 +70,7 @@ collect_qcawl()
+ 
+ collect_acceleration()
+ {
+-    [ -e /sys/kernel/debug/ecm/ecm_nss_ipv4 ] && collect_cmd ecm_dump.sh
++    [ -e /sys/kernel/debug/ecm/ecm_nss_ipv4 -o -e /sys/kernel/debug/ecm/ecm_ppe_ipv4 ] && collect_cmd ecm_dump.sh
+     [ -e /sys/kernel/debug/ecm/ecm_sfe_ipv4 ] && collect_cmd sfe_dump
+ }
+ 
+diff --git a/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/start.d/30_log_dirs.sh b/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/start.d/30_log_dirs.sh
+new file mode 100644
+index 0000000..f99b7d7
+--- /dev/null
++++ b/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/start.d/30_log_dirs.sh
+@@ -0,0 +1,12 @@
++#!/bin/sh
++
++#
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++# SPDX-License-Identifier: ISC
++# setup logging directories
++
++mkdir -p ${CONFIG_FM_LOG_FLASH_ARCHIVE_PATH}/${CONFIG_FM_CRASH_LOG_DIR}
++mkdir -p ${CONFIG_FM_LOG_FLASH_ARCHIVE_PATH}/${CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY}
++mkdir -p ${CONFIG_FM_LOG_RAM_ARCHIVE_PATH}/${CONFIG_FM_LOG_ARCHIVE_SUBDIRECTORY}
++mkdir -p ${CONFIG_FM_BT_PATH}
++
+diff --git a/src/platform/qca/rootfs/common/etc/sysctl.conf b/src/platform/qca/rootfs/common/etc/sysctl.conf
+new file mode 100644
+index 0000000..1ccb582
+--- /dev/null
++++ b/src/platform/qca/rootfs/common/etc/sysctl.conf
+@@ -0,0 +1,37 @@
++#
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++# SPDX-License-Identifier: ISC
++kernel.panic=3
++net.ipv4.conf.default.arp_ignore=1
++net.ipv4.conf.all.arp_ignore=1
++net.ipv4.conf.default.accept_redirects = 0
++net.ipv4.conf.all.accept_redirects = 0
++net.ipv4.conf.default.secure_redirects = 0
++net.ipv4.conf.all.secure_redirects = 0
++net.ipv4.conf.default.accept_source_route = 0
++net.ipv4.conf.all.accept_source_route = 0
++net.ipv4.ip_forward=1
++net.ipv4.icmp_echo_ignore_broadcasts=1
++net.ipv4.icmp_ignore_bogus_error_responses=1
++net.ipv4.igmp_max_memberships=100
++net.ipv4.tcp_ecn=0
++net.ipv4.tcp_fin_timeout=30
++net.ipv4.tcp_keepalive_time=120
++net.ipv4.tcp_syncookies=1
++net.ipv4.tcp_timestamps=1
++net.ipv4.tcp_sack=1
++net.ipv4.tcp_dsack=1
++
++net.ipv6.conf.default.forwarding=1
++net.ipv6.conf.all.forwarding=1
++net.ipv6.conf.all.accept_redirects=0
++net.ipv6.conf.default.accept_redirects=0
++
++net.netfilter.nf_conntrack_acct=1
++net.netfilter.nf_conntrack_checksum=0
++net.netfilter.nf_conntrack_max=16384
++net.netfilter.nf_conntrack_tcp_timeout_established=7440
++net.netfilter.nf_conntrack_udp_timeout=30
++net.netfilter.nf_conntrack_udp_timeout_stream=600
++net.netfilter.nf_conntrack_helper=1
++
+diff --git a/src/platform/qca/rootfs/kconfig/PLATFORM_QCA_QSDK120/INSTALL_PREFIX/scripts/logpull/collect/wifistats.sh b/src/platform/qca/rootfs/kconfig/PLATFORM_QCA_QSDK120/INSTALL_PREFIX/scripts/logpull/collect/wifistats.sh
+new file mode 100755
+index 0000000..18d4541
+--- /dev/null
++++ b/src/platform/qca/rootfs/kconfig/PLATFORM_QCA_QSDK120/INSTALL_PREFIX/scripts/logpull/collect/wifistats.sh
+@@ -0,0 +1,36 @@
++#!/bin/sh
++#
++#
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
++# SPDX-License-Identifier: ISC
++# Collect QCA info
++#
++. "$LOGPULL_LIB"
++
++collect_qca_wifistats()
++{
++    for radio in $(cat /proc/net/wireless | grep -o wifi.)
++    do
++        # various wlan stats
++        # wifistats wifiX 1: Transmit Stats
++        # wifistats wifiX 2: Receive Stats
++        # wifistats wifiX 3: Transmit HardwareQ Stats
++        # wifistats wifiX 5: Error Stats / HW WAR stats
++        # wifistats wifiX 6: TQM Stats (PDEV level)
++        # wifistats wifiX 8: Transmit DE Stats
++        # wifistats wifiX 9: Transmit Rate Stats
++        # wifistats wifiX 9 1: 11be DL OFDMA Rate Stats
++        # wifistats wifiX 10: Receive Rate Stats
++        # wifistats wifiX 12: Transmit Selfgen Stats
++        # wifistats wifiX 19: CCA Stats
++        # wifistats wifiX 26: RX 11ax UL OFDMA
++        # wifistats wifiX 26 1: RX 11be UL OFDMA
++        # wifistats wifiX 40: PER stats
++        # wifistats wifiX 41: AST entries
++        for arg in 1 2 3 5 6 8 9 '9 1' 10 12 19 26 '26 1' 40 41; do
++            collect_cmd wifistats $radio $arg
++        done
++    done
++}
++
++collect_qca_wifistats
+diff --git a/src/platform/qca/rootfs/kconfig/PLATFORM_QCA_QSDK120/ini/global.ini b/src/platform/qca/rootfs/kconfig/PLATFORM_QCA_QSDK120/ini/global.ini
+index cd697e4..d8f64dd 100644
+--- a/src/platform/qca/rootfs/kconfig/PLATFORM_QCA_QSDK120/ini/global.ini
++++ b/src/platform/qca/rootfs/kconfig/PLATFORM_QCA_QSDK120/ini/global.ini
+@@ -111,7 +111,7 @@ sa_validate_sw=0
+ # NSS Offload Configuration
+ nss_wifi_ol_skip_nw_process=0
+ nss_wifi_nxthop_cfg=0
+-nss_wifi_olcfg=0
++nss_wifi_olcfg=0x00
+ nss_wifili_olcfg=0x00
+ 
+ # PPEDS per WLAN SoC configuration
+@@ -128,11 +128,14 @@ r_twt_enable=0
+ # MBSS IE config
+ mbss_ie_enable=0
+ 
++# Disable Cohosted BSS support
++cohosted_bss_ind_enable=0
++
+ # PEER extended rate stats enable
+ enable_peer_extended_rate_stats=1
+ 
+ # PEER extended link stats enable
+-enable_peer_extended_link_stats=1
++enable_peer_extended_link_stats=0
+ 
+ # Enable SNR monitoring
+ gEnableSNRMonitoring=1
+@@ -180,7 +183,7 @@ rnr_selective_nontx_add=1
+ externalacs_enable=0
+ 
+ # Enable NSS Wi-Fi radio scheme
+-nss_wifi_radio_scheme_enable=1
++nss_wifi_radio_scheme_enable=0
+ 
+ # Enable carrier_vow_optimization
+ carrier_vow_optimization=0
+@@ -199,6 +202,10 @@ mgmt_rx_reo_pkt_ctr_delta_thresh=0
+ # initiating the Tx.
+ scan_radio_tx_on_dfs_channels=0
+ 
++# Enable retaining NOL across driver load by saving
++# the NOL list in persistent memory
++dfs_retain_nol_across_driver_reload=0
++
+ # Enable special vap stats reset
+ reset_spcl_vap_stats_enable=0
+ 
+@@ -241,12 +248,37 @@ allow_non_t2lm_sta_assoc=1
+ # value 0 - MLO advertisement degradation on CAC is disable
+ # value 1 - MLO advertisement degradation on CAC is enable
+ enable_mloadvert_degrade_on_cac=0
++
++#Buffer time to check if umac reset was in progress during this window,
++#configured time is in milliseconds
++umac_reset_buffer_window=1000
++
+ #Support for link add for client
+ #value 0: link add is disabled
+ #value 1: link add is enabled
+ mlme_mlo_reconfig_reassoc_enable=0
+ # Enable non MLO 11be AP operation
++# Changed for Opensync
+ non_mlo_11be_ap_operation_enable=1
++
++#Average Rate filter for stats
++#value 0 : Disabled
++dp_stats_avg_rate_filter_val=0
++
++#Transport mechanism for Spectral data buffers
++#value 0: Netlink
++#value 1: Streamfs
++spectral_data_transport_mechanism=0
++
++#Enable Composite AP
++#value 1: Enabled
++dot11_extended_reginfo_support=1
++
++#cfg80211 compliance mode support
++enable_cfg80211_compliance=0x0000
++
++#advertise maximum capability in the IEs
++advertise_max_cap_in_ies=1
++
++# Enable WPS for 6GHz AP VAPs
+ ema_ap_support_wps_in_6ghz=1
+-wds_ext=1
+-dp_rx_hash=1
+\ No newline at end of file
+diff --git a/src/platform/qca/src/lib/bsal/src/bsal_qca10_2_4_csu3_11ax.c b/src/platform/qca/src/lib/bsal/src/bsal_qca10_2_4_csu3_11ax.c
+index a954e56..f69b6f3 100644
+--- a/src/platform/qca/src/lib/bsal/src/bsal_qca10_2_4_csu3_11ax.c
++++ b/src/platform/qca/src/lib/bsal/src/bsal_qca10_2_4_csu3_11ax.c
+@@ -73,7 +73,7 @@ typedef enum {
+ } IEEE80211_STA_BAND;
+ 
+ /***************************************************************************************/
+-struct socket_context sock_ctx;
++extern struct socket_context sock_ctx;
+ #define LIST_STATION_CFG_ALLOC_SIZE 3*1024
+ #include "osync_nl80211_11ax.h"
+ 
+diff --git a/src/platform/qca/src/lib/hw_acc/src/hw_acc.c b/src/platform/qca/src/lib/hw_acc/src/hw_acc.c
+index e90292e..6cf9b82 100644
+--- a/src/platform/qca/src/lib/hw_acc/src/hw_acc.c
++++ b/src/platform/qca/src/lib/hw_acc/src/hw_acc.c
+@@ -36,6 +36,12 @@ bool hw_acc_flush_flow_per_mac(const char *mac)
+ 
+ bool hw_acc_flush_all_flows(void)
+ {
++    if (file_put(CONFIG_QCA_HW_ACC_FILE_PATH, "ALL") == -1)
++    {
++        LOGE("hw_acc: failed to flush all flows");
++        return false;
++    }
++    LOGD("hw_acc: flushed all flows");
+     return true;
+ }
+ 
+diff --git a/src/platform/qca/src/lib/ioctl80211/inc/osync_nl80211_11ax.h b/src/platform/qca/src/lib/ioctl80211/inc/osync_nl80211_11ax.h
+index 030fe7a..d90fdb8 100755
+--- a/src/platform/qca/src/lib/ioctl80211/inc/osync_nl80211_11ax.h
++++ b/src/platform/qca/src/lib/ioctl80211/inc/osync_nl80211_11ax.h
+@@ -1666,7 +1666,7 @@ static void bss_info_handler(struct cfg80211_data *buffer)
+     const size_t src_size = buffer->length;
+ 
+     if (src_size == 0) {
+-        LOG(ERR, "%s:  src_size is %d", __func__, src_size);
++        LOG(ERR, "%s:  src_size is %zu", __func__, src_size);
+         return;
+     }
+ 
+diff --git a/src/platform/qca/src/lib/osw/src/osw_plat_qsdk11_4.c b/src/platform/qca/src/lib/osw/src/osw_plat_qsdk11_4.c
+index 8ddc501..213ceb1 100644
+--- a/src/platform/qca/src/lib/osw/src/osw_plat_qsdk11_4.c
++++ b/src/platform/qca/src/lib/osw/src/osw_plat_qsdk11_4.c
+@@ -1842,7 +1842,9 @@ osw_plat_qsdk11_4_pre_request_config_vif_ap(struct osw_plat_qsdk11_4 *m,
+         osw_plat_qsdk11_4_phy_apply_mbss_tx_vif_name(m, phy_conf, vif, vif_name);
+     }
+ 
+-    osw_plat_qsdk11_4_vif_set_coex(vif, nl, &ap_conf->channel);
++    if (ap_conf->channel_changed) {
++        osw_plat_qsdk11_4_vif_set_coex(vif, nl, &ap_conf->channel);
++    }
+ }
+ 
+ static void
+@@ -2332,7 +2334,16 @@ osw_plat_qsdk11_4_put_survey(struct osw_plat_qsdk11_4 *m,
+     const uint32_t busy = osw_plat_qsdk11_4_cycle_to_msec(m, cs->clear_cnt);
+     const float noise = cs->chan_nf;
+ 
+-    LOGT(LOG_PREFIX_PHY(phy_name, "stats: survey:"
++    int level;
++    level = LOG_SEVERITY_TRACE;
++    if (tx > active || rx > active || inbss > active || busy > active) {
++        level = LOG_SEVERITY_WARN;
++    }
++    if (tx > busy || rx > busy || inbss > busy) {
++        level = LOG_SEVERITY_WARN;
++    }
++
++    mlog(level, MODULE_ID, LOG_PREFIX_PHY(phy_name, "stats: survey:"
+                         " freq=%"PRIu32" MHz"
+                         " nf=%"PRId16" dB"
+                         " total=%"PRIu32
+@@ -4252,7 +4263,7 @@ osw_plat_qsdk11_4_event_vendor(struct osw_plat_qsdk11_4 *m,
+ 
+     if (id != QCA_NL80211_VENDOR_ID) return;
+ 
+-    LOGT(LOG_PREFIX_VIF(phy_name, vif_name, "event: vendor: cmd=%u data_len=%zu",
++    LOGT(LOG_PREFIX_VIF(phy_name, vif_name, "event: vendor: cmd=%u data_len=%u",
+                         subcmd,
+                         nla_vendor_data ? nla_len(nla_vendor_data) : 0));
+ 
+diff --git a/src/platform/qca/src/lib/osw/src/osw_plat_qsdk_nl80211_msg.c.h b/src/platform/qca/src/lib/osw/src/osw_plat_qsdk_nl80211_msg.c.h
+index cfb0ef5..31aa6c7 100644
+--- a/src/platform/qca/src/lib/osw/src/osw_plat_qsdk_nl80211_msg.c.h
++++ b/src/platform/qca/src/lib/osw/src/osw_plat_qsdk_nl80211_msg.c.h
+@@ -203,11 +203,11 @@ static struct nl_msg *osw_plat_qsdk_nl80211_msg_exttool_csa(
+                                                         : OSW_PLAT_QSDK_WIFI_SEC_CHAN_OFFSET_NA;
+ 
+     data.cmd = EXTENDED_SUBIOCTL_CHANNEL_SWITCH;
+-    data.ext_data.channel_switch_req.target_chanwidth = osw_plat_qsdk_wifi_oper_width_from_width(c->width);
++    data.ext_data.channel_switch_req.target_chanwidth = (wifi_operating_chanwidth_t)osw_plat_qsdk_wifi_oper_width_from_width(c->width);
+     data.ext_data.channel_switch_req.band = osw_plat_qsdk_wifi_band_from_band(band);
+     data.ext_data.channel_switch_req.target_pchannel = chan;
+     data.ext_data.channel_switch_req.target_cfreq2 = chan2;
+-    data.ext_data.channel_switch_req.sec_chan_offset = offset;
++    data.ext_data.channel_switch_req.sec_chan_offset = (wifi_sec_chan_offset_t)offset;
+     data.ext_data.channel_switch_req.num_csa = 15;
+     data.ext_data.channel_switch_req.force = 0;
+     /* FIXME: Ifdefs are bad because they aren't necessarily
+diff --git a/src/platform/qca/src/lib/target/wiphy_info_11ax.c b/src/platform/qca/src/lib/target/wiphy_info_11ax.c
+index d2ac6b3..16fa35f 100644
+--- a/src/platform/qca/src/lib/target/wiphy_info_11ax.c
++++ b/src/platform/qca/src/lib/target/wiphy_info_11ax.c
+@@ -56,6 +56,8 @@ static const struct {
+     { 0, 0, "qcom,cnss-qca6018", "qca6018", "Cypress" },
+     { 0, 0, "qcom,cnss-qca9574", "qca9574", "Alder" },
+     { 0, 0, "qcom,cnss-qcn6122", "qcn6122", "Spruce" },
++    { 0, 0, "qcom,cnss-qca5332", "qca5332", "Miami" },
++    { 0, 0, "qcom,cnss-qcn6432", "qcn6432", "Pebble" },
+ };
+ 
+ /* runtime data */
+@@ -401,7 +403,10 @@ wiphy_info_init_ifname(const char *ifname)
+         !strcmp(info->chip, "qcn6122") ||
+         !strcmp(info->chip, "qca9574")) {
+         info->mode = "11ax";
+-    } else if (!strcmp(info->chip, "qcn9224")) {
++    } else if (!strcmp(info->chip, "qcn9224") ||
++               !strcmp(info->chip, "qca5332") ||
++               !strcmp(info->chip, "qcn6432")
++    ) {
+         info->mode = "11be";
+     }
+     else {

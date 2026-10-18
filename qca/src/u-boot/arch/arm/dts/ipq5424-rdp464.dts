@@ -1,0 +1,265 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+#include "ipq5424-default.dts"
+
+/ {
+	config_name = "config-rdp464";
+
+	soc: soc@0 {
+		tlmm: pinctrl@1000000 {
+			mdio_pinmux: mdio {
+				mdc {
+					pins = "GPIO_22";
+					function = "mdc";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				mdio {
+					pins = "GPIO_23";
+					function = "mdio";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			phy_rst_pinmux: phy_rst {
+				qti_laguna0_rst {
+					pins = "GPIO_36";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qti_laguna1_rst {
+					pins = "GPIO_37";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qti_8x8x_rst {
+					pins = "GPIO_18";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			i2c0_pinmux: i2c0 {
+				i2c0_scl {
+					pins = "GPIO_14";
+					function = "i2c0_scl";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				i2c0_sda {
+					pins = "GPIO_15";
+					function = "i2c0_sda";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+			};
+
+			i2c1_pinmux: i2c1 {
+				i2c1_scl {
+					pins = "GPIO_16";
+					function = "i2c1_scl";
+					drive-strength = <DRIVE_STRENGTH_2MA>;
+					bias-pull-down;
+				};
+
+				i2c1_sda {
+					pins = "GPIO_17";
+					function = "i2c1_sda";
+					drive-strength = <DRIVE_STRENGTH_2MA>;
+					bias-pull-down;
+				};
+			};
+
+			i2c2_pinmux: i2c2_pins {
+				i2c2_sda {
+					pins = "GPIO_47";
+					function = "i2c2_sda";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				i2c2_scl {
+					pins = "GPIO_48";
+					function = "i2c2_scl";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+		};
+
+		qupv3: geniqup@1ac0000 {
+			se2_i2c0: i2c@1a88000 {
+				pinctrl-0 = <&i2c0_pinmux>;
+				pinctrl-names = "default";
+				status = "okay";
+			};
+
+			se3_i2c1: i2c@1a8c000 {
+				pinctrl-0 = <&i2c1_pinmux>;
+				pinctrl-names = "default";
+				status = "okay";
+			};
+
+			se5: se5@1a94000 {
+				compatible = "qcom,msm-geni-i2c";
+				pinctrl-0 = <&i2c2_pinmux>;
+				pinctrl-names = "default";
+				status = "okay";
+			};
+		};
+
+		qmp_ssphy_0: ssphy@7D000 {
+			status = "okay";
+		};
+
+		qusb2_phy_0: qusb2@7B000 {
+			status = "okay";
+		};
+
+		usb3_0: usb@8af8800 {
+			status = "okay";
+		};
+
+		qusb2_phy_1: qusb2@71000 {
+			status = "okay";
+		};
+
+		usb2_0: usb@1ef8800 {
+			status = "okay";
+		};
+
+		pcie0_phy: phy@84000 {
+			status = "okay";
+		};
+
+		pcie0: pcie@70000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie0_pinmux>;
+			perst_gpio = <&tlmm 25 GPIO_ACTIVE_HIGH>;
+			status = "okay";
+		};
+
+		pcie1_phy: phy@8c000 {
+			status = "okay";
+		};
+
+		pcie1: pcie@60000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie1_pinmux>;
+			perst_gpio = <&tlmm 28 GPIO_ACTIVE_HIGH>;
+			status = "okay";
+		};
+
+		pcie2_phy: phy@f4000 {
+			status = "okay";
+		};
+
+		pcie2: pcie@50000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie2_pinmux>;
+			perst_gpio = <&tlmm 31 GPIO_ACTIVE_HIGH>;
+			status = "okay";
+		};
+
+		pcie3_phy: phy@fc000 {
+			status = "okay";
+		};
+
+		pcie3: pcie@40000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie3_pinmux>;
+			perst_gpio = <&tlmm 34 GPIO_ACTIVE_HIGH>;
+			status = "okay";
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&mdio_pinmux>;
+			status = "okay";
+
+			phy0: phy@8 {
+				phy-reset-gpio = <&tlmm 36 0>;
+				reg = <8>;
+				phy_id = <QCA81xx_PHY_TYPE>;
+				id = <1>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+				xgmac;
+			};
+
+			phy1: phy@12 {
+				phy-reset-gpio = <&tlmm 37 0>;
+				reg = <12>;
+				phy_id = <QCA81xx_PHY_TYPE>;
+				id = <2>;
+				uniphy_id = <1>;
+				uniphy_type = <0>;
+				xgmac;
+			};
+
+			phy2: ethernet-switch@1 {
+				phy-reset-gpio = <&tlmm 18 0>;
+				dev-mode = <0x1>;
+				reg = <1>;
+				phy_id = <QCA8x8x_SWITCH_TYPE>;
+				id = <3>;
+				uniphy_id = <2>;
+				uniphy_type = <0>;
+				max_speed = <2500>;
+				force-speed;
+				xgmac;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port0: port@0 {
+						reg = <0>;
+						label = "cpu";
+						phy-mode = "sgmii-2500";
+						fixed-link {
+							speed = <2500>;
+							full-duplex;
+						};
+					};
+
+					port1: port@1 {
+						reg = <1>;
+						label = "lan";
+					};
+
+					port2: port@2 {
+						reg = <2>;
+						label = "lan";
+					};
+
+					port3: port@3 {
+						reg = <3>;
+						label = "lan";
+					};
+
+					port4: port@4 {
+						reg = <4>;
+						label = "lan";
+					};
+				};
+			};
+		};
+
+		ethernet: nss-switch {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			phy-handle2 = <&phy2>;
+			status = "okay";
+		};
+	};
+};

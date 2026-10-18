@@ -1,0 +1,15 @@
+diff --git a/include/headers.h b/include/headers.h
+index 4667bfe..7e5efd7 100644
+--- a/include/headers.h
++++ b/include/headers.h
+@@ -82,7 +82,6 @@
+ #include <errno.h>
+ #include <string.h>
+ #include <time.h>
+-#include <math.h>
+
+ #ifdef WIN32
+
+--
+2.7.4
+

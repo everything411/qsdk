@@ -1,0 +1,82 @@
+/*
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#ifndef __NSS_PPE_GRE_PRIV_H_
+#define __NSS_PPE_GRE_PRIV_H_
+
+/*
+ * NSS gre interface debug macros
+ */
+#if (NSS_PPE_GRE_DEBUG_LEVEL < 1)
+#define nss_ppe_gre_assert(fmt, args...)
+#else
+#define nss_ppe_gre_assert(c) if (!(c)) { BUG_ON(!(c)); }
+#endif
+
+/*
+ * Compile messages for dynamic enable/disable
+ */
+#if defined(CONFIG_DYNAMIC_DEBUG)
+#define nss_ppe_gre_warning(s, ...) pr_debug("%s[%d]:" s, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#define nss_ppe_gre_info(s, ...) pr_debug("%s[%d]:" s, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#define nss_ppe_gre_trace(s, ...) pr_debug("%s[%d]:" s, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#else /* CONFIG_DYNAMIC_DEBUG */
+/*
+ * Statically compile messages at different levels
+ */
+#if (NSS_PPE_GRE_DEBUG_LEVEL < 2)
+#define nss_ppe_gre_warning(s, ...)
+#else
+#define nss_ppe_gre_warning(s, ...) pr_warn("%s[%d]:" s, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#endif
+
+#if (NSS_PPE_GRE_DEBUG_LEVEL < 3)
+#define nss_ppe_gre_info(s, ...)
+#else
+#define nss_ppe_gre_info(s, ...)   pr_notice("%s[%d]:" s, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#endif
+
+#if (NSS_PPE_GRE_DEBUG_LEVEL < 4)
+#define nss_ppe_gre_trace(s, ...)
+#else
+#define nss_ppe_gre_trace(s, ...)  pr_info("%s[%d]:" s, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#endif
+#endif /* CONFIG_DYNAMIC_DEBUG */
+
+/*
+ * nss_ppe_gre_stats
+ *	GRE client statistics.
+ */
+struct nss_ppe_gre_stats {
+	atomic64_t iflag_seq_err;		/* Sequence number enabled in iflag */
+	atomic64_t oflag_seq_err;		/* Sequence number enabled in oflag */
+	atomic64_t enc_lim_err;			/* Encap limit not set for v6 tunnel */
+	atomic64_t gretun_src_excep_drop_count; /* GRETUN source exception drop counter */
+	atomic64_t gretap_src_excep_drop_count;	/* GRETAP source exception drop counter */
+	atomic64_t gretun_key_flag_failure;	/* GRETUN key flag set failure */
+	atomic64_t gretun_csum_flag_failure;	/* GRETUN csum flag set failure */
+};
+
+/*
+ * nss_ppe_gre_ctx
+ *	Global gre client context.
+ */
+struct nss_ppe_gre_ctx {
+	struct nss_ppe_gre_stats stats;		/* GRE client statistics */
+	struct dentry *dentry;			/* Root dentry for GRE client */
+};
+
+#endif /* __NSS_PPE_GRE_PRIV_H_ */

@@ -1,0 +1,76 @@
+commit 00d7221deac04e438874ce80ea20cfac5787b5a8 (HEAD)
+Author: Ken Zhu <quic_guigenz@quicinc.com>
+Date:   Wed Feb 12 11:14:30 2025 -0800
+
+    rstp: add support to dsa switch
+
+    dsa switch need set up reserved fdb entry only, no acl rule or
+    atheros header is needed any more.
+
+    Change-Id: I527170e2ae05a52d01dcc665caaee837dc034a5c
+    Signed-off-by: Ken Zhu <quic_guigenz@quicinc.com>
+
+diff -Nur a/qca_switch.c b/qca_switch.c
+--- a/qca_switch.c	2025-02-12 10:59:37.274421944 -0800
++++ b/qca_switch.c	2025-02-12 11:29:34.320088703 -0800
+@@ -382,6 +382,7 @@
+ {
+ 	char cmd[128];
+ 	char result[128];
++	int result_len;
+ 
+ 	snprintf(cmd, sizeof(cmd), "%s get_cpu_mirror_port", RSTP_CMD_PATH);
+ 	if(run_cmd(cmd, result, sizeof(result)) <= 0)
+@@ -390,6 +391,15 @@
+ 	if(sscanf(result, "%d:%d %d:%d", &cpu_port.port, &cpu_port.sw_mk_hd, &mirrot_port.port, &mirrot_port.sw_mk_hd) <= 0)
+ 		return -1;
+ 
++	/*add a reserved fdb entry to capture bpdu on switch, then redirect it to Linux*/
++	sw_uk_exec(SW_API_FDB_RESV_ADD, qca_switch_get_switch_id(), (a_uintptr_t)&resv_entry);
++
++	snprintf(cmd, sizeof(cmd), "%s get_switch_mode", RSTP_CMD_PATH);
++	result_len = run_cmd(cmd, result, sizeof(result));
++
++	if ((result_len > 0) && !strncasecmp(result, "dsa", 3))
++		return 0;
++
+ 	/*set atheros header type, a raw socket will listen on this ethernet type to receive bpdu from switch*/
+ 	sw_uk_exec(SW_API_HEADER_TYPE_SET, qca_switch_get_switch_id(), 1, qca_switch_get_atheros_header_type());
+ 
+@@ -413,15 +423,24 @@
+ 		sw_uk_exec(SW_API_MIRROR_ANALY_PT_SET, qca_switch_get_switch_id(), mirrot_port.port);
+ 	}
+ 
+-	/*add a reserved fdb entry to capture bpdu on switch, then redirect it to Linux*/
+-	sw_uk_exec(SW_API_FDB_RESV_ADD, qca_switch_get_switch_id(), (a_uintptr_t)&resv_entry);
+-
+ 	return 0;
+ }
+ 
+ /*remove configuration which is done in qca_switch_initialize*/
+ int qca_switch_disable_rx_tx_bpdu(void)
+ {
++	char cmd[128];
++	char result[128];
++	int result_len;
++
++	sw_uk_exec(SW_API_FDB_RESV_DEL, qca_switch_get_switch_id(), (a_uintptr_t)&resv_entry);
++
++	snprintf(cmd, sizeof(cmd), "%s get_switch_mode", RSTP_CMD_PATH);
++	result_len = run_cmd(cmd, result, sizeof(result));
++
++	if ((result_len > 0) && !strncasecmp(result, "dsa", 3))
++		return 0;
++
+ 	sw_uk_exec(SW_API_HEADER_TYPE_SET, qca_switch_get_switch_id(), 0, 0);
+ 
+ 	if(cpu_port.port >= 0) {
+@@ -438,8 +457,6 @@
+ 		}
+ 	}
+ 
+-	sw_uk_exec(SW_API_FDB_RESV_DEL, qca_switch_get_switch_id(), (a_uintptr_t)&resv_entry);
+-
+ 	return 0;
+ }
+ 

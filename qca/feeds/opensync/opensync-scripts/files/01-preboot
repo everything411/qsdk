@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+#
+# Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+# SPDX-License-Identifier: ISC
+
+collect_reboot_reason()
+{
+    # Extract relevant messages from the kernel log:
+    #
+    #  kernel: [  131.392658] Image Variant : IMAGE_VARIANT_STRING=8074.wlanfw.eval_v2Q
+    #
+    dmesg | awk '
+        match($0, /Image Variant : IMAGE_VARIANT_STRING=/) {
+            print(substr($0, RSTART + length("Image Variant : ")))
+        }'
+}
+
+reason="$(collect_reboot_reason)"
+
+reboot -Rtype=crash -Rreason="minidump${reason:+: $reason}"

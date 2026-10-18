@@ -1,0 +1,91 @@
+#!/bin/sh /etc/rc.common
+START=90
+USE_PROCD=1
+
+batmand_start() {
+	local config="$1"
+	local batman_args
+	local interface
+	local hnas
+	local gateway_class
+	local originator_interval
+	local preferred_gateway
+	local routing_class
+	local visualisation_srv
+	local local policy_routing_script
+	local disable_client_nat
+	local disable_aggregation
+
+	[ "$config" = "general" ] || return 1
+
+	config_get interface "$config" interface
+	if [ "$interface" = "" ]; then
+		echo $1 Error, you must specify at least a network interface
+		return 1
+	fi
+
+	config_get hnas "$config" hna
+	config_get gateway_class "$config" gateway_class
+	config_get originator_interval "$config" originator_interval
+	config_get preferred_gateway "$config" preferred_gateway
+	config_get routing_class "$config" routing_class
+	config_get visualisation_srv "$config" visualisation_srv
+	config_get policy_routing_script "$config" policy_routing_script
+	config_get disable_client_nat "$config" disable_client_nat
+	config_get disable_aggregation "$config" disable_aggregation
+
+	batman_args=""
+
+	for hna in $hnas; do
+		batman_args=${batman_args}'-a '$hna' '
+	done
+
+	if [ $gateway_class ]; then
+		batman_args=${batman_args}'-g '$gateway_class' '
+	fi
+
+	if [ $originator_interval ]; then
+		batman_args=${batman_args}'-o '$originator_interval' '
+	fi
+
+	if [ $preferred_gateway ]; then
+		batman_args=${batman_args}'-p '$preferred_gateway' '
+	fi
+
+	if [ $routing_class ]; then
+		batman_args=${batman_args}'-r '$routing_class' '
+	fi
+
+	if [ $visualisation_srv ]; then
+		batman_args=${batman_args}'-s '$visualisation_srv' '
+	fi
+
+	if [ $policy_routing_script ]; then
+		batman_args=${batman_args}'--policy-routing-script '$policy_routing_script' '
+	fi
+
+	if [ $disable_client_nat ]; then
+		batman_args=${batman_args}'--disable-client-nat '
+	fi
+
+	if [ $disable_aggregation ]; then
+		batman_args=${batman_args}'--disable-aggregation '
+	fi
+
+	procd_open_instance "${config}"
+	procd_set_param command /usr/sbin/batmand
+	procd_append_param command --no-detach
+	procd_append_param command ${batman_args}
+	procd_append_param command ${interface}
+	procd_set_param netdev ${interface}
+	procd_close_instance
+}
+
+start_service() {
+	config_load "batmand"
+	config_foreach batmand_start batmand
+}
+
+service_triggers() {
+	procd_add_reload_trigger "batmand"
+}

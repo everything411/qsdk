@@ -1,0 +1,215 @@
+Author: Deepak kumar <quic_deepaku@quicinc.com>
+Date: Tue Nov 19 13:37:15 2024
+
+    opensync: changes legacy command iwconfig to iw
+
+Signed-off-by: Deepak kumar <quic_deepaku@quicinc.com>
+Index: opensync-6.4/src/platform/qca/src/lib/target/target_qca_11ax.c
+===================================================================
+--- opensync-6.4.orig/src/platform/qca/src/lib/target/target_qca_11ax.c
++++ opensync-6.4/src/platform/qca/src/lib/target/target_qca_11ax.c
+@@ -873,11 +873,8 @@ util_iwconfig_get_chan(const char *phy,
+                        int *chan)
+ {
+     char vifs[1024];
+-    char buf[256];
+     char *vifr;
+-    char *p;
+     int mhz_last;
+-    int mhz = 0;
+     int err;
+     int num;
+ 
+@@ -892,6 +889,31 @@ util_iwconfig_get_chan(const char *phy,
+     num = 0;
+     mhz_last = 0;
+ 
++#ifdef OPENSYNC_NL_SUPPORT
++    const char *buff;
++    for (vif = strtok_r(vifs, " ", &vifr); vif; vif = strtok_r(NULL, " ", &vifr)) {
++	buff = strexa("iw", vif, "info");
++	if (WARN_ON(!buff))
++	   continue;
++
++	buff = strstr(buff, "channel");
++	if (WARN_ON(!buff))
++	   continue;
++
++	buff = strpbrk(buff, ":= ");
++	if (WARN_ON(!buff))
++	   continue;
++	buff += 1; /* skip the : or = */
++
++	if (atoi(buff))
++	 *chan = atoi(buff);
++	
++     }
++     return true;
++#else
++    int mhz = 0;
++    char buf[256];
++    char *p;
+     for (vif = strtok_r(vifs, " ", &vifr); vif; vif = strtok_r(NULL, " ", &vifr)) {
+         if (util_exec_read(NULL, buf, sizeof(buf), "iwconfig", vif) < 0)
+             continue;
+@@ -948,11 +970,48 @@ util_iwconfig_get_chan(const char *phy,
+ 
+     *chan = util_iwconfig_freq_to_chan(mhz);
+     return true;
++#endif
+ }
+ 
+ static int
+ util_iwconfig_get_opmode(const char *vif, char *opmode, int len)
+ {
++
++#ifdef OPENSYNC_NL_SUPPORT
++       const char *buff;
++       buff = strexa("iw", vif, "info");
++       if (WARN_ON(!buff)) {
++	 LOGW("%s: failed to get opmode",vif);
++	 return 0;
++       }
++
++       buff = strstr(buff, "type");
++       if (WARN_ON(!buff)) {
++	 LOGW("%s: failed to get opmode",vif);
++	 return 0;
++       }
++
++       buff = strpbrk(buff, ":= ");
++       if (WARN_ON(!buff)) {
++	 LOGW("%s: failed to get opmode",vif);
++	 return 0;
++       }
++
++       buff += 1; /* skip the : or = */
++
++       if (strstr(buff, "AP")) {
++               strscpy(opmode, "ap", len);
++     		LOGW("%s:opmode",opmode);
++               return 1;
++       }
++
++       if (strstr(buff, "managed")) {
++               strscpy(opmode, "sta", len);
++     		LOGW("%s:opmode",opmode);
++               return 1;
++       }
++     
++#else
+     char buf[256];
+     char *p;
+     int err;
+@@ -978,7 +1037,7 @@ util_iwconfig_get_opmode(const char *vif
+         strscpy(opmode, "sta", len);
+         return 1;
+     }
+-
++#endif
+     return 0;
+ }
+ 
+@@ -1009,7 +1068,11 @@ util_iwconfig_set_tx_power(const char *p
+         return;
+     while ((vif = strsep(&vifs, " ")) != NULL)
+         if (strlen(vif) > 0)
++#ifdef OPENSYNC_NL_SUPPORT
++            WARN_ON(!strexa("iw", vif, "set", "txpower", "fixed", txpwr));
++#else
+             WARN_ON(!strexa("iwconfig", vif, "txpower", txpwr));
++#endif
+ }
+ 
+ static int
+@@ -1027,6 +1090,18 @@ util_iwconfig_get_tx_power(const char *p
+         if (strlen(vif) == 0)
+             continue;
+ 
++#ifdef OPENSYNC_NL_SUPPORT
++        buf = strexa("iw", vif, "info");
++        if (WARN_ON(!buf))
++            continue;
++
++        buf = strstr(buf, "txpower");
++        if (WARN_ON(!buf))
++            continue;
++        buf = strpbrk(buf, ":= ");
++        if (WARN_ON(!buf))
++            continue;
++#else
+         buf = strexa("iwconfig", vif);
+         if (WARN_ON(!buf))
+             continue;
+@@ -1041,9 +1116,10 @@ util_iwconfig_get_tx_power(const char *p
+         buf = strpbrk(buf, ":=");
+         if (WARN_ON(!buf))
+             continue;
++#endif
+ 
+         buf += 1; /* skip the : or = */
+-
++	
+         if (txpwr > 0 && txpwr != atoi(buf))
+             return 0;
+ 
+@@ -4561,7 +4637,11 @@ target_vif_config_set2(const struct sche
+ 
+         if (util_policy_get_rts(phy, rconf->freq_band)) {
+             LOGI("%s: setting rts = %d", vif, POLICY_RTS_THR);
++#ifdef OPENSYNC_NL_SUPPORT
++            if (E("iw", vif, "set", "rts", F("%d", POLICY_RTS_THR)))
++#else
+             if (E("iwconfig", vif, "rts", F("%d", POLICY_RTS_THR)))
++#endif
+                 LOGW("%s: failed to set rts %d: %d (%s)",
+                      vif, POLICY_RTS_THR, errno, strerror(errno));
+         }
+Index: opensync-6.4/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/qca.sh
+===================================================================
+--- opensync-6.4.orig/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/qca.sh
++++ opensync-6.4/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/logpull/collect/qca.sh
+@@ -81,8 +81,14 @@ collect_qcawl()
+                 collect_cmd plume $PHY peer_tx_stats $STA
+                 collect_cmd plume $PHY peer_rx_stats $STA
+             done
+-            if iwconfig $IF | grep -q Mode:Managed; then
+-                BSSID=$(iwconfig $IF | awk '/Access Point/{print $NF}')
++		#this will not work for 12.5
++            #if iwconfig $IF | grep -q Mode:Managed; then
++             #   BSSID=$(iwconfig $IF | awk '/Access Point/{print $NF}')
++              #  collect_cmd plume $PHY peer_tx_stats $BSSID
++               # collect_cmd plume $PHY peer_rx_stats $BSSID
++           # fi
++            if iw $IF info | grep -q managed; then
++		BSSID=$(iw $IF info | awk '/addr/{print $NF}')
+                 collect_cmd plume $PHY peer_tx_stats $BSSID
+                 collect_cmd plume $PHY peer_rx_stats $BSSID
+             fi
+Index: opensync-6.4/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/stop.d/70_wifi.sh
+===================================================================
+--- opensync-6.4.orig/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/stop.d/70_wifi.sh
++++ opensync-6.4/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/stop.d/70_wifi.sh
+@@ -24,7 +24,8 @@
+ # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+ vaps() {
+-    iwconfig 2>/dev/null | awk '/^[^ \t]/{print $1}'
++    #iwconfig 2>/dev/null | awk '/^[^ \t]/{print $1}'
++    iw dev |grep Interface |awk '{print $2}' | tr '\n' ' '
+ }
+ 
+ destroy_all() {
+Index: opensync-6.4/src/vendor/qca-template/build/qsdk.mk
+===================================================================
+--- opensync-6.4.orig/src/vendor/qca-template/build/qsdk.mk
++++ opensync-6.4/src/vendor/qca-template/build/qsdk.mk
+@@ -32,7 +32,7 @@ SDK_LIB_DIR   += -L$(STAGING_DIR)/lib
+ SDK_CFLAGS    += -Os -pipe -fno-caller-saves -fhonour-copts
+ SDK_CFLAGS    += -g3 -Wno-error=unused-but-set-variable -Wno-error=deprecated-declarations -Wno-error=return-type -Wno-error=int-conversion -Wno-error=implicit-function-declaration
+ ifneq ($(ARCH_64BIT),y)
+-SDK_CFLAGS    += -msoft-float
++SDK_CFLAGS    += -mfloat-abi=hard
+ endif
+ SDK_CFLAGS    += -fasynchronous-unwind-tables -rdynamic -fno-omit-frame-pointer
+ SDK_CFLAGS    += -DINET6 -D_U_="__attribute__((unused))"

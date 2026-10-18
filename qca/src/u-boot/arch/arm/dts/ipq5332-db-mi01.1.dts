@@ -1,0 +1,143 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+#include "ipq5332-default.dts"
+
+/ {
+	config_name = "config@db-mi01.1", "config-db-mi01.1";
+
+	soc: soc {
+		tlmm: pinctrl@1000000 {
+			mdio_pinmux: mdio {
+				mdc {
+					pins = "GPIO_27";
+					function = "mdc_1";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				mdio {
+					pins = "GPIO_28";
+					function = "mdio_1";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			phy_rst_pinmux: phy_rst {
+				qti_aquantia_p1_rst {
+					pins = "GPIO_22";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				qti_aquantia_p2_rst {
+					pins = "GPIO_24";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie0_x1_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_38";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie1_x2_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_47";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			pcie2_x1_pinmux: pci_pins {
+				pci_rst {
+					pins = "GPIO_44";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+		};
+
+		hs_m31phy_0: hs_m31phy@7b000 {
+			status = "okay";
+		};
+
+		usb0: usb@8af8800 {
+			qti,select-utmi-as-pipe-clk;
+			status = "okay";
+
+			dwc3@8a00000 {
+				phys = <&hs_m31phy_0>;
+				phy-names = "usb2-phy";
+				maximum-speed = "high-speed";
+			};
+		};
+
+		mdio: mdio@90000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&mdio_pinmux>;
+			status = "okay";
+
+			phy0: phy@8 {
+				phy-reset-gpio = <&tlmm 22 0>;
+				reg = <8>;
+				phy_id = <AQ_PHY_TYPE>;
+				phy-mode = "usxgmii";
+				id = <1>;
+				uniphy_id = <0>;
+				uniphy_type = <0>;
+				xgmac;
+			};
+
+			phy1: phy@0 {
+				phy-reset-gpio = <&tlmm 24 0>;
+				reg = <0>;
+				phy_id = <AQ_PHY_TYPE>;
+				phy-mode = "usxgmii";
+				id = <2>;
+				uniphy_id = <1>;
+				uniphy_type = <0>;
+				xgmac;
+			};
+		};
+
+		ethernet: nss-switch {
+			pinctrl-names = "default";
+			pinctrl-0 = <&phy_rst_pinmux>;
+			phy-handle0 = <&phy0>;
+			phy-handle1 = <&phy1>;
+			status = "okay";
+		};
+
+		pcie0_x1: pci@20000000{
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie0_x1_pinmux>;
+			num-lanes = <1>;
+			perst_gpio = <&tlmm 38 0>;
+			status = "okay";
+		};
+
+		pcie1_x2: pci@18000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie1_x2_pinmux>;
+			num-lanes = <1>;
+			perst_gpio = <&tlmm 47 0>;
+			status = "okay";
+		};
+
+		pcie2_x1: pci@10000000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pcie2_x1_pinmux>;
+			num-lanes = <1>;
+			perst_gpio = <&tlmm 44 0>;
+			status = "okay";
+		};
+	};
+};

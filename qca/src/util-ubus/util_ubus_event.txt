@@ -1,0 +1,40 @@
+EVENT: util_ubus_event_ctl
+set_delay : delay n second to execute action ( such as shutdown )
+shell_delay : srcipt interval run time ( n second )
+shell_run : 0 -> disable interval run script , 1 -> enable interval run script.
+script : shell command. 
+shutdown : set 1 to exit program after timer_delay.
+ifname : device name for set_igmp_route.sh
+trap_mode : trap mode value for set_igmp_route.sh
+single_mode : single mode value for set_igmp_route.sh
+dbg_level : enable/disable debug message (1 : enable, 0: disable)
+cfg_reload : set 1 to reload ubus_event rule file. (util_event_rule.txt)
+cfg_dump : set 1 to print current rule setting.
+
+EVENT: user define event from rule config
+pre_param : predefine variable for shell
+param : shell parameter
+
+* How to setup variable value :
+util_ubus_event_ctl --> for util_ubus_event parameter setting
+ubus send util_ubus_event_ctl '{"set_delay":5,"shutdown":1}'	--> Exit program after 5 seconds
+ubus send util_ubus_event_ctl '{"shell_delay":10,"shell_run":1,"script":"date"}' --> Run "date" every 10 seconds
+ubus send util_ubus_event_ctl '{"ifname":"eth4","trap_mode":1,"single_mode":0}'  --> set ifname,trap_mode,single_mode
+ubus send util_ubus_event_ctl '{"cfg_reload":1}'	--> reload rule config file
+ubus send util_ubus_event_ctl '{"cfg_dump":1}'	--> dump rule list
+
+* How to turn on debug message :
+UTIL_DBG=1 util_ubus_event &
+or
+ubus send util_ubus_event_ctl '{"dbg_level":1}'
+
+* What event monitor by program:
+Please ref. util_event_rule.cfg
+
+* What action with network.interface event:
+network.interface,/usr/bin/network_cb.sh&,action=ifup & interface=loopback  -->  run script "network_cb.sh" when event is detected
+
+* How to send user event:
+util_ubus_event,xxx.sh,action=test  <-- add line in util_event_rule.cfg & reload rule config file
+ubus send util_ubus_event '{"action":"test"}' -> run shell "xxx.sh"
+ubus send util_ubus_event '{"action":"test","pre_param":"cmd=ttt","param":"123"}' -> run shell "cmd=ttt xxx.sh 123"

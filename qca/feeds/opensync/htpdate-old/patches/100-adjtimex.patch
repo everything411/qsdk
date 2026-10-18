@@ -1,0 +1,27 @@
+From: Tijs Van Buggenhout <tvbuggen@netzerk.be>
+Date: Fri, 20 Sep 2024 09:59:44 +0530
+Subject: [PATCH] openwrt patches for opensync
+Fixed out of bound issue and a missing null-terminated string
+Signed-off-by: Tijs Van Buggenhout <tvbuggen@netzerk.be>
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+
+--- a/htpdate.c
++++ b/htpdate.c
+@@ -359,7 +359,7 @@ static int htpdate_adjtimex( double drif
+ 
+ 	/* Read current kernel frequency */
+ 	tmx.modes = 0;
+-	ntp_adjtime(&tmx);
++	adjtimex(&tmx);
+ 
+ 	/* Calculate new frequency */
+ 	freq = (long)(65536e6 * drift);
+@@ -377,7 +377,7 @@ static int htpdate_adjtimex( double drif
+ 		printlog( 1, "seteuid()" );
+ 		exit(1);
+ 	} else {
+-		return( ntp_adjtime(&tmx) );
++		return( adjtimex(&tmx) );
+ 	}
+ 
+ }

@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+#include "ipq5332-rdp441.dts"
+
+/ {
+	config_name = "config-mi01.2-qcn9160-c1", "config@mi01.2-qcn9160-c1", "config@rdp472", "config-rdp472";
+
+};
+
+&pcie0_x1 {
+	status = "disabled";
+};

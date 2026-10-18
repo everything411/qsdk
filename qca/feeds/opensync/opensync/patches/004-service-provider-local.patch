@@ -1,0 +1,30 @@
+Author: Deepak kumar <quic_deepaku@quicinc.com>
+Date: Tue Nov 19 13:37:15 2024
+
+    opensync: Add Service provider for local development
+
+Signed-off-by: Deepak kumar <quic_deepaku@quicinc.com>
+
+diff --git a/src/service-provider/local/build/provider.mk b/src/service-provider/local/build/provider.mk
+new file mode 100644
+index 0000000..6d52572
+--- /dev/null
++++ b/src/service-provider/local/build/provider.mk
+@@ -0,0 +1,17 @@
++# Service provider for local development
++
++VALID_IMAGE_DEPLOYMENT_PROFILES += local
++
++ifeq ($(IMAGE_DEPLOYMENT_PROFILE),local)
++
++CONTROLLER_ADDR:="ssl:wildfire-dualstack.plume.tech:443"
++IMAGE_PROFILE_SUFFIX := "$(IMAGE_DEPLOYMENT_PROFILE)"
++
++# BACKHAUL_PASS and BACKHAUL_SSID variables are required for generating the
++# pre-populated WiFi related OVSDB entries needed for extender devices.
++# (See also: core/ovsdb/20_kconfig.radio.json.sh)
++
++export BACKHAUL_SSID := "we.piranha"
++export BACKHAUL_PASS := "welcome8"
++
++endif

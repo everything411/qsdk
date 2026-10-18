@@ -1,0 +1,13 @@
+#!/bin/sh /etc/rc.common
+#Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+#SPDX-License-Identifier: ISC
+
+. /lib/wifi/wifi-utils.sh
+START=20
+
+boot() {
+    local KO_PATH="$(get_ap_sdxpinn_ko_path)"
+
+    [ -f $KO_PATH/emesh-sp.ko ] && insmod "$KO_PATH/emesh-sp.ko"
+    [ -f $KO_PATH/hyfi-bridging.ko ] && insmod "$KO_PATH/hyfi-bridging.ko"
+}

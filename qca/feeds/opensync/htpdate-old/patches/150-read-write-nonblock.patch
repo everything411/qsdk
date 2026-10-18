@@ -1,0 +1,165 @@
+From: Atchaya R <quic_ratchaya@quicinc.com>
+Date: Fri, 20 Sep 2024 09:59:44 +0530
+Subject: [PATCH] openwrt patches for opensync
+
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+
+Index: htpdate-1.0.4/htpdate.c
+===================================================================
+--- htpdate-1.0.4.orig/htpdate.c
++++ htpdate-1.0.4/htpdate.c
+@@ -70,6 +70,7 @@
+ #define	URLSIZE					128
+ #define	BUFFERSIZE				1024
+ #define PLUME_EPOCH             1451602800      /* 01/01/2016   */
++#define SOCK_TIMEOUT_MS         2000            /* socket ops timeout   */
+ 
+ #define sign(x) (x < 0 ? (-1) : 1)
+ 
+@@ -221,12 +222,6 @@ static int opensock( struct addrinfo *ai
+             }
+         }
+ 
+-        /* Restore original flags */
+-        if (fcntl(sock, F_SETFL, flags))
+-        {
+-            goto retry;
+-        }
+-
+         break;
+ 
+ retry:
+@@ -240,6 +235,98 @@ retry:
+     return sock;
+ }
+ 
++/*
++ * Non-blocking implementation of send
++ * After intensive testing it looks like send never blocks
++ */
++int sendsock(int sock, void * buff, size_t len,  int timeout)
++{
++	int rc = -1;
++	struct pollfd pfd[1];
++
++	pfd[0].fd = sock;
++	pfd[0].events = POLLOUT;
++
++	rc = poll(pfd, sizeof(pfd) / sizeof(pfd[0]), timeout);
++
++    switch(rc)
++	{
++		/* Wait on write to complete */
++		case 0:
++            if (debug)
++			    printlog(0, "Timedout.\n");
++			rc = -1;
++			break;
++
++		case -1:
++            if (debug)
++			    printlog(1, "Error write poll\n");
++			break;
++
++		default:
++			if (pfd[0].events & POLLERR)
++			{
++                if (debug)
++				    printlog(1, "poll() returned POLERR.\n");
++			}
++
++			if ((pfd[0].events & POLLOUT))
++			{
++				rc = send(sock, buff, len, 0);
++			}
++			break;
++	}
++
++	return rc;
++}
++
++
++
++/* non-blocking recv, avoid waiting indefinitely in case uplink
++ * breaks between opening the socket and receiving
++ */
++int recvsock(int sock, void * buff, size_t len,  int timeout)
++{
++	int rc = -1;
++	struct pollfd pfd[1];
++
++	pfd[0].fd = sock;
++	pfd[0].events = POLLIN;
++
++	rc = poll(pfd, sizeof(pfd) / sizeof(pfd[0]), timeout);
++
++    switch(rc)
++	{
++		/* Wait on write to complete */
++		case 0:
++            if (debug)
++			    printlog(0, "Timedout.\n");
++			rc = -1;
++			break;
++
++		case -1:
++            if (debug)
++			    printlog(1, "Error read poll\n");
++			break;
++
++		default:
++			if (pfd[0].events & POLLERR)
++			{
++                if (debug)
++				    printlog(1, "poll() returned POLERR.\n");
++			}
++
++			if ((pfd[0].events & POLLIN))
++			{
++				rc = recv(sock, buff, len, 0);
++			}
++			break;
++	}
++
++	return rc;
++}
++
++
+ 
+ static long getHTTPdate( char *host, char *port, char *proxy, char *proxyport, char *httpversion, int ipversion, int when, int * error ) {
+ 	int					server_s;
+@@ -325,13 +412,18 @@ static long getHTTPdate( char *host, cha
+ 	nanosleep( &sleepspec, &remainder );
+ 
+ 	/* Send HEAD request */
+-	if ( send(server_s, buffer, strlen(buffer), 0) < 0 )
++	if ( sendsock(server_s, buffer, strlen(buffer), SOCK_TIMEOUT_MS) < 0 )
++    {
+ 		printlog( 1, "Error sending" );
++        *error = 1;
++        close(server_s);
++        return (0);
++    }
+ 
+ 	/* Receive data from the web server
+ 	   The return code from recv() is the number of bytes received
+ 	*/
+-	if ( recv(server_s, buffer, BUFFERSIZE, 0) != -1 ) {
++	if ( recvsock(server_s, buffer, BUFFERSIZE, SOCK_TIMEOUT_MS) != -1 ) {
+ 
+ 		/* Assuming that network delay (server->htpdate) is neglectable,
+ 		   the received web server time "should" match the local time.
+@@ -376,6 +468,13 @@ static long getHTTPdate( char *host, cha
+             return (0);
+ 		}
+ 	}						/* bytes received */
++    else
++    {
++        printlog(1, "error reading server");
++        close( server_s );
++        *error = 1;
++        return (0);
++    }
+ 
+ 	close( server_s );
+ 

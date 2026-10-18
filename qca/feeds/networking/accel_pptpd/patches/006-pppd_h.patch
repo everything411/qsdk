@@ -1,0 +1,61 @@
+Author: Ken Zhu <quic_guigenz@quicinc.com>
+Date:   Mon Apr 29 14:33:40 2024 -0700
+
+    netowrking: fix accel_pptpd compiling issue
+
+    move __P definition from md4.h to pppd.h
+
+    Change-Id: I62f7be55c09631f2d981fe2f460820200f12ba90
+    Signed-off-by: Ken Zhu <quic_guigenz@quicinc.com>
+
+diff -Nur a/pppd_plugin/src/pppd/md4.h b/pppd_plugin/src/pppd/md4.h
+--- a/pppd_plugin/src/pppd/md4.h	2024-04-29 14:25:54.492320635 -0700
++++ b/pppd_plugin/src/pppd/md4.h	2024-04-29 14:27:26.628955440 -0700
+@@ -8,15 +8,6 @@
+ ** ********************************************************************
+ */
+ 
+-#ifndef __P
+-# if defined(__STDC__) || defined(__GNUC__)
+-#  define __P(x) x
+-# else
+-#  define __P(x) ()
+-# endif
+-#endif
+-
+-
+ /* MDstruct is the data structure for a message digest computation.
+ */
+ typedef struct {
+diff -Nur a/pptpd-1.3.3/compat.c b/pptpd-1.3.3/compat.c
+--- a/pptpd-1.3.3/compat.c	2024-04-29 14:25:54.492320635 -0700
++++ b/pptpd-1.3.3/compat.c	2024-04-29 14:26:45.948675150 -0700
+@@ -11,9 +11,9 @@
+ #endif
+ 
+ #include "compat.h"
++#include <string.h>
+ 
+ #ifndef HAVE_STRLCPY
+-#include <string.h>
+ #include <stdio.h>
+ 
+ void strlcpy(char *dst, const char *src, size_t size)
+diff -Nur a/pptpd-1.3.3/plugins/pppd.h b/pptpd-1.3.3/plugins/pppd.h
+--- a/pptpd-1.3.3/plugins/pppd.h	2024-04-29 14:25:54.492320635 -0700
++++ b/pptpd-1.3.3/plugins/pppd.h	2024-04-29 14:43:12.136296714 -0700
+@@ -67,6 +67,14 @@
+ #define volatile
+ #endif
+ 
++#ifndef __P
++# if defined(__STDC__) || defined(__GNUC__)
++#  define __P(x) x
++# else
++#  define __P(x) ()
++# endif
++#endif
++
+ #ifdef INET6
+ #include "eui64.h"
+ #endif

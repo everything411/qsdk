@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+* Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+*/
+
+/dts-v1/;
+
+#include "ipq9574.dtsi"
+
+/ {
+	config_name = "config-default";
+
+	aliases {
+		console = &blsp1_uart2_console;
+		uart2 = &blsp1_uart3_additional;
+		sdhci = &mmc;
+	};
+
+	soc: soc {
+		tlmm: pinctrl@1000000 {
+
+			sdhci_pinmux: mmc {
+				emmc_data {
+					pins = "GPIO_0", "GPIO_1", "GPIO_2",
+						"GPIO_3", "GPIO_6", "GPIO_7",
+						"GPIO_8", "GPIO_9";
+					function = "sdc";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				emmc_cmd{
+					pins = "GPIO_4";
+					function = "sdc";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+				emmc_clk{
+					pins = "GPIO_5";
+					function = "sdc";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				emmc_rclk{
+					pins = "GPIO_10";
+					function = "sdc";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-down;
+				};
+			};
+
+			qspi_pinmux: nand {
+				qspi_data {
+					pins = "GPIO_0", "GPIO_1", "GPIO_2",
+						"GPIO_3";
+					function = "qspi";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				qspi_cs_n {
+					pins = "GPIO_4";
+					function = "qspi";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				qspi_clk {
+					pins = "GPIO_5";
+					function = "qspi";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+			};
+
+			serial_pinmux: uart {
+				u-boot,dm-pre-reloc;
+				data {
+					u-boot,dm-pre-reloc;
+					pins = "GPIO_34", "GPIO_35";
+					function = "blsp0_uart0";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+			};
+
+			serial_pinmux2: uart2 {
+				data {
+					pins = "GPIO_17", "GPIO_18";
+					function = "blsp1_uart2";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+			};
+
+			blsp1_spi_pinmux: blsp1_spi_pins {
+				blsp0_spi_clk {
+					pins = "GPIO_11";
+					function = "blsp0_spi";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				blsp0_spi_mosi {
+					pins = "GPIO_14";
+					function = "blsp0_spi";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				blsp0_spi_miso {
+					pins = "GPIO_13";
+					function = "blsp0_spi";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-disable;
+				};
+
+				blsp0_spi_cs {
+					pins = "GPIO_12";
+					function = "blsp0_spi";
+					drive-strength = <DRIVE_STRENGTH_8MA>;
+					bias-pull-up;
+				};
+
+			};
+		};
+
+
+		blsp1_uart2_console: serial@78B1000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&serial_pinmux>;
+			status = "okay";
+		};
+
+		blsp1_uart3_additional: serial@78B2000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&serial_pinmux2>;
+			status = "okay";
+		};
+
+		blsp1_spi: spi@78b5000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&blsp1_spi_pinmux>;
+			cs-gpios = <&tlmm 12 0>;
+			force-cs;
+			status = "okay";
+
+			mx25u25635f@0 {
+				compatible = "jedec,spi-nor";
+				reg = <0>;
+			};
+		};
+
+		nand: nand-controller@79B0000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&qspi_pinmux>;
+			status = "okay";
+		};
+
+		mmc: sdhci@7800000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&sdhci_pinmux>;
+			status = "okay";
+		};
+
+		watchdog: non-sec@b017000 {
+			status = "okay";
+		};
+	};
+};

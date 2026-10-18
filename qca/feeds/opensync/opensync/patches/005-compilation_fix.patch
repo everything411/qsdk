@@ -1,0 +1,80 @@
+Author: Deepak kumar <quic_deepaku@quicinc.com>
+Date: Tue Nov 19 13:37:15 2024
+
+    opensync: changes for kernel 6.6
+
+Signed-off-by: Deepak kumar <quic_deepaku@quicinc.com>
+Index: opensync-6.4/src/platform/qca/src/lib/osw/src/osw_plat_qsdk11_4.c
+===================================================================
+--- opensync-6.4.orig/src/platform/qca/src/lib/osw/src/osw_plat_qsdk11_4.c
++++ opensync-6.4/src/platform/qca/src/lib/osw/src/osw_plat_qsdk11_4.c
+@@ -69,7 +69,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBI
+ #include <osw_drv_common.h>
+ #include <osw_time.h>
+ #include <osw_timer.h>
+-
++#include <libgen.h>
+ /* qsdk */
+ #define EXTERNAL_USE_ONLY
+ #define __bool_already_defined__
+@@ -740,7 +740,7 @@ osw_plat_qsdk_attr_mld_mac(struct nlattr
+      * This attribute can appear in Affiliated netdevs to
+      * point to a master bonding netdev.
+      */
+-    return tb[NL80211_ATTR_MLD_MAC];
++    return tb[NL80211_ATTR_MLD_ADDR];
+ #else
+     return NULL;
+ #endif
+Index: opensync-6.4/src/vendor/qca-template/build/qsdk.mk
+===================================================================
+--- opensync-6.4.orig/src/vendor/qca-template/build/qsdk.mk
++++ opensync-6.4/src/vendor/qca-template/build/qsdk.mk
+@@ -30,7 +30,7 @@ SDK_DIR        = $(TOPDIR)
+ SDK_LIB_DIR   += -L$(STAGING_DIR)/lib
+ 
+ SDK_CFLAGS    += -Os -pipe -fno-caller-saves -fhonour-copts
+-SDK_CFLAGS    += -Wno-error=unused-but-set-variable
++SDK_CFLAGS    += -g3 -Wno-error=unused-but-set-variable -Wno-error=deprecated-declarations -Wno-error=return-type -Wno-error=int-conversion -Wno-error=implicit-function-declaration
+ ifneq ($(ARCH_64BIT),y)
+ SDK_CFLAGS    += -msoft-float
+ endif
+Index: opensync-6.4/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/prov
+===================================================================
+--- opensync-6.4.orig/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/prov
++++ opensync-6.4/src/platform/qca/rootfs/common/INSTALL_PREFIX/scripts/prov
+@@ -228,6 +228,20 @@ prov_wifi() {
+     phy="phy#$wiphy"
+     suffix=$(radio_suffix $phy)
+     suffix_short=$(short_radio_suffix_try $phy)
++    
++    if [ -n $suffix ] || [  -n $suffix_short ]; then
++    	radio=$(cat /sys/class/net/"$wifi"/supported_bands)
++    	if [ $radio  == "2GHz/" ];then
++    		suffix=24
++    		suffix_short=24
++    	elif [ $radio  == "6GHz/" ];then
++    		suffix=60
++    		suffix_short=60
++    	elif [ $radio  == "5GHz/" ];then
++    		suffix=50
++    		suffix_short=50
++    	fi
++    fi
+ 
+     log_info "prov: $wifi: $vap: provisioning, mode=$mode"
+ 
+Index: opensync-6.4/src/core/src/fm/src/fm_event.c
+===================================================================
+--- opensync-6.4.orig/src/core/src/fm/src/fm_event.c
++++ opensync-6.4/src/core/src/fm/src/fm_event.c
+@@ -132,7 +132,8 @@ static int fm_ramoops_write(const char *
+     fd = open(CONFIG_FM_RAMOOPS_BUFFER, O_WRONLY);
+     if (fd < 0)
+     {
+-        LOGE("Open ramoops file [%s] failed", CONFIG_FM_RAMOOPS_BUFFER);
++	//enable this log when PSTORE enable in kernel
++        //LOGE("Open ramoops file [%s] failed", CONFIG_FM_RAMOOPS_BUFFER);
+         ret = -1;
+         goto exit;
+     }

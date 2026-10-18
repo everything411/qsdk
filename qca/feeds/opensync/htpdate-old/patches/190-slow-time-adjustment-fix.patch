@@ -1,0 +1,25 @@
+From: Atchaya R <quic_ratchaya@quicinc.com>
+Date: Fri, 20 Sep 2024 09:59:44 +0530
+Subject: [PATCH] openwrt patches for opensync
+
+htpdate uses adjtime function to compensate system time drift.
+Large system drift time cannot be compensated with
+htpdate restart as adjtime is adjusting 1s for every 30m.
+
+Set system time forcefully if the system time drift is more that 3s.
+Signed-off-by: Atchaya R <quic_ratchaya@quicinc.com>
+Index: htpdate-1.0.4/htpdate.c
+===================================================================
+--- htpdate-1.0.4.orig/htpdate.c
++++ htpdate-1.0.4/htpdate.c
+@@ -494,6 +494,10 @@ static int setclock( double timedelta, i
+ 		return(0);
+ 	}
+ 
++	if ( abs(timedelta) >= 3 ) {
++		setmode = 2;
++	}
++
+ 	switch ( setmode ) {
+ 
+ 	case 0:						/* No time adjustment, just print time */

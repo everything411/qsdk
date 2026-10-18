@@ -1,0 +1,69 @@
+/*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+
+/**
+ * @defgroup
+ * @{
+ */
+#if defined(CONFIG_CPU_BIG_ENDIAN)
+#include "mrppe_pktedit_reg_be.h"
+#else
+#ifndef MRPPE_PKTEDIT_REG_H
+#define MRPPE_PKTEDIT_REG_H
+
+/*[table] IPR_SPARE_REG*/
+#define IPR_SPARE_REG
+#define IPR_SPARE_REG_ADDRESS		0x74
+#define IPR_SPARE_REG_NUM		256
+#define IPR_SPARE_REG_INC		0x4
+#define IPR_SPARE_REG_TYPE		REG_TYPE_RW
+#define IPR_SPARE_REG_DEFAULT		0x0
+	/*[field] INNER_IP_LEN_UPDATE_EN*/
+	#define IPR_SPARE_REG_INNER_IP_LEN_UPDATE_EN
+	#define IPR_SPARE_REG_INNER_IP_LEN_UPDATE_EN_OFFSET	0
+	#define IPR_SPARE_REG_INNER_IP_LEN_UPDATE_EN_LEN	1
+	#define IPR_SPARE_REG_INNER_IP_LEN_UPDATE_EN_DEFAULT	0x0
+	/*[field] INNER_IP_LEN_GAP_EXP_EN*/
+	#define IPR_SPARE_REG_INNER_IP_LEN_GAP_EXP_EN
+	#define IPR_SPARE_REG_INNER_IP_LEN_GAP_EXP_EN_OFFSET	1
+	#define IPR_SPARE_REG_INNER_IP_LEN_GAP_EXP_EN_LEN	1
+	#define IPR_SPARE_REG_INNER_IP_LEN_GAP_EXP_EN_DEFAULT	0x0
+	/*[field] INNER_IP_PADDING_EXP_EN*/
+	#define IPR_SPARE_REG_INNER_IP_PADDING_EXP_EN
+	#define IPR_SPARE_REG_INNER_IP_PADDING_EXP_EN_OFFSET	2
+	#define IPR_SPARE_REG_INNER_IP_PADDING_EXP_EN_LEN	1
+	#define IPR_SPARE_REG_INNER_IP_PADDING_EXP_EN_DEFAULT	0x0
+	/*[field] PAYLOAD_CHECKSUM_STRIP_PADDING_EN*/
+	#define IPR_SPARE_REG_PAYLOAD_CHECKSUM_STRIP_PADDING_EN
+	#define IPR_SPARE_REG_PAYLOAD_CHECKSUM_STRIP_PADDING_EN_OFFSET	3
+	#define IPR_SPARE_REG_PAYLOAD_CHECKSUM_STRIP_PADDING_EN_LEN	3
+	#define IPR_SPARE_REG_PAYLOAD_CHECKSUM_STRIP_PADDING_EN_DEFAULT	0x0
+
+struct ipr_spare_reg {
+	a_uint32_t  inner_ip_len_update_en:1;
+	a_uint32_t  inner_ip_len_gap_exp_en:1;
+	a_uint32_t  inner_ip_padding_exp_en:1;
+	a_uint32_t  payload_checksum_strip_padding_en:1;
+	a_uint32_t  _reserved0:28;
+};
+
+union ipr_spare_reg_u {
+	a_uint32_t val;
+	struct ipr_spare_reg bf;
+};
+#endif
+#endif

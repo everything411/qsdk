@@ -1,0 +1,131 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
+#ifndef _DT_BINDINGS_CLK_GCC_IPQ5424_H
+#define _DT_BINDINGS_CLK_GCC_IPQ5424_H
+
+/* GCC controlled clock IDs */
+#define GCC_QUPV3_SE0_CLK				0
+#define GCC_QUPV3_SE1_CLK				1
+#define GCC_QPIC_IO_MACRO_CLK				2
+#define GCC_QUPV3_SE2_CLK				3
+#define GCC_QUPV3_SE3_CLK				4
+#define GCC_QUPV3_SE4_CLK				5
+#define GCC_QUPV3_SE5_CLK				6
+#define GCC_SDCC1_APPS_CLK				7
+#define GCC_SDCC1_AHB_CLK				8
+#define GCC_NSSCFG_CLK					9
+#define GCC_NSSNOC_MEMNOC_CLK				10
+#define GCC_NSSNOC_MEMNOC_1_CLK				11
+#define GCC_USB0_MASTER_CLK				12
+#define GCC_USB0_MOCK_UTMI_CLK				13
+#define GCC_USB0_SLEEP_CLK				14
+#define GCC_USB0_AUX_CLK				15
+#define GCC_USB0_PHY_CFG_AHB_CLK			16
+#define GCC_USB1_MASTER_CLK				17
+#define GCC_USB1_MOCK_UTMI_CLK				18
+#define GCC_USB1_SLEEP_CLK				19
+#define GCC_USB1_PHY_CFG_AHB_CLK			20
+#define GCC_USB0_PIPE_CLK				21
+#define GCC_CNOC_USB_CLK				22
+#define GCC_PCIE0_AXI_M_CLK				23
+#define GCC_PCIE0_AXI_S_CLK				24
+#define GCC_PCIE0_AHB_CLK				25
+#define GCC_PCIE0_AUX_CLK				26
+#define GCC_PCIE0_AXI_S_BRIDGE_CLK			27
+#define GCC_PCIE0_RCHNG_CLK				28
+#define GCC_PCIE1_AXI_M_CLK				29
+#define GCC_PCIE1_AXI_S_CLK				30
+#define GCC_PCIE1_AHB_CLK				31
+#define GCC_PCIE1_AUX_CLK				32
+#define GCC_PCIE1_AXI_S_BRIDGE_CLK			33
+#define GCC_PCIE1_RCHNG_CLK				34
+#define GCC_PCIE2_AXI_M_CLK				35
+#define GCC_PCIE2_AXI_S_CLK				36
+#define GCC_PCIE2_AHB_CLK				37
+#define GCC_PCIE2_AUX_CLK				38
+#define GCC_PCIE2_AXI_S_BRIDGE_CLK			39
+#define GCC_PCIE2_RCHNG_CLK				40
+#define GCC_PCIE3_AXI_M_CLK				41
+#define GCC_PCIE3_AXI_S_CLK				42
+#define GCC_PCIE3_AHB_CLK				43
+#define GCC_PCIE3_AUX_CLK				44
+#define GCC_PCIE3_AXI_S_BRIDGE_CLK			45
+#define GCC_PCIE3_RCHNG_CLK				46
+#define GCC_PCIE_AUX_CLK				47
+#define GCC_PCIE0_PIPE_CLK				48
+#define GCC_PCIE1_PIPE_CLK				49
+#define GCC_PCIE2_PIPE_CLK				50
+#define GCC_PCIE3_PIPE_CLK				51
+#define GCC_CNOC_PCIE0_1LANE_S_CLK			52
+#define GCC_CNOC_PCIE1_1LANE_S_CLK			53
+#define GCC_CNOC_PCIE2_2LANE_S_CLK			54
+#define GCC_CNOC_PCIE3_2LANE_S_CLK			55
+#define GCC_ANOC_PCIE0_1LANE_M_CLK			56
+#define GCC_ANOC_PCIE1_1LANE_M_CLK			57
+#define GCC_ANOC_PCIE2_2LANE_M_CLK			58
+#define GCC_ANOC_PCIE3_2LANE_M_CLK			59
+#define	GCC_PCNOC_BFDCD_CLK				60
+#define	GCC_SYSTEM_NOC_BFDCD_CLK			61
+#define	GCC_NSSNOC_MEMNOC_BFDCD_CLK			62
+#define	GCC_IM_SLEEP_CLK				63
+#define GCC_CMN_12GPLL_AHB_CLK				64
+#define GCC_CMN_12GPLL_SYS_CLK				65
+#define GCC_NSSCC_CLK					66
+#define GCC_NSSNOC_NSSCC_CLK				67
+#define GCC_NSSNOC_SNOC_CLK				68
+#define GCC_NSSNOC_SNOC_1_CLK				69
+#define GCC_UNIPHY0_SYS_CLK				70
+#define GCC_UNIPHY1_SYS_CLK				71
+#define GCC_UNIPHY2_SYS_CLK				72
+#define GCC_UNIPHY0_AHB_CLK				73
+#define GCC_UNIPHY1_AHB_CLK				74
+#define GCC_UNIPHY2_AHB_CLK				75
+#define GCC_QPIC_CLK					76
+#define GCC_QPIC_AHB_CLK				77
+#define GCC_QPIC_SLEEP_CLK				78
+#define GCC_MDIO_AHB_CLK				79
+
+/* NSS controlled clock IDs */
+#define NSS_CC_PPE_CLK					100
+#define NSS_CC_PPE_SWITCH_IPE_CLK			101
+#define NSS_CC_PPE_SWITCH_CLK				102
+#define NSS_CC_PPE_EDMA_CLK				103
+#define NSS_CC_PPE_EDMA_CFG_CLK				104
+#define NSS_CC_CFG_CLK					105
+#define NSS_CC_CE_CLK					106
+#define NSS_CC_CE_APB_CLK				107
+#define NSS_CC_CE_AXI_CLK				108
+#define NSS_CC_NSSNOC_CE_APB_CLK			109
+#define NSS_CC_NSSNOC_CE_AXI_CLK			110
+#define NSS_CC_NSS_CSR_CLK				111
+#define NSS_CC_NSSNOC_NSS_CSR_CLK			112
+#define NSS_CC_PORT1_MAC_CLK				113
+#define NSS_CC_PORT2_MAC_CLK				114
+#define NSS_CC_PORT3_MAC_CLK				115
+#define NSS_CC_NSSNOC_PPE_CLK				116
+#define NSS_CC_PORT1_RX_CLK				117
+#define NSS_CC_PORT1_TX_CLK				118
+#define NSS_CC_PORT2_RX_CLK				119
+#define NSS_CC_PORT2_TX_CLK				120
+#define NSS_CC_PORT3_RX_CLK				121
+#define NSS_CC_PORT3_TX_CLK				122
+#define NSS_CC_UNIPHY_PORT1_RX_CLK			123
+#define NSS_CC_UNIPHY_PORT1_TX_CLK			124
+#define NSS_CC_UNIPHY_PORT2_RX_CLK			125
+#define NSS_CC_UNIPHY_PORT2_TX_CLK			126
+#define NSS_CC_UNIPHY_PORT3_RX_CLK			127
+#define NSS_CC_UNIPHY_PORT3_TX_CLK			128
+#define NSS_CC_NSSNOC_PPE_CFG_CLK			129
+#define NSS_CC_PPE_SWITCH_BTQ_CLK			130
+
+#define UNIPHY0_NSS_RX_CLK				200
+#define UNIPHY0_NSS_TX_CLK				201
+#define UNIPHY1_NSS_RX_CLK				202
+#define UNIPHY1_NSS_TX_CLK				203
+#define UNIPHY2_NSS_RX_CLK				204
+#define UNIPHY2_NSS_TX_CLK				205
+
+#endif

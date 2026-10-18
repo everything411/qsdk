@@ -1,0 +1,5 @@
+
+echo "RESET TO FACTORY SETTINGS..."
+rm -rf  /overlay/*
+echo "Rebooting the system..."
+reboot -f

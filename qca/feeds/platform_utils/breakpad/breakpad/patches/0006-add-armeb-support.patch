@@ -1,0 +1,20 @@
+From 5d2a705a7135f42e108daa12b00d6a8890cd21f2 Mon Sep 17 00:00:00 2001
+From: Madhurya Kandamuru <quic_madhurya@quicinc.com>
+Date: Mon, 30 Jan 2023 17:30:37 +0530
+Subject: [PATCH] breakpad: patch to add armeb support
+
+Change-Id: Ic32ee733f03a9bd0f6a1c372f672dc7a0f17382b
+Signed-off-by: Madhurya Kandamuru <quic_madhurya@quicinc.com>
+---
+
+--- breakpad-0.1.orig/src/client/linux/microdump_writer/microdump_writer.cc
++++ breakpad-0.1/src/client/linux/microdump_writer/microdump_writer.cc
+@@ -325,6 +325,8 @@ class MicrodumpWriter {
+     const char kArch[] = "arm64";
+ #elif defined(__ARMEL__)
+     const char kArch[] = "arm";
++#elif defined(__ARMEB__)
++    const char kArch[] = "arm";
+ #elif defined(__x86_64__)
+     const char kArch[] = "x86_64";
+ #elif defined(__i386__)
